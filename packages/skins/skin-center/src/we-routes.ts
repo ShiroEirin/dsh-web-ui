@@ -197,6 +197,8 @@ interface WallpaperJson {
   id: string
   title: string
   type: WallpaperType
+  /** Steam Workshop content rating declared by the project (author-set). */
+  contentrating: WallpaperEntry['contentrating']
   source: WallpaperEntry['source']
   playable: boolean
   updateAvailable: boolean
@@ -285,6 +287,7 @@ export function makeWeRoutes(deps: WeRouteDeps): WebRoute[] {
       id: entry.id,
       title: entry.title,
       type: entry.type,
+      contentrating: entry.contentrating,
       source: entry.source,
       playable: entry.playable,
       updateAvailable: entry.updateAvailable,
@@ -591,6 +594,7 @@ export function makeWeRoutes(deps: WeRouteDeps): WebRoute[] {
       sourceId: entry.id,
       title: entry.title,
       type: entry.type,
+      contentrating: entry.contentrating,
       srcMtime: entry.srcMtime,
       srcSize: entry.srcSize,
       importedAt: Date.now(),

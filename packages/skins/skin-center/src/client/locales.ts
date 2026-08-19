@@ -73,6 +73,12 @@ export type SkinCenterKey =
   | 'wallpaperDirsHint'
   | 'wallpaperDirPlaceholder'
   | 'wallpaperDirAdd'
+  | 'wallpaperRating'
+  | 'wallpaperRatingAll'
+  | 'wallpaperRatingEmpty'
+  | 'wallpaperPagePrev'
+  | 'wallpaperPageNext'
+  | 'wallpaperPageJump'
 
 export const en: Record<SkinCenterKey, string> = {
   title: 'Skin Center',
@@ -142,6 +148,12 @@ export const en: Record<SkinCenterKey, string> = {
   wallpaperDirsHint: 'No Wallpaper Engine (e.g. macOS)? Point a folder at any .mp4/.webm files, a wallpaper project folder, or a folder of projects — they become your wallpaper library.',
   wallpaperDirPlaceholder: '/path/to/wallpapers or ~/Movies/wallpapers',
   wallpaperDirAdd: 'Add',
+  wallpaperRating: 'Rating',
+  wallpaperRatingAll: 'All',
+  wallpaperRatingEmpty: 'No wallpapers in this rating.',
+  wallpaperPagePrev: 'Previous',
+  wallpaperPageNext: 'Next',
+  wallpaperPageJump: 'Go',
 }
 
 export const zh: Record<SkinCenterKey, string> = {
@@ -212,4 +224,10 @@ export const zh: Record<SkinCenterKey, string> = {
   wallpaperDirsHint: '没有 Wallpaper Engine（如 macOS）？把任意 .mp4/.webm 视频、单个壁纸项目文件夹或项目合集文件夹加进来，就是你的壁纸库。',
   wallpaperDirPlaceholder: '/path/to/wallpapers 或 ~/Movies/wallpapers',
   wallpaperDirAdd: '添加',
+  wallpaperRating: '分级',
+  wallpaperRatingAll: '全部',
+  wallpaperRatingEmpty: '该分级下暂无壁纸。',
+  wallpaperPagePrev: '上一页',
+  wallpaperPageNext: '下一页',
+  wallpaperPageJump: '跳转',
 }

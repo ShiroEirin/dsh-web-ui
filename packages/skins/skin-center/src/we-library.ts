@@ -37,6 +37,9 @@ export const WE_APPID = '431960'
 /** Wallpaper Engine wallpaper kinds, as declared by project.json. */
 export type WallpaperType = 'video' | 'web' | 'scene' | 'application'
 
+/** Steam Workshop content rating declared by project.json (author-set). */
+export type ContentRating = 'Everyone' | 'Questionable' | 'Mature'
+
 /** Where one wallpaper entry came from. */
 export type WallpaperSource = 'workshop' | 'local' | 'imported'
 
@@ -48,6 +51,8 @@ export interface WallpaperEntry {
   title: string
   /** Wallpaper kind (video/web are portable, scene degrades to a static frame). */
   type: WallpaperType
+  /** Steam Workshop content rating, when the project declares one. */
+  contentrating: ContentRating | null
   /** Main file path relative to dir (project.json file field, or inferred). */
   file: string
   /** Preview image path relative to dir, when present. */
@@ -80,6 +85,8 @@ export interface ImportedManifest {
   title: string
   /** Wallpaper type at import time. */
   type: WallpaperType
+  /** Steam Workshop content rating at import time (may be absent). */
+  contentrating: ContentRating | null
   /** Source main-file mtime (ms) and size (bytes) at import time. */
   srcMtime: number
   srcSize: number
@@ -254,6 +261,7 @@ interface ProjectJson {
   type: WallpaperType
   file: string
   preview: string | null
+  contentrating: ContentRating | null
 }
 
 /** Read one project directory's project.json; null when absent/invalid. */
@@ -269,11 +277,16 @@ export function readProjectJson(dir: string): ProjectJson | null {
     const type = (KNOWN_TYPES as string[]).includes(declared)
       ? (declared as WallpaperType)
       : inferType(record.file)
+    const contentrating = typeof record.contentrating === 'string'
+      && (record.contentrating === 'Everyone' || record.contentrating === 'Questionable' || record.contentrating === 'Mature')
+      ? record.contentrating
+      : null
     return {
       title: typeof record.title === 'string' && record.title !== '' ? record.title : null,
       type,
       file: record.file,
       preview: typeof record.preview === 'string' && record.preview !== '' ? record.preview : null,
+      contentrating,
     }
   } catch {
     return null
@@ -300,7 +313,7 @@ function synthesizeMediaEntries(dir: string, source: WallpaperSource): Wallpaper
   for (const file of media) {
     const stem = file.replace(/\.[^.]+$/, '')
     const preview = images.find((image) => image.replace(/\.[^.]+$/, '') === stem) ?? null
-    entries.push(entryFromDir(dir, source, { title: stem, type: inferType(file), file, preview }, basename(dir) + '/' + file))
+    entries.push(entryFromDir(dir, source, { title: stem, type: inferType(file), file, preview, contentrating: null }, basename(dir) + '/' + file))
   }
   return entries
 }
@@ -355,6 +368,7 @@ function entryFromDir(dir: string, source: WallpaperSource, project: ProjectJson
     id: id ?? basename(dir),
     title: project.title ?? basename(dir),
     type: project.type,
+    contentrating: project.contentrating,
     file,
     preview: project.preview,
     dir,
@@ -413,10 +427,15 @@ export function readImportedManifest(entryDir: string): ImportedManifest | null 
     const record = raw as Record<string, unknown>
     if (typeof record.sourceId !== 'string' || typeof record.file !== 'string') return null
     const declared = typeof record.type === 'string' ? record.type.toLowerCase() : ''
+    const contentrating = typeof record.contentrating === 'string'
+      && (record.contentrating === 'Everyone' || record.contentrating === 'Questionable' || record.contentrating === 'Mature')
+      ? record.contentrating
+      : null
     return {
       sourceId: record.sourceId,
       title: typeof record.title === 'string' && record.title !== '' ? record.title : basename(entryDir),
       type: (KNOWN_TYPES as string[]).includes(declared) ? (declared as WallpaperType) : inferType(record.file),
+      contentrating,
       srcMtime: typeof record.srcMtime === 'number' ? record.srcMtime : 0,
       srcSize: typeof record.srcSize === 'number' ? record.srcSize : 0,
       importedAt: typeof record.importedAt === 'number' ? record.importedAt : 0,
@@ -475,6 +494,7 @@ export function scanImportStore(storeDir: string): WallpaperEntry[] {
       id: `imported/${manifest.sourceId}`,
       title: manifest.title,
       type: manifest.type,
+      contentrating: manifest.contentrating,
       file,
       preview: manifest.preview,
       dir: projectDir,
