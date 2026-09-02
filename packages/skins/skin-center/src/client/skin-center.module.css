@@ -723,3 +723,91 @@ body[data-dsh-skin-center] .customThemeFooter {
     flex-direction: column;
   }
 }
+
+body[data-dsh-skin-center] .wallpaperRatingTabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+body[data-dsh-skin-center] .wallpaperRatingBadge {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-on-accent, #ffffff);
+  background: var(--dsw-alias-state-info, #2b7cd9);
+}
+
+body[data-dsh-skin-center] .wallpaperRatingBadgeR18 {
+  background: var(--dsw-alias-state-danger, #c53030);
+}
+
+body[data-dsh-skin-center] .wallpaperPager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+body[data-dsh-skin-center] .wallpaperPageNumbers {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+body[data-dsh-skin-center] .wallpaperPageNumber {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--dsw-alias-border-l2, #d3d9e3);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #172a45);
+  font-size: 12px;
+  line-height: 24px;
+  text-align: center;
+  cursor: pointer;
+}
+
+body[data-dsh-skin-center] .wallpaperPageNumber:hover {
+  border-color: var(--dsw-alias-brand-primary, #2b7cd9);
+}
+
+body[data-dsh-skin-center] .wallpaperPageNumberActive {
+  border-color: var(--dsw-alias-brand-primary, #2b7cd9);
+  background: var(--dsw-alias-button-primary-dimmed, #e8f1fc);
+  color: var(--dsw-alias-brand-primary, #1e63b8);
+  font-weight: 700;
+}
+
+body[data-dsh-skin-center] .wallpaperPageEllipsis {
+  color: var(--dsw-alias-label-secondary, #6b7280);
+  font-size: 12px;
+  padding: 0 2px;
+}
+
+body[data-dsh-skin-center] .wallpaperPagerInfo {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary, #6b7280);
+  min-width: 48px;
+  text-align: center;
+}
+
+body[data-dsh-skin-center] .wallpaperJumpInput {
+  width: 56px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--dsw-alias-border-l2, #d3d9e3);
+  border-radius: 5px;
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
+  color: var(--dsw-alias-label-primary, #172a45);
+  font-size: 12px;}

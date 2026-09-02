@@ -193,6 +193,7 @@ function aerialEntry(id: string, title: string, videoAbs: string, previewAbs: st
     id: 'macos-aerial/' + id,
     title,
     type: 'video',
+    contentrating: null,
     file: videoAbs,
     preview: previewAbs,
     // dir stays the containing folder for fingerprinting; 'system' entries
@@ -339,6 +340,7 @@ export function scanMacDesktopPictures(roots: string[], inject: MacosScanFs = {}
         id,
         title: stem,
         type: 'image',
+        contentrating: null,
         file: name,
         preview: null,
         dir: root,
