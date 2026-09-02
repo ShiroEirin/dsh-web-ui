@@ -131,10 +131,16 @@ describe('inferType', () => {
 })
 
 describe('readProjectJson', () => {
-  it('parses title/type/file/preview and infers a missing type', () => {
+  it('parses title/type/file/preview/contentrating and infers a missing type', () => {
     const dir = join(root, 'p1')
     makeProject(dir, { title: 'Ocean', file: 'sea.mp4', preview: 'p.jpg' })
-    expect(readProjectJson(dir)).toEqual({ title: 'Ocean', type: 'video', file: 'sea.mp4', preview: 'p.jpg' })
+    expect(readProjectJson(dir)).toEqual({ title: 'Ocean', type: 'video', file: 'sea.mp4', preview: 'p.jpg', contentrating: null })
+    const rated = join(root, 'p2')
+    makeProject(rated, { title: 'R18 Stuff', file: 'v.mp4', contentrating: 'Mature' })
+    expect(readProjectJson(rated)?.contentrating).toBe('Mature')
+    const bogus = join(root, 'p3')
+    makeProject(bogus, { title: 'X', file: 'v.mp4', contentrating: 'NotARating' })
+    expect(readProjectJson(bogus)?.contentrating).toBeNull()
   })
 
   it('returns null for missing or invalid project.json', () => {

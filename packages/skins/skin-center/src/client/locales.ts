@@ -74,7 +74,6 @@ export type SkinCenterKey =
   | 'wallpaperTypeScene'
   | 'wallpaperTypeApp'
   | 'wallpaperTypeImage'
-  | 'wallpaperLoadMore'
   | 'wallpaperDirs'
   | 'wallpaperDirsEmpty'
   | 'wallpaperDirsHint'
@@ -116,7 +115,12 @@ export type SkinCenterKey =
   | 'repair'
   | 'repairing'
   | 'repaired'
-
+  | 'wallpaperRating'
+  | 'wallpaperRatingAll'
+  | 'wallpaperRatingEmpty'
+  | 'wallpaperPagePrev'
+  | 'wallpaperPageNext'
+  | 'wallpaperPageJump'
 export const en: Record<SkinCenterKey, string> = {
   title: 'Skin Center',
   cardDescription: 'Try on any installed skin live in the GUI — exit restores instantly, applying persists in one click.',
@@ -186,7 +190,6 @@ export const en: Record<SkinCenterKey, string> = {
   wallpaperTypeScene: 'Scene (static)',
   wallpaperTypeApp: 'Unsupported',
   wallpaperTypeImage: 'Image',
-  wallpaperLoadMore: 'Load more',
   wallpaperDirs: 'Manual folders',
   wallpaperDirsEmpty: 'No manual folders yet.',
   wallpaperDirsHint: 'No Wallpaper Engine (e.g. macOS)? Point a folder at any .mp4/.webm files, a wallpaper project folder, or a folder of projects — they become your wallpaper library.',
@@ -228,7 +231,12 @@ export const en: Record<SkinCenterKey, string> = {
   repair: 'Repair',
   repairing: 'Repairing…',
   repaired: 'Repaired',
-}
+  wallpaperRating: 'Rating',
+  wallpaperRatingAll: 'All',
+  wallpaperRatingEmpty: 'No wallpapers in this rating.',
+  wallpaperPagePrev: 'Previous',
+  wallpaperPageNext: 'Next',
+  wallpaperPageJump: 'Go',}
 
 export const zh: Record<SkinCenterKey, string> = {
   title: '皮肤',
@@ -299,7 +307,6 @@ export const zh: Record<SkinCenterKey, string> = {
   wallpaperTypeScene: '场景(静态)',
   wallpaperTypeApp: '不支持',
   wallpaperTypeImage: '静态图片',
-  wallpaperLoadMore: '加载更多',
   wallpaperDirs: '手动目录',
   wallpaperDirsEmpty: '还没有手动目录。',
   wallpaperDirsHint: '没有 Wallpaper Engine（如 macOS）？把任意 .mp4/.webm 视频、单个壁纸项目文件夹或项目合集文件夹加进来，就是你的壁纸库。',
@@ -341,4 +348,9 @@ export const zh: Record<SkinCenterKey, string> = {
   integrityHooksRefused: 'Hooks 已拒绝',
   cancel: '取消',
   confirm: '确定',
-}
+  wallpaperRating: '分级',
+  wallpaperRatingAll: '全部',
+  wallpaperRatingEmpty: '该分级下暂无壁纸。',
+  wallpaperPagePrev: '上一页',
+  wallpaperPageNext: '下一页',
+  wallpaperPageJump: '跳转',}
