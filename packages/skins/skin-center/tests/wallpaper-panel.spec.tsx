@@ -136,6 +136,41 @@ describe('WallpaperPanel thumbs', () => {
     expect(img?.getAttribute('src')).toBe('/api/skin-center/we/preview/CCC')
     expect(host.querySelector('video')).toBeNull()
   })
+  it('mounts one page, shows page-number buttons and jumps via the input', async () => {
+    const wallpapers = Array.from({ length: 25 }, (_, i) => ({
+      id: 'w' + i,
+      title: 'wallpaper ' + i,
+      type: 'scene',
+      source: 'local',
+      playable: false,
+      updateAvailable: false,
+      videoUrl: null,
+      webUrl: null,
+      frameUrl: null,
+      previewUrl: null,
+      contentrating: 'Everyone',
+    }))
+    await render(wallpapers)
+    const cards = () => host.querySelectorAll('[class*="wallpaperCard"]')
+    expect(cards()).toHaveLength(24)
+    // Page-number buttons: 1 and 2 (25 items / 24 per page).
+    const pageBtns = [...host.querySelectorAll('button')].filter(b => b.textContent?.trim() === '1' || b.textContent?.trim() === '2')
+    expect(pageBtns.length).toBe(2)
+    // Click page 2 -> the remaining item.
+    await act(async () => { pageBtns.find(b => b.textContent?.trim() === '2')!.click() })
+    expect(cards()).toHaveLength(1)
+    // Jump input: back to page 1.
+    const input = host.querySelector('input[type="number"]') as HTMLInputElement
+    expect(input).not.toBeNull()
+    const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!
+    await act(async () => {
+      nativeSetter.call(input, '1')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
+    expect(cards()).toHaveLength(24)
+  })
+
 })
 
 describe('WallpaperPanel directory picker', () => {
@@ -199,20 +234,16 @@ describe('WallpaperPanel macOS system wallpapers', () => {
     const many = Array.from({ length: 25 }, (_, i) => item('w' + String(i)))
     await render(many)
     // Every item carries a previewUrl, so mounted cards are countable via
-    // their thumbnail images.
+    // their thumbnail images. One page mounts 24; the last item sits on page 2.
     const cards = (): number => host.querySelectorAll('img').length
-    expect(cards()).toBe(12)
-    const more = Array.from(host.querySelectorAll('button'))
-      .find((button) => button.textContent?.startsWith(zh.wallpaperLoadMore)) as HTMLButtonElement
-    expect(more.textContent).toContain('13')
-    await act(async () => { more.click() })
     expect(cards()).toBe(24)
-    const moreAgain = Array.from(host.querySelectorAll('button'))
-      .find((button) => button.textContent?.startsWith(zh.wallpaperLoadMore)) as HTMLButtonElement
-    await act(async () => { moreAgain.click() })
-    expect(cards()).toBe(25)
+    const pageBtns = Array.from(host.querySelectorAll('button'))
+      .filter((button) => button.textContent === '2')
+    expect(pageBtns.length).toBeGreaterThan(0)
+    await act(async () => { pageBtns[0].click() })
+    expect(cards()).toBe(1)
     expect(Array.from(host.querySelectorAll('button'))
-      .some((button) => button.textContent?.startsWith(zh.wallpaperLoadMore))).toBe(false)
+      .some((button) => button.textContent === zh.wallpaperPageNext)).toBe(true)
   })
 
   it('shows the static-image badge and no import button for macOS system entries', async () => {

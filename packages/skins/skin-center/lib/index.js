@@ -3222,6 +3222,7 @@ function aerialEntry(id, title, videoAbs, previewAbs, fs) {
 		id: "macos-aerial/" + id,
 		title,
 		type: "video",
+		contentrating: null,
 		file: videoAbs,
 		preview: previewAbs,
 		dir: dirname$1(videoAbs),
@@ -3349,6 +3350,7 @@ function scanMacDesktopPictures(roots, inject = {}) {
 				id,
 				title: stem,
 				type: "image",
+				contentrating: null,
 				file: name,
 				preview: null,
 				dir: root,
@@ -3577,11 +3579,13 @@ function readProjectJson(dir) {
 		if (typeof record.file !== "string" || record.file === "") return null;
 		const declared = typeof record.type === "string" ? record.type.toLowerCase() : "";
 		const type = KNOWN_TYPES.includes(declared) ? declared : inferType(record.file);
+		const contentrating = typeof record.contentrating === "string" && (record.contentrating === "Everyone" || record.contentrating === "Questionable" || record.contentrating === "Mature") ? record.contentrating : null;
 		return {
 			title: typeof record.title === "string" && record.title !== "" ? record.title : null,
 			type,
 			file: record.file,
-			preview: typeof record.preview === "string" && record.preview !== "" ? record.preview : null
+			preview: typeof record.preview === "string" && record.preview !== "" ? record.preview : null,
+			contentrating
 		};
 	} catch {
 		return null;
@@ -3611,7 +3615,8 @@ function synthesizeMediaEntries(dir, source) {
 			title: stem,
 			type: inferType(file),
 			file,
-			preview
+			preview,
+			contentrating: null
 		}, basename(dir) + "/" + file));
 	}
 	return entries;
@@ -3663,6 +3668,7 @@ function entryFromDir(dir, source, project, id) {
 		id: id ?? basename(dir),
 		title: project.title ?? basename(dir),
 		type: project.type,
+		contentrating: project.contentrating,
 		file,
 		preview: project.preview,
 		dir,
@@ -3758,10 +3764,12 @@ function readImportedManifest(entryDir) {
 		const record = raw;
 		if (typeof record.sourceId !== "string" || typeof record.file !== "string") return null;
 		const declared = typeof record.type === "string" ? record.type.toLowerCase() : "";
+		const contentrating = typeof record.contentrating === "string" && (record.contentrating === "Everyone" || record.contentrating === "Questionable" || record.contentrating === "Mature") ? record.contentrating : null;
 		return {
 			sourceId: record.sourceId,
 			title: typeof record.title === "string" && record.title !== "" ? record.title : basename(entryDir),
 			type: KNOWN_TYPES.includes(declared) ? declared : inferType(record.file),
+			contentrating,
 			srcMtime: typeof record.srcMtime === "number" ? record.srcMtime : 0,
 			srcSize: typeof record.srcSize === "number" ? record.srcSize : 0,
 			importedAt: typeof record.importedAt === "number" ? record.importedAt : 0,
@@ -3810,6 +3818,7 @@ function scanImportStore(storeDir) {
 			id: `imported/${manifest.sourceId}`,
 			title: manifest.title,
 			type: manifest.type,
+			contentrating: manifest.contentrating,
 			file,
 			preview: manifest.preview,
 			dir: projectDir,
@@ -8501,6 +8510,7 @@ function makeWeRoutes(deps) {
 			id: entry.id,
 			title: entry.title,
 			type: entry.type,
+			contentrating: entry.contentrating,
 			source: entry.source,
 			playable: false,
 			updateAvailable: false,
@@ -8514,6 +8524,7 @@ function makeWeRoutes(deps) {
 			id: entry.id,
 			title: entry.title,
 			type: entry.type,
+			contentrating: entry.contentrating,
 			source: entry.source,
 			playable: entry.playable,
 			updateAvailable: entry.updateAvailable,
@@ -9107,6 +9118,7 @@ function makeWeRoutes(deps) {
 			sourceId: entry.id,
 			title: entry.title,
 			type: entry.type,
+			contentrating: entry.contentrating,
 			srcMtime: entry.srcMtime,
 			srcSize: entry.srcSize,
 			importedAt: Date.now(),
