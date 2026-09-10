@@ -3222,7 +3222,6 @@ function aerialEntry(id, title, videoAbs, previewAbs, fs) {
 		id: "macos-aerial/" + id,
 		title,
 		type: "video",
-		contentrating: null,
 		file: videoAbs,
 		preview: previewAbs,
 		dir: dirname$1(videoAbs),
@@ -3232,7 +3231,8 @@ function aerialEntry(id, title, videoAbs, previewAbs, fs) {
 		playable: stat.isFile,
 		srcMtime: stat.mtimeMs,
 		srcSize: stat.size,
-		updateAvailable: false
+		updateAvailable: false,
+		rating: "g"
 	};
 }
 /**
@@ -3350,7 +3350,6 @@ function scanMacDesktopPictures(roots, inject = {}) {
 				id,
 				title: stem,
 				type: "image",
-				contentrating: null,
 				file: name,
 				preview: null,
 				dir: root,
@@ -3360,7 +3359,8 @@ function scanMacDesktopPictures(roots, inject = {}) {
 				playable: false,
 				srcMtime: stat.mtimeMs,
 				srcSize: stat.size,
-				updateAvailable: false
+				updateAvailable: false,
+				rating: "g"
 			});
 		}
 	}
@@ -3406,6 +3406,24 @@ function scanMacosWallpapers(roots, inject = {}) {
 */
 /** Steam appid of Wallpaper Engine. */
 const WE_APPID = "431960";
+/**
+* Derive rating from project.json contentrating field, with regex title fallback.
+* Everyone -> g, Questionable -> pg13, Mature -> r18.
+* Unspecified contentrating inspects title for keywords (R18/NSFW, PG-13/R-16).
+*/
+function deriveRating(contentRating, title) {
+	if (typeof contentRating === "string") {
+		const normalized = contentRating.trim().toLowerCase();
+		if (normalized === "everyone") return "g";
+		if (normalized === "questionable") return "pg13";
+		if (normalized === "mature") return "r18";
+	}
+	if (typeof title === "string" && title !== "") {
+		if (/(^|[^\w])(r-?18|nsfw|18\+)([^\w]|$)/i.test(title)) return "r18";
+		if (/(^|[^\w])(pg-?13|r-?16)([^\w]|$)/i.test(title)) return "pg13";
+	}
+	return "g";
+}
 /** Common Steam install locations probed when libraryfolders.vdf is missing. */
 const STEAM_PROBE_DIRS = [
 	"C:\\Program Files (x86)\\Steam",
@@ -3579,13 +3597,13 @@ function readProjectJson(dir) {
 		if (typeof record.file !== "string" || record.file === "") return null;
 		const declared = typeof record.type === "string" ? record.type.toLowerCase() : "";
 		const type = KNOWN_TYPES.includes(declared) ? declared : inferType(record.file);
-		const contentrating = typeof record.contentrating === "string" && (record.contentrating === "Everyone" || record.contentrating === "Questionable" || record.contentrating === "Mature") ? record.contentrating : null;
+		const contentrating = typeof record.contentrating === "string" && record.contentrating !== "" ? record.contentrating : void 0;
 		return {
 			title: typeof record.title === "string" && record.title !== "" ? record.title : null,
 			type,
 			file: record.file,
 			preview: typeof record.preview === "string" && record.preview !== "" ? record.preview : null,
-			contentrating
+			...contentrating !== void 0 ? { contentrating } : {}
 		};
 	} catch {
 		return null;
@@ -3664,11 +3682,12 @@ function entryFromDir(dir, source, project, id) {
 			size = stat.size;
 		}
 	} catch {}
+	const title = project.title ?? basename(dir);
+	const rating = deriveRating(project.contentrating, title);
 	return {
 		id: id ?? basename(dir),
-		title: project.title ?? basename(dir),
+		title,
 		type: project.type,
-		contentrating: project.contentrating,
 		file,
 		preview: project.preview,
 		dir,
@@ -3678,7 +3697,8 @@ function entryFromDir(dir, source, project, id) {
 		playable: fileExists && (project.type === "video" || project.type === "web"),
 		srcMtime: mtime,
 		srcSize: size,
-		updateAvailable: false
+		updateAvailable: false,
+		rating
 	};
 }
 /**
@@ -3764,12 +3784,10 @@ function readImportedManifest(entryDir) {
 		const record = raw;
 		if (typeof record.sourceId !== "string" || typeof record.file !== "string") return null;
 		const declared = typeof record.type === "string" ? record.type.toLowerCase() : "";
-		const contentrating = typeof record.contentrating === "string" && (record.contentrating === "Everyone" || record.contentrating === "Questionable" || record.contentrating === "Mature") ? record.contentrating : null;
 		return {
 			sourceId: record.sourceId,
 			title: typeof record.title === "string" && record.title !== "" ? record.title : basename(entryDir),
 			type: KNOWN_TYPES.includes(declared) ? declared : inferType(record.file),
-			contentrating,
 			srcMtime: typeof record.srcMtime === "number" ? record.srcMtime : 0,
 			srcSize: typeof record.srcSize === "number" ? record.srcSize : 0,
 			importedAt: typeof record.importedAt === "number" ? record.importedAt : 0,
@@ -3818,7 +3836,6 @@ function scanImportStore(storeDir) {
 			id: `imported/${manifest.sourceId}`,
 			title: manifest.title,
 			type: manifest.type,
-			contentrating: manifest.contentrating,
 			file,
 			preview: manifest.preview,
 			dir: projectDir,
@@ -3830,7 +3847,8 @@ function scanImportStore(storeDir) {
 			srcSize: size,
 			updateAvailable: false,
 			importSrcMtime: manifest.srcMtime,
-			importSrcSize: manifest.srcSize
+			importSrcSize: manifest.srcSize,
+			rating: deriveRating(void 0, manifest.title)
 		});
 	}
 	return entries;
@@ -5466,6 +5484,7 @@ function buildSceneManifestVia(access, token, projectOverride) {
 	const width = typeof projW === "number" && Number.isFinite(projW) && projW > 0 ? Math.floor(projW) : 3840;
 	const height = typeof projH === "number" && Number.isFinite(projH) && projH > 0 ? Math.floor(projH) : 2160;
 	const resourceBase = "/api/skin-center/we/scene-resource/" + token + "/";
+	const resourceUrl = (pkgPath) => resourceBase + pkgPath.split("/").map(encodeURIComponent).join("/");
 	const manifest = {
 		width,
 		height,
@@ -5706,7 +5725,7 @@ function buildSceneManifestVia(access, token, projectOverride) {
 					uv2B64: m.uv2 ? Buffer$1.from(m.uv2.buffer, m.uv2.byteOffset, m.uv2.byteLength).toString("base64") : void 0,
 					indicesB64: Buffer$1.from(m.indices.buffer, m.indices.byteOffset, m.indices.byteLength).toString("base64"),
 					idx32: m.indices instanceof Uint32Array || void 0,
-					texUrl: subTex ? resourceBase + subTex : void 0,
+					texUrl: subTex ? resourceUrl(subTex) : void 0,
 					repeatBase: m.uv.some((value) => value < 0 || value > 1) || void 0,
 					materialPath: m.materialPath,
 					shader,
@@ -5715,8 +5734,8 @@ function buildSceneManifestVia(access, token, projectOverride) {
 					noDepthWrite,
 					tint,
 					tint2,
-					texUrl2: texPath2 ? resourceBase + texPath2 : void 0,
-					lightmapUrl: lightmapPath ? resourceBase + lightmapPath : void 0,
+					texUrl2: texPath2 ? resourceUrl(texPath2) : void 0,
+					lightmapUrl: lightmapPath ? resourceUrl(lightmapPath) : void 0,
 					translucent,
 					gradFade,
 					userColors,
@@ -5778,7 +5797,7 @@ function buildSceneManifestVia(access, token, projectOverride) {
 						manifest.bgLayers.push({
 							name: typeof obj.name === "string" ? obj.name : "fullscreen",
 							shader: typeof pass0.shader === "string" ? pass0.shader : void 0,
-							texUrl: texPath ? resourceBase + texPath : void 0,
+							texUrl: texPath ? resourceUrl(texPath) : void 0,
 							userColors: Object.keys(userColors).length > 0 ? userColors : void 0,
 							userNums: Object.keys(userNums).length > 0 ? userNums : void 0
 						});
@@ -5801,7 +5820,7 @@ function buildSceneManifestVia(access, token, projectOverride) {
 				manifest.sprites = manifest.sprites ?? [];
 				manifest.sprites.push({
 					name: typeof obj.name === "string" ? obj.name : "sprite",
-					texUrl: texPath ? resourceBase + texPath : void 0,
+					texUrl: texPath ? resourceUrl(texPath) : void 0,
 					origin: parseVec3(obj.origin, [
 						0,
 						0,
@@ -5851,7 +5870,7 @@ function buildSceneManifestVia(access, token, projectOverride) {
 				manifest.particles3d = manifest.particles3d ?? [];
 				manifest.particles3d.push({
 					name: typeof obj.name === "string" ? obj.name : "particles",
-					texUrl: texPath ? resourceBase + texPath : void 0,
+					texUrl: texPath ? resourceUrl(texPath) : void 0,
 					origin: [
 						objOrigin[0] + emitterOrigin[0],
 						objOrigin[1] + emitterOrigin[1],
@@ -5896,9 +5915,9 @@ function buildSceneManifestVia(access, token, projectOverride) {
 		if (nameLower.includes("fireflies") || nameLower.includes("motes") || nameLower.includes("dust")) manifest.hasFireflies = true;
 	}
 	const meteorTexPath = allTex.find((p) => p.toLowerCase().includes("shootingstar") || p.toLowerCase().includes("meteor"));
-	if (meteorTexPath) manifest.meteorTex = resourceBase + meteorTexPath;
+	if (meteorTexPath) manifest.meteorTex = resourceUrl(meteorTexPath);
 	const sparkleTexPath = allTex.find((p) => p.toLowerCase().includes("sparkle") || p.toLowerCase().includes("halo") || p.toLowerCase().includes("star"));
-	if (sparkleTexPath) manifest.sparkleTex = resourceBase + sparkleTexPath;
+	if (sparkleTexPath) manifest.sparkleTex = resourceUrl(sparkleTexPath);
 	const sceneObjects = scene.objects;
 	const resolveObjectTransform = (obj) => {
 		const chain = [obj];
@@ -5969,7 +5988,7 @@ function buildSceneManifestVia(access, token, projectOverride) {
 				if (reflTex) manifest.layers.push({
 					name: "Reflection",
 					isReflection: true,
-					texUrl: resourceBase + reflTex,
+					texUrl: resourceUrl(reflTex),
 					x: width / 2,
 					y: height / 2,
 					w: width,
@@ -6077,7 +6096,7 @@ function buildSceneManifestVia(access, token, projectOverride) {
 		const alpha = typeof obj.alpha === "number" && Number.isFinite(obj.alpha) ? Math.min(1, Math.max(0, obj.alpha)) : 1;
 		let videoUrl;
 		try {
-			if (parseTexInternal(file.bytes).isVideoMp4) videoUrl = resourceBase + texPath;
+			if (parseTexInternal(file.bytes).isVideoMp4) videoUrl = resourceUrl(texPath);
 		} catch {}
 		let uvCrop;
 		if (decoded && typeof modelJson.width === "number" && typeof modelJson.height === "number") {
@@ -6100,7 +6119,7 @@ function buildSceneManifestVia(access, token, projectOverride) {
 			if (reflTex) manifest.layers.push({
 				name: "Reflection",
 				isReflection: true,
-				texUrl: resourceBase + reflTex,
+				texUrl: resourceUrl(reflTex),
 				x: layerX,
 				y: layerY,
 				w: lw,
@@ -6110,7 +6129,7 @@ function buildSceneManifestVia(access, token, projectOverride) {
 		}
 		manifest.layers.push({
 			name: typeof obj.name === "string" ? obj.name : "layer",
-			texUrl: resourceBase + texPath,
+			texUrl: resourceUrl(texPath),
 			x: layerX,
 			y: layerY,
 			w: lw,
@@ -6119,7 +6138,7 @@ function buildSceneManifestVia(access, token, projectOverride) {
 			angle: objAngles[2] || 0,
 			uvCrop,
 			shader: layerShader,
-			texUrls: texPaths.length > 1 ? texPaths.map((p) => resourceBase + p) : void 0,
+			texUrls: texPaths.length > 1 ? texPaths.map((p) => resourceUrl(p)) : void 0,
 			userColors: layerUserColors,
 			nums: Object.keys(nums).length > 0 ? nums : void 0,
 			isGround,
@@ -8510,10 +8529,10 @@ function makeWeRoutes(deps) {
 			id: entry.id,
 			title: entry.title,
 			type: entry.type,
-			contentrating: entry.contentrating,
 			source: entry.source,
 			playable: false,
 			updateAvailable: false,
+			rating: entry.rating ?? "g",
 			videoUrl: null,
 			webUrl: null,
 			frameUrl: null,
@@ -8524,10 +8543,10 @@ function makeWeRoutes(deps) {
 			id: entry.id,
 			title: entry.title,
 			type: entry.type,
-			contentrating: entry.contentrating,
 			source: entry.source,
 			playable: entry.playable,
 			updateAvailable: entry.updateAvailable,
+			rating: entry.rating ?? "g",
 			videoUrl: entry.type === "video" && hasFile ? "/api/skin-center/we/media/" + tokenFor(entry.fileAbs) : null,
 			webUrl: entry.type === "web" && hasFile ? "/api/skin-center/we/web/" + tokenFor(entry.fileAbs) + "/" : null,
 			frameUrl: entry.type === "scene" && hasFile ? "/api/skin-center/we/scene-frame/" + tokenFor(entry.fileAbs) : null,
@@ -9118,7 +9137,6 @@ function makeWeRoutes(deps) {
 			sourceId: entry.id,
 			title: entry.title,
 			type: entry.type,
-			contentrating: entry.contentrating,
 			srcMtime: entry.srcMtime,
 			srcSize: entry.srcSize,
 			importedAt: Date.now(),
@@ -9397,36 +9415,49 @@ const SkinWallpaperConfigSchema = z.object({
 const apply = mountOnce("@linxin666/dsh-client-ui-skin-center", applyImpl);
 function applyImpl(ctx) {
 	ctx.inject(["settings"], (settingsCtx) => {
-		settingsCtx.settings.installSection(ctx, SKIN_BACKGROUND_NAMESPACE, SkinBackgroundConfigSchema, {}, {
-			setSource: (source) => {
-				const migration = migrateBackgroundFromSettings({
-					activeStatePath: defaultActiveStatePath(),
-					readSettings: source
-				});
-				for (const note of migration.notes) if (migration.migrated) console.info(`[ui-skin-center] background migration: ${note}`);
-				else console.error(`[ui-skin-center] background migration: ${note}`);
-			},
-			onChange: () => {}
-		});
+		try {
+			if (typeof settingsCtx.settings?.installSection === "function") settingsCtx.settings.installSection(ctx, SKIN_BACKGROUND_NAMESPACE, SkinBackgroundConfigSchema, {}, {
+				setSource: (source) => {
+					const migration = migrateBackgroundFromSettings({
+						activeStatePath: defaultActiveStatePath(),
+						readSettings: source
+					});
+					for (const note of migration.notes) if (migration.migrated) console.info(`[ui-skin-center] background migration: ${note}`);
+					else console.error(`[ui-skin-center] background migration: ${note}`);
+				},
+				onChange: () => {}
+			});
+			else if (typeof settingsCtx.settings?.register === "function") settingsCtx.settings.register(SKIN_BACKGROUND_NAMESPACE, SkinBackgroundConfigSchema, { base: {} });
+		} catch {}
 	});
 	ctx.inject(["settings"], (settingsCtx) => {
-		settingsCtx.settings.installSection(ctx, SKIN_CUSTOM_THEME_NAMESPACE, SkinCustomThemeConfigSchema, {
-			...CUSTOM_THEME_DEFAULTS,
-			light: { ...CUSTOM_THEME_DEFAULTS.light },
-			dark: { ...CUSTOM_THEME_DEFAULTS.dark }
-		}, {
-			setSource: () => {},
-			onChange: () => {}
-		});
+		try {
+			const baseTheme = {
+				...CUSTOM_THEME_DEFAULTS,
+				light: { ...CUSTOM_THEME_DEFAULTS.light },
+				dark: { ...CUSTOM_THEME_DEFAULTS.dark }
+			};
+			if (typeof settingsCtx.settings?.installSection === "function") settingsCtx.settings.installSection(ctx, SKIN_CUSTOM_THEME_NAMESPACE, SkinCustomThemeConfigSchema, baseTheme, {
+				setSource: () => {},
+				onChange: () => {}
+			});
+			else if (typeof settingsCtx.settings?.register === "function") settingsCtx.settings.register(SKIN_CUSTOM_THEME_NAMESPACE, SkinCustomThemeConfigSchema, { base: baseTheme });
+		} catch {}
 	});
 	let wallpaperSource = () => ({});
 	ctx.inject(["settings"], (settingsCtx) => {
-		settingsCtx.settings.installSection(ctx, SKIN_WALLPAPER_NAMESPACE, SkinWallpaperConfigSchema, {}, {
-			setSource: (source) => {
-				wallpaperSource = source;
-			},
-			onChange: () => {}
-		});
+		try {
+			if (typeof settingsCtx.settings?.installSection === "function") settingsCtx.settings.installSection(ctx, SKIN_WALLPAPER_NAMESPACE, SkinWallpaperConfigSchema, {}, {
+				setSource: (source) => {
+					wallpaperSource = source;
+				},
+				onChange: () => {}
+			});
+			else if (typeof settingsCtx.settings?.register === "function") {
+				const scope = settingsCtx.settings.register(SKIN_WALLPAPER_NAMESPACE, SkinWallpaperConfigSchema, { base: {} });
+				wallpaperSource = () => scope?.get?.() ?? {};
+			}
+		} catch {}
 	});
 	const routes = [...makeSkinCenterV2Routes(), ...makeWeRoutes({
 		getConfig: () => wallpaperSource(),

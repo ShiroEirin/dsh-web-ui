@@ -68,6 +68,11 @@ jobs:
       - name: Script tests
         run: pnpm test:scripts
 
+      # The desktop payload helpers live outside the pnpm workspace; their
+      # unit tests only need Node builtins.
+      - name: Desktop runtime unit tests
+        run: pnpm test:desktop
+
       - name: Runtime dependency check
         run: pnpm runtime-deps:check
 
@@ -122,6 +127,29 @@ jobs:
       - name: Documentation consistency
         run: pnpm docs:check
 
+  # The desktop helpers encode win32 semantics (Path/PATH case variants,
+  # NTFS junctions, Windows tmpdir layouts) that only a real Windows runner
+  # exercises; the suite itself needs nothing but Node builtins.
+  desktop-windows:
+    name: Desktop unit tests (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      # The suite needs Node builtins only. setup-node v5 defaults
+      # package-manager-cache to true, which detects the pnpm lockfile and
+      # demands pnpm on PATH — a tool this job never uses (first real run
+      # failed there), so the default is switched off explicitly.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Desktop runtime unit tests
+        run: node --test desktop/tests/*.test.mjs
+        shell: bash
+
   # Pack the aggregate bundle as an npm tarball, mount it into a REAL DSH
   # instance through the official `dsh plugin --profile web add` channel, and
   # render the DSH web UI headlessly (Playwright Chromium) to prove the
@@ -151,7 +179,7 @@ jobs:
       # Pin the DSH CLI the lane mounts into; the profile's bundle stack
       # (dsh-base / dsh-web-app) resolves from this installation.
       - name: Install dsh CLI (pinned)
-        run: npm install -g @deepseek-ai/dsh@0.1.2-alpha.4
+        run: npm install -g @deepseek-ai/dsh@0.1.5-rc.1
 
       # lib/ bundles are committed for the consistency checks, but the
       # aggregate tarball must be produced from a fresh build.

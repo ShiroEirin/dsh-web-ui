@@ -44,11 +44,34 @@ export const WE_APPID = '431960'
 /** Wallpaper Engine wallpaper kinds, as declared by project.json. 'image' is the macOS Desktop Pictures extension (HEIC rendered via host conversion). */
 export type WallpaperType = 'video' | 'web' | 'scene' | 'application' | 'image'
 
-/** Steam Workshop content rating declared by project.json (author-set). */
-export type ContentRating = 'Everyone' | 'Questionable' | 'Mature'
-
 /** Where one wallpaper entry came from. 'system' entries are macOS-managed and never importable. */
 export type WallpaperSource = 'workshop' | 'local' | 'imported' | 'system'
+
+/** Age rating of a wallpaper entry. */
+export type WallpaperRating = 'g' | 'pg13' | 'r18'
+
+/**
+ * Derive rating from project.json contentrating field, with regex title fallback.
+ * Everyone -> g, Questionable -> pg13, Mature -> r18.
+ * Unspecified contentrating inspects title for keywords (R18/NSFW, PG-13/R-16).
+ */
+export function deriveRating(contentRating: unknown, title?: string): WallpaperRating {
+  if (typeof contentRating === 'string') {
+    const normalized = contentRating.trim().toLowerCase()
+    if (normalized === 'everyone') return 'g'
+    if (normalized === 'questionable') return 'pg13'
+    if (normalized === 'mature') return 'r18'
+  }
+  if (typeof title === 'string' && title !== '') {
+    if (/(^|[^\w])(r-?18|nsfw|18\+)([^\w]|$)/i.test(title)) {
+      return 'r18'
+    }
+    if (/(^|[^\w])(pg-?13|r-?16)([^\w]|$)/i.test(title)) {
+      return 'pg13'
+    }
+  }
+  return 'g'
+}
 
 /** One discovered wallpaper project (plain data; routes assign tokens). */
 export interface WallpaperEntry {
@@ -58,8 +81,6 @@ export interface WallpaperEntry {
   title: string
   /** Wallpaper kind (video/web are portable, scene degrades to a static frame). */
   type: WallpaperType
-  /** Steam Workshop content rating, when the project declares one. */
-  contentrating: ContentRating | null
   /** Main file path relative to dir (project.json file field, or inferred). */
   file: string
   /** Preview image path relative to dir, when present. */
@@ -82,6 +103,8 @@ export interface WallpaperEntry {
   /** Imported entries only: source mtime/size recorded in the manifest at import time. */
   importSrcMtime?: number
   importSrcSize?: number
+  /** Age rating derived from project.json or title. */
+  rating: WallpaperRating
 }
 
 /** The import-store manifest (<store>/<id>/manifest.json). */
@@ -92,8 +115,6 @@ export interface ImportedManifest {
   title: string
   /** Wallpaper type at import time. */
   type: WallpaperType
-  /** Steam Workshop content rating at import time (may be absent). */
-  contentrating: ContentRating | null
   /** Source main-file mtime (ms) and size (bytes) at import time. */
   srcMtime: number
   srcSize: number
@@ -315,7 +336,7 @@ interface ProjectJson {
   type: WallpaperType
   file: string
   preview: string | null
-  contentrating: ContentRating | null
+  contentrating?: string | null
 }
 
 /** Read one project directory's project.json; null when absent/invalid. */
@@ -331,16 +352,13 @@ export function readProjectJson(dir: string): ProjectJson | null {
     const type = (KNOWN_TYPES as string[]).includes(declared)
       ? (declared as WallpaperType)
       : inferType(record.file)
-    const contentrating = typeof record.contentrating === 'string'
-      && (record.contentrating === 'Everyone' || record.contentrating === 'Questionable' || record.contentrating === 'Mature')
-      ? record.contentrating
-      : null
+    const contentrating = typeof record.contentrating === 'string' && record.contentrating !== '' ? record.contentrating : undefined
     return {
       title: typeof record.title === 'string' && record.title !== '' ? record.title : null,
       type,
       file: record.file,
       preview: typeof record.preview === 'string' && record.preview !== '' ? record.preview : null,
-      contentrating,
+      ...(contentrating !== undefined ? { contentrating } : {}),
     }
   } catch {
     return null
@@ -418,11 +436,12 @@ function entryFromDir(dir: string, source: WallpaperSource, project: ProjectJson
   } catch {
     // Missing main file: keep zeros.
   }
+  const title = project.title ?? basename(dir)
+  const rating = deriveRating(project.contentrating, title)
   return {
     id: id ?? basename(dir),
-    title: project.title ?? basename(dir),
+    title,
     type: project.type,
-    contentrating: project.contentrating,
     file,
     preview: project.preview,
     dir,
@@ -433,6 +452,7 @@ function entryFromDir(dir: string, source: WallpaperSource, project: ProjectJson
     srcMtime: mtime,
     srcSize: size,
     updateAvailable: false,
+    rating,
   }
 }
 
@@ -510,15 +530,10 @@ export function readImportedManifest(entryDir: string): ImportedManifest | null 
     const record = raw as Record<string, unknown>
     if (typeof record.sourceId !== 'string' || typeof record.file !== 'string') return null
     const declared = typeof record.type === 'string' ? record.type.toLowerCase() : ''
-    const contentrating = typeof record.contentrating === 'string'
-      && (record.contentrating === 'Everyone' || record.contentrating === 'Questionable' || record.contentrating === 'Mature')
-      ? record.contentrating
-      : null
     return {
       sourceId: record.sourceId,
       title: typeof record.title === 'string' && record.title !== '' ? record.title : basename(entryDir),
       type: (KNOWN_TYPES as string[]).includes(declared) ? (declared as WallpaperType) : inferType(record.file),
-      contentrating,
       srcMtime: typeof record.srcMtime === 'number' ? record.srcMtime : 0,
       srcSize: typeof record.srcSize === 'number' ? record.srcSize : 0,
       importedAt: typeof record.importedAt === 'number' ? record.importedAt : 0,
@@ -577,7 +592,6 @@ export function scanImportStore(storeDir: string): WallpaperEntry[] {
       id: `imported/${manifest.sourceId}`,
       title: manifest.title,
       type: manifest.type,
-      contentrating: manifest.contentrating,
       file,
       preview: manifest.preview,
       dir: projectDir,
@@ -590,6 +604,7 @@ export function scanImportStore(storeDir: string): WallpaperEntry[] {
       updateAvailable: false,
       importSrcMtime: manifest.srcMtime,
       importSrcSize: manifest.srcSize,
+      rating: deriveRating(undefined, manifest.title),
     })
   }
   return entries

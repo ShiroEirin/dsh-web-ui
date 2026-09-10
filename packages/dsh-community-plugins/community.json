@@ -135,7 +135,7 @@
     "description": "选中助手文字即可批注，回车随消息发送；自己的气泡只显示问题与「批注 ×N」标签，模型按 Annotation N 逐条对照回复（悬浮芯片）；UI 与批注块跟随 DSH 语言切换 zh/en，Cmd/Ctrl+Enter 可直发纯批注，斜杠命令原样放行。",
     "descriptionEn": "Select text in an assistant reply to annotate it; annotations ride along with your next message, hidden in your own bubble behind an Annotations xN chip, and the model replies per Annotation N with hoverable chips. UI and annotation block follow the DSH locale (zh/en); Cmd/Ctrl+Enter sends annotations alone; slash commands pass through.",
     "repo": "https://github.com/omdsh-dev/dsh-annotation",
-    "npm": "@omdsh-dev/dsh-annotation",
+    "npm": "@changfenhuang/dsh-annotation",
     "category": "ui",
     "subcategory": "chat"
   },
@@ -608,5 +608,40 @@
     "npm": "dsh-session-enhance",
     "category": "utility",
     "subcategory": "cleanup"
+  },
+  {
+    "id": "dsh-audiogen",
+    "name": "AI 音频",
+    "nameEn": "AI AudioGen",
+    "author": "shimingming520",
+    "description": "AI 音频生成插件：通过可配置的多厂商渠道（OpenAI 兼容、ElevenLabs、MiniMax、Stability AI 与自定义）实现 TTS 文本转语音、音乐与音效生成，提供按渠道模型/音色目录、Agent 工具与侧边栏面板。",
+    "descriptionEn": "AI audio generation for the dsh web GUI: TTS, music and sound effects through configurable multi-vendor channels (OpenAI-compatible, ElevenLabs, MiniMax, Stability AI and custom), with per-channel model/voice catalogs, an Agent tool and a sidebar panel.",
+    "repo": "https://github.com/shimingming520/dsh-audiogen",
+    "npm": "dsh-audiogen",
+    "category": "tools",
+    "subcategory": "model"
+  },
+  {
+    "id": "dsh-linkdigest",
+    "name": "LinkDigest",
+    "nameEn": "LinkDigest",
+    "author": "jcaiagent7143-ui",
+    "description": "把小红书、抖音、TikTok、YouTube 或 X 链接转成文本：带时间戳的转写、屏幕文字、逐图描述与 OCR、正文与元数据。挂载托管的 MCP 服务，不需要本地浏览器和登录。",
+    "descriptionEn": "Turns a Xiaohongshu, Douyin, TikTok, YouTube or X link into text: transcript with timecodes, on-screen text, a description and OCR of every image, caption and metadata. Mounts a hosted MCP server over streamable HTTP, with no local browser or login step.",
+    "repo": "https://github.com/jcaiagent7143-ui/linkdigest-mcp",
+    "category": "integration",
+    "subcategory": "remote"
+  },
+  {
+    "id": "dsh-quote-followup",
+    "name": "引用追问",
+    "nameEn": "Quote Follow-up",
+    "author": "tr1v3r",
+    "description": "在 Web 对话里划选任意文本，一键以原生引用 chip 追加进输入框进行针对性追问；发送时自动展开为模型可读的 Markdown 引文，旧宿主降级为纯文本引用。",
+    "descriptionEn": "Select any text in the Web transcript and append it to the composer as a native quote chip for a targeted follow-up; chips expand into model-readable Markdown quotes on send, with a plain-text fallback on older hosts.",
+    "repo": "https://github.com/tr1v3r/dsh-quote-followup",
+    "npm": "dsh-quote-followup",
+    "category": "ui",
+    "subcategory": "chat"
   }
 ]

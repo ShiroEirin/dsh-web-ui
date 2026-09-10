@@ -27,15 +27,8 @@ export const REPO_ROOT = resolve(SCRIPT_DIR, '..')
  * live exactly once under shared/; consumers import the committed copy.
  */
 // Consumers of the settings card trio: one list, three derivations below.
-const SETTINGS_CONSUMERS = ['dsh-pet', 'dsh-task-board', 'dsh-remote-web-ui', 'dsh-tool-describe-image', 'dsh-desktop-launcher', 'dsh-doctor', 'dsh-market']
-// dsh-perf still runs the pre-0.1.2 per-field settings-form generation (its
-// save path judges every write per-field instead of the shared atomic mutate
-// + read-back), so the form source must not overwrite it. Its card chrome and
-// stylesheet carry no local delta and sync like every other consumer; leaving
-// them out is what let dsh-perf serve a stale stylesheet while the aggregate
-// inlined the fresh one.
-const SETTINGS_CARD_ONLY_CONSUMERS = ['dsh-perf']
-const SETTINGS_CARD_CONSUMERS = [...SETTINGS_CONSUMERS, ...SETTINGS_CARD_ONLY_CONSUMERS]
+const SETTINGS_CONSUMERS = ['dsh-pet', 'dsh-task-board', 'dsh-remote-web-ui', 'dsh-tool-describe-image','dsh-doctor', 'dsh-market']
+const SETTINGS_CARD_CONSUMERS = [...SETTINGS_CONSUMERS]
 
 const MANIFEST = [
   {
@@ -46,11 +39,7 @@ const MANIFEST = [
   {
     file: 'PluginSettingsCard.tsx',
     source: 'shared/client/settings/PluginSettingsCard.tsx',
-    targets: [
-      ...SETTINGS_CONSUMERS.map(pkg => `packages/${pkg}/src/client/PluginSettingsCard.tsx`),
-      // dsh-perf imports the card under its pre-shared lowercase local name.
-      'packages/dsh-perf/src/client/plugin-settings-card.tsx',
-    ],
+    targets: SETTINGS_CONSUMERS.map(pkg => `packages/${pkg}/src/client/PluginSettingsCard.tsx`),
   },
   {
     file: 'settings-card.module.css',
@@ -74,6 +63,7 @@ const MANIFEST = [
       'packages/dsh-task-board/src/host/run-guarded.ts',
       'packages/dsh-git-graph/src/host/run-guarded.ts',
       'packages/dsh-pet/src/host/run-guarded.ts',
+      'packages/dsh-preset-center/src/host/run-guarded.ts',
     ],
   },
   {
@@ -86,12 +76,12 @@ const MANIFEST = [
       'packages/dsh-plugin-manager/src/host/dsh-home.ts',
       'packages/dsh-remote-web-ui/src/dsh-home.ts',
       'packages/dsh-ssh/src/dsh-home.ts',
-      'packages/dsh-desktop-launcher/src/dsh-home.ts',
       'packages/dsh-web-settings/src/dsh-home.ts',
       'packages/dsh-market/src/dsh-home.ts',
       'packages/dsh-git-graph/src/host/dsh-home.ts',
       'packages/dsh-usage/src/dsh-home.ts',
       'packages/dsh-session-archive/src/dsh-home.ts',
+      'packages/dsh-preset-center/src/dsh-home.ts',
     ],
   },
   {
@@ -121,13 +111,14 @@ const MANIFEST = [
       'packages/dsh-plugin-manager/src/mount-once.ts',
       'packages/dsh-web-settings/src/mount-once.ts',
       'packages/dsh-tool-describe-image/src/mount-once.ts',
-      'packages/dsh-desktop-launcher/src/mount-once.ts',
       'packages/dsh-skill-explorer/src/mount-once.ts',
       'packages/dsh-doctor/src/mount-once.ts',
       'packages/skins/skin-center/src/mount-once.ts',
       'packages/dsh-market/src/mount-once.ts',
       'packages/dsh-usage/src/mount-once.ts',
       'packages/dsh-session-archive/src/mount-once.ts',
+      'packages/dsh-model-capabilities/src/mount-once.ts',
+      'packages/dsh-preset-center/src/mount-once.ts',
     ],
   },
 
@@ -138,7 +129,6 @@ const MANIFEST = [
       'packages/dsh-market/src/client/telemetry.ts',
       'packages/dsh-pet/src/client/telemetry.ts',
       'packages/skins/skin-center/src/client/telemetry.ts',
-      'packages/dsh-desktop-launcher/src/client/telemetry.ts',
       'packages/dsh-doctor/src/client/telemetry.ts',
       'packages/dsh-git-graph/src/client/telemetry.ts',
       'packages/dsh-plugin-manager/src/client/telemetry.ts',
@@ -164,7 +154,7 @@ const MANIFEST = [
   {
     file: 'loopback.ts',
     source: 'shared/host/loopback.ts',
-    targets: ['packages/dsh-ssh/src/loopback.ts', 'packages/dsh-git-graph/src/host/loopback.ts', 'packages/dsh-remote-web-ui/src/loopback.ts', 'packages/dsh-task-board/src/loopback.ts', 'packages/dsh-skill-explorer/src/loopback.ts', 'packages/dsh-pet/src/loopback.ts', 'packages/dsh-plugin-manager/src/host/loopback.ts', 'packages/dsh-tool-describe-image/src/loopback.ts', 'packages/dsh-desktop-launcher/src/loopback.ts', 'packages/dsh-doctor/src/host/loopback.ts', 'packages/dsh-market/src/loopback.ts', 'packages/dsh-usage/src/host/loopback.ts', 'packages/dsh-session-archive/src/host/loopback.ts'],
+    targets: ['packages/dsh-ssh/src/loopback.ts', 'packages/dsh-git-graph/src/host/loopback.ts', 'packages/dsh-remote-web-ui/src/loopback.ts', 'packages/dsh-task-board/src/loopback.ts', 'packages/dsh-skill-explorer/src/loopback.ts', 'packages/dsh-pet/src/loopback.ts', 'packages/dsh-plugin-manager/src/host/loopback.ts', 'packages/dsh-tool-describe-image/src/loopback.ts', 'packages/dsh-doctor/src/host/loopback.ts', 'packages/dsh-market/src/loopback.ts', 'packages/dsh-usage/src/host/loopback.ts', 'packages/dsh-session-archive/src/host/loopback.ts', 'packages/dsh-preset-center/src/loopback.ts'],
   },
   {
     file: 'http.ts',
@@ -173,7 +163,6 @@ const MANIFEST = [
       'packages/dsh-pet/src/http.ts',
       'packages/dsh-market/src/http.ts',
       'packages/dsh-skill-explorer/src/http.ts',
-      'packages/dsh-desktop-launcher/src/http.ts',
       'packages/dsh-web-settings/src/http.ts',
       'packages/dsh-tool-describe-image/src/http.ts',
       'packages/dsh-doctor/src/host/http.ts',
@@ -185,6 +174,7 @@ const MANIFEST = [
       'packages/dsh-task-board/src/http.ts',
       'packages/dsh-usage/src/host/http.ts',
       'packages/dsh-session-archive/src/host/http.ts',
+      'packages/dsh-preset-center/src/http.ts',
     ],
   },
   {

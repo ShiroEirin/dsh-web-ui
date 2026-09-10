@@ -242,11 +242,10 @@ interface WallpaperJson {
   id: string
   title: string
   type: WallpaperType
-  /** Steam Workshop content rating declared by the project (author-set). */
-  contentrating: WallpaperEntry['contentrating']
   source: WallpaperEntry['source']
   playable: boolean
   updateAvailable: boolean
+  rating: WallpaperEntry['rating']
   videoUrl: string | null
   webUrl: string | null
   frameUrl: string | null
@@ -393,10 +392,10 @@ export function makeWeRoutes(deps: WeRouteDeps): WebRoute[] {
         id: entry.id,
         title: entry.title,
         type: entry.type,
-        contentrating: entry.contentrating,
         source: entry.source,
         playable: false,
         updateAvailable: false,
+        rating: entry.rating ?? 'g',
         videoUrl: null,
         webUrl: null,
         frameUrl: null,
@@ -411,10 +410,10 @@ export function makeWeRoutes(deps: WeRouteDeps): WebRoute[] {
       id: entry.id,
       title: entry.title,
       type: entry.type,
-      contentrating: entry.contentrating,
       source: entry.source,
       playable: entry.playable,
       updateAvailable: entry.updateAvailable,
+      rating: entry.rating ?? 'g',
       videoUrl: entry.type === 'video' && hasFile ? WE_API_PREFIX + '/media/' + tokenFor(entry.fileAbs) : null,
       webUrl: entry.type === 'web' && hasFile ? WE_API_PREFIX + '/web/' + tokenFor(entry.fileAbs) + '/' : null,
       frameUrl: entry.type === 'scene' && hasFile ? WE_API_PREFIX + '/scene-frame/' + tokenFor(entry.fileAbs) : null,
@@ -894,7 +893,6 @@ export function makeWeRoutes(deps: WeRouteDeps): WebRoute[] {
       sourceId: entry.id,
       title: entry.title,
       type: entry.type,
-      contentrating: entry.contentrating,
       srcMtime: entry.srcMtime,
       srcSize: entry.srcSize,
       importedAt: Date.now(),

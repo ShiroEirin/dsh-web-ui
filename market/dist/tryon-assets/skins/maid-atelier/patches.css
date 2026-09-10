@@ -1434,8 +1434,10 @@ html[data-dsh-skin="maid-atelier"] :is([data-pane="sidebar"], [class*="sidebarCo
   z-index: auto;
 }
 
-html[data-dsh-skin="maid-atelier"] body[data-maid-settings-open] :is([data-pane="sidebar"], [class*="sidebarCol"]) > div > :has([data-slot="sidebar.settings"] > :is(button, [role="button"])[aria-expanded="true"]) {
-  z-index: 1000;
+html[data-dsh-skin="maid-atelier"] body[data-maid-settings-open] :is([data-pane="sidebar"], [class*="sidebarCol"]) > div > :has([data-slot="sidebar.settings"] :is(button, [role="button"])[aria-expanded="true"]),
+html[data-dsh-skin="maid-atelier"] body[data-maid-settings-open] :is([data-pane="sidebar"], [class*="sidebarCol"]) > div > :has([data-slot="sidebar.settings"]),
+html[data-dsh-skin="maid-atelier"] body[data-maid-settings-open] :is([data-pane="sidebar"], [class*="sidebarCol"]) > div > :has([role="dialog"][aria-modal="true"]) {
+  z-index: 1000 !important;
 }
 
 html[data-dsh-skin="maid-atelier"] [data-maid-settings-backdrop-frame] {
@@ -1447,8 +1449,8 @@ html[data-dsh-skin="maid-atelier"] [data-maid-settings-backdrop-frame] {
   inset: 0 auto 0 0;
 }
 
-html[data-dsh-skin="maid-atelier"] body[data-maid-settings-open] [data-composer-card] {
-  z-index: 0;
+html[data-dsh-skin="maid-atelier"] body[data-maid-settings-open] :is([data-composer-seat], [data-slot="conversation.composer"], [data-composer-card]) {
+  z-index: 0 !important;
   opacity: .75;
   pointer-events: none;
   animation: none;
@@ -1523,22 +1525,33 @@ html[data-dsh-skin="maid-atelier"] [data-composer-card] > * {
 /* The composer card keeps its deep-navy fill in BOTH schemes (the abyssal
    lace card is scheme-invariant), so the composer text must stay on the
    light porcelain scale in light mode too. The shell paints the typed text
-   through a highlight backdrop div (the textarea overlays it with a
-   transparent -webkit-text-fill-color and only contributes caret and
-   selection; [data-input-mirror] is a visibility:hidden measuring copy),
-   and the backdrop inherits the light-scheme ink (#172347) — dark-on-navy
-   and unreadable (issue #1085). Pin the backdrop, caret, and placeholder
-   colors explicitly. */
+   either through a highlight backdrop div (issue #1085) or natively inside
+   a Lexical contenteditable input (issue #1405). Pin the backdrop, lexical
+   input element, caret, and placeholder colors explicitly to prevent the
+   light-scheme ink (#172347) from rendering dark-on-navy unreadable text. */
 html[data-dsh-skin="maid-atelier"] [data-composer-card] [class*="backdrop"],
-html[data-dsh-skin="maid-atelier"] [data-composer-card] [data-input-mirror] {
+html[data-dsh-skin="maid-atelier"] [data-composer-card] [data-input-mirror],
+html[data-dsh-skin="maid-atelier"] [data-composer-card] [data-composer-input],
+html[data-dsh-skin="maid-atelier"] [data-composer-card] [data-lexical-editor],
+html[data-dsh-skin="maid-atelier"] [data-composer-card] [contenteditable="true"],
+html[data-dsh-skin="maid-atelier"] [data-composer-card] .uV2eYG_input {
   color: #eef3fc;
 }
 
-html[data-dsh-skin="maid-atelier"] [data-composer-card] textarea {
+html[data-dsh-skin="maid-atelier"] [data-composer-card] :is([data-composer-input], [data-lexical-editor], [contenteditable="true"]) span {
+  color: inherit;
+}
+
+html[data-dsh-skin="maid-atelier"] [data-composer-card] textarea,
+html[data-dsh-skin="maid-atelier"] [data-composer-card] [data-composer-input],
+html[data-dsh-skin="maid-atelier"] [data-composer-card] [data-lexical-editor],
+html[data-dsh-skin="maid-atelier"] [data-composer-card] [contenteditable="true"] {
   caret-color: #bcd2ff;
 }
 
-html[data-dsh-skin="maid-atelier"] [data-composer-card] textarea::placeholder {
+html[data-dsh-skin="maid-atelier"] [data-composer-card] textarea::placeholder,
+html[data-dsh-skin="maid-atelier"] [data-composer-card] [class*="placeholder"],
+html[data-dsh-skin="maid-atelier"] [data-composer-card] [data-placeholder] {
   color: #b6c2e0;
   opacity: 1;
 }

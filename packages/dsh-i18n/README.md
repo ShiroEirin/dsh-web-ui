@@ -17,13 +17,12 @@ The plugin is a pure browser bundle (the host half intentionally has no behavior
 
 | Namespace | Source package |
 | --- | --- |
-| `desktop-launcher` | dsh-desktop-launcher |
 | `doctor` | dsh-doctor |
 | `git-graph` | dsh-git-graph |
 | `dsh-web-ui-market` | dsh-market |
-| `dsh-perf` | dsh-perf |
 | `pet` | dsh-pet |
 | `settings.pluginManager` | dsh-plugin-manager |
+| `dsh-web-ui-preset-center` | dsh-preset-center |
 | `remote` | dsh-remote-web-ui |
 | `session-id` | dsh-session-id |
 | `dsh-skill-explorer` | dsh-skill-explorer |

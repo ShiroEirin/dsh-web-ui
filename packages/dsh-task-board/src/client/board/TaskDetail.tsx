@@ -15,6 +15,7 @@ import { SCHEDULE_PRESETS } from '../schedule-presets.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { EditTaskModal } from './EditTaskModal.tsx'
+import { NewTaskModal } from './NewTaskModal.tsx'
 import { formatHostTimestamp, formatTime } from './TaskCard.tsx'
 import { STATUS_KEY } from './status-key.ts'
 
@@ -69,11 +70,13 @@ function ExecutionSettingsSection({ controller, task, pending }: { controller: B
   const workspaceId = task.workspaceId ?? ''
   const mode = task.mode ?? ''
   const permission = task.permission ?? ''
+  const model = task.model ?? ''
   // A pinned target may disappear from the runtime (workspace deleted,
   // preset removed); keep it selectable as a stale row instead of silently
   // dropping it, so the user sees exactly what the task will ask for.
   const workspaceKnown = workspaceId === '' || options.workspaces.some(item => item.workspaceId === workspaceId)
   const modeKnown = mode === '' || options.presets.some(item => item.id === mode)
+  const modelKnown = model === '' || (options.models ?? []).some(item => item.id === model)
   return (
     <section className={css.detailSection}>
       <h4>{t('detail.executionSettings')}</h4>
@@ -126,6 +129,31 @@ function ExecutionSettingsSection({ controller, task, pending }: { controller: B
           ))}
         </select>
       </label>
+      <label className={css.field}>
+        <span className={css.fieldLabel}>{t('new.model')}</span>
+        <select
+          className={css.select}
+          value={model}
+          disabled={pending}
+          onChange={event => { controller.updateTask(task.id, { model: event.target.value === '' ? undefined : event.target.value }) }}
+        >
+          <option value="">{t('exec.model.default')}</option>
+          {!modelKnown && <option value={model}>{model}{t('exec.model.unknown')}</option>}
+          {options.models?.map(item => (
+            <option key={item.id} value={item.id}>{item.name ?? item.id}</option>
+          ))}
+        </select>
+      </label>
+      <label className={css.scheduleToggle}>
+        <input
+          type="checkbox"
+          checked={task.reuseSession === true}
+          disabled={pending}
+          onChange={event => { controller.updateTask(task.id, { reuseSession: event.target.checked }) }}
+        />
+        <span>{t('exec.reuseSession')}</span>
+      </label>
+      <p className={css.detailText}>{t('exec.reuseSessionHint')}</p>
     </section>
   )
 }
@@ -241,12 +269,16 @@ function ScheduleSection({ controller, task, pending }: { controller: BoardContr
 export function TaskDetail({ controller, task }: { controller: BoardController; task: TaskRecord }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
+  const [showDuplicate, setShowDuplicate] = useState(false)
 
   // Keep the overlay in sync if the task record changes underneath.
   const [latest, setLatest] = useState(task)
   useEffect(() => { setLatest(task) }, [task])
   // A re-used overlay instance must not carry an edit session across tasks.
-  useEffect(() => { setShowEdit(false) }, [task.id])
+  useEffect(() => {
+    setShowEdit(false)
+    setShowDuplicate(false)
+  }, [task.id])
   const current = latest
   const snapshot = controller.getSnapshot()
   const running = current.status === 'running'
@@ -400,6 +432,17 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
           {!archived && (
             <button
               type="button"
+              className={css.ghostButton}
+              disabled={pending}
+              onClick={() => { setShowDuplicate(true) }}
+              title={canEditTaskContent(current) ? t('detail.duplicate') : t('detail.duplicateAndEdit')}
+            >
+              {canEditTaskContent(current) ? t('detail.duplicate') : t('detail.duplicateAndEdit')}
+            </button>
+          )}
+          {!archived && (
+            <button
+              type="button"
               className={css.primaryButton}
               disabled={running || pending}
               onClick={() => {
@@ -467,6 +510,18 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
 
       {showEdit && !archived && canEditTaskContent(current) && (
         <EditTaskModal controller={controller} task={current} onClose={() => { setShowEdit(false) }} />
+      )}
+
+      {showDuplicate && !archived && (
+        <NewTaskModal
+          controller={controller}
+          initialTask={current}
+          onClose={() => { setShowDuplicate(false) }}
+          onDuplicateSuccess={async (sourceId) => {
+            await controller.archiveTask(sourceId)
+            controller.closeTask()
+          }}
+        />
       )}
     </div>
   )

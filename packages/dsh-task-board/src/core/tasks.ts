@@ -133,6 +133,19 @@ export interface TaskRecord {
    */
   permission?: TaskPermission
   /**
+   * Pinned model selection for the execution session (format: "provider/model" or model id);
+   * absent falls back to the host default (agent-default-model).
+   */
+  model?: string
+  /**
+   * Whether later executions continue in the previous execution's session
+   * (issue #1419) instead of minting a fresh conversation per run. Absent or
+   * false keeps the historical one-session-per-execution behavior; the reuse
+   * itself only happens when that session is idle and still present (see
+   * {@link reusableSessionId}).
+   */
+  reuseSession?: boolean
+  /**
    * Frozen context snapshot for a continuation card; absent on plain tasks.
    * Sanitized before it enters the ledger (redaction, slash-command taint,
    * 8 KiB per-field cap) by the protocol gate and re-normalized on load.
@@ -159,8 +172,13 @@ export interface TaskRecord {
   archivedAt?: number
 }
 
-/** Statuses a settled task may be archived from. */
-export const ARCHIVABLE_STATUSES: readonly TaskStatus[] = ['done', 'failed']
+/**
+ * Statuses a task may be archived from: every status but `running`, whose
+ * execution the runner still owns until it settles. A settled-only gate made
+ * the duplicate-and-archive flow a silent no-op for scheduled tasks, which
+ * return to `todo` after every successful run (issue #1447).
+ */
+export const ARCHIVABLE_STATUSES: readonly TaskStatus[] = ['backlog', 'todo', 'done', 'failed']
 
 
 /** Permission presets a task may pin on its execution session (the `/permission <id>` ids). */
@@ -185,6 +203,10 @@ export interface NewTaskInput {
   mode?: string
   /** Permission preset applied to the execution session; absent = session default. */
   permission?: TaskPermission
+  /** Optional pinned model for the execution session; absent = host default. */
+  model?: string
+  /** Reuse the previous execution's session for later runs (issue #1419). */
+  reuseSession?: boolean
   /**
    * Optional scheduled-run rule requested at creation time (the new-task
    * dialog): an enable flag plus a 5-field cron expression. The create use
@@ -271,6 +293,8 @@ export function createTask(input: NewTaskInput, now: number, id: string): TaskRe
     workspaceId: normalizeTargetId(input.workspaceId),
     mode: normalizeTargetId(input.mode),
     permission: isTaskPermission(input.permission) ? input.permission : undefined,
+    model: normalizeTargetId(input.model),
+    reuseSession: input.reuseSession === true ? true : undefined,
     ...(input.freeze === undefined ? {} : { freeze: freezeOf(input.freeze, now) }),
     ...(input.handover === undefined ? {} : { handover: { ...input.handover, bundledAt: now } }),
   }

@@ -28,16 +28,12 @@ function useLiveValue(value: number): [number, (v: number | null) => void] {
 /** Host base path of the wallpaper API (mirrors src/we-routes.ts). */
 const WE_API = '/api/skin-center/we'
 
-/** Wallpapers rendered per page in the library grid. */
-const WALLPAPER_PAGE_SIZE = 24
-
 /** One wallpaper entry as served by the inventory route. */
 interface WallpaperItem extends WallpaperDescriptor {
   source: 'workshop' | 'local' | 'imported' | 'system'
-  /** Steam Workshop content rating declared by the project (author-set). */
-  contentrating: 'Everyone' | 'Questionable' | 'Mature' | null
   playable: boolean
   updateAvailable: boolean
+  rating?: 'g' | 'pg13' | 'r18'
 }
 
 /** Inventory payload shape. */
@@ -79,54 +75,29 @@ function typeKey(item: WallpaperItem): 'wallpaperTypeVideo' | 'wallpaperTypeWeb'
   }
 }
 
-/** Age-rating buckets offered by the wallpaper filter (G / PG-13 / R18). */
-export type WallpaperRating = 'G' | 'PG-13' | 'R18'
+/** Wallpaper grid page size (24 items per page). */
+const PAGE_SIZE = 24
 
-/** Explicit R18 marker in a wallpaper title (R18 / R-18). */
-const R18_MARKER = /R[- ]?18/i
+/** Generate pagination page numbers with ellipses. */
+function paginationRange(current: number, total: number): (number | 'ellipsis')[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1)
+  }
+  const pages: (number | 'ellipsis')[] = [1]
+  let start = Math.max(2, current - 1)
+  let end = Math.min(total - 1, current + 1)
 
-/** Explicit PG-13 marker (PG-13 / PG13; R13 titles count as PG-13). */
-const PG13_MARKER = /(?:PG[- ]?13|R[- ]?13)/i
+  if (current <= 3) {
+    start = 2
+    end = 4
+  } else if (current >= total - 2) {
+    start = total - 3
+    end = total - 1
+  }
 
-/** Adult keywords that classify an undeclared title as R18. */
-const ADULT_KEYWORDS = /\b(nsfw|x-ray|hentai|porn|nude|sex|ero|lewd)\b|淫|裸|乳|内衣/iu
-
-/** The rating input: the inventory item (official content rating + title). */
-export interface RatingSource {
-  /** Steam Workshop content rating, when the project declares one. */
-  contentrating: 'Everyone' | 'Questionable' | 'Mature' | null
-  title: string
-}
-
-/**
- * Derive the age rating of a wallpaper from the official three-tier scheme
- * (G / PG-13 / R18). The Steam Workshop content rating declared by the
- * project is authoritative and never overridden: Everyone → G, Questionable
- * → PG-13, Mature → R18. Entries without a declared rating fall back to
- * title markers (explicit R18/R-18 or adult keywords → R18, PG-13/R13 →
- * PG-13, everything else G).
- */
-export function ratingOf(item: RatingSource): WallpaperRating {
-  if (item.contentrating === 'Everyone') return 'G'
-  if (item.contentrating === 'Questionable') return 'PG-13'
-  if (item.contentrating === 'Mature') return 'R18'
-  if (R18_MARKER.test(item.title) || ADULT_KEYWORDS.test(item.title)) return 'R18'
-  if (PG13_MARKER.test(item.title)) return 'PG-13'
-  return 'G'
-}
-
-/**
- * Page numbers for the pager: current page with one neighbour on each side,
- * ellipsized ends for large totals (1 … 5 6 7 … 32).
- */
-function pageNumbers(current: number, total: number): Array<number | '…'> {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
-  const pages: Array<number | '…'> = [1]
-  const start = Math.max(2, current - 1)
-  const end = Math.min(total - 1, current + 1)
-  if (start > 2) pages.push('…')
+  if (start > 2) pages.push('ellipsis')
   for (let i = start; i <= end; i++) pages.push(i)
-  if (end < total - 1) pages.push('…')
+  if (end < total - 1) pages.push('ellipsis')
   pages.push(total)
   return pages
 }
@@ -152,6 +123,9 @@ export function WallpaperPanel({ t, wallpaper }: { t: PropsLocale<'skinCenter'>[
   const [shownVolume, setShownVolume] = useLiveValue(volume)
   const [dirInput, setDirInput] = useState('')
   const [picking, setPicking] = useState(false)
+  const [page, setPage] = useState(1)
+  const [ratingFilter, setRatingFilter] = useState<'g' | 'pg13' | 'r18'>('g')
+  const [jumpInput, setJumpInput] = useState('')
 
   const [items, setItems] = useState<WallpaperItem[] | null>(null)
   const [installDir, setInstallDir] = useState<string | null>(null)
@@ -159,33 +133,11 @@ export function WallpaperPanel({ t, wallpaper }: { t: PropsLocale<'skinCenter'>[
   const [loadError, setLoadError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [workingId, setWorkingId] = useState<string | null>(null)
-  /** Active rating filter ('all' shows every wallpaper). */
-  const [rating, setRating] = useState<'all' | WallpaperRating>('all')
-  /** Current page of the filtered list (1-based; clamped to the page count). */
-  const [page, setPage] = useState(1)
-  /** Jump-to-page input draft. */
-  const [jumpInput, setJumpInput] = useState('')
   const mounted = useRef(false)
   useEffect(() => {
     mounted.current = true
     return () => { mounted.current = false }
   }, [])
-
-  /** Wallpapers after the rating filter. */
-  const filtered = items === null ? [] : rating === 'all' ? items : items.filter(item => ratingOf(item) === rating)
-  /** Items actually mounted: one page only, so the grid stays small. */
-  const pageCount = Math.max(1, Math.ceil(filtered.length / WALLPAPER_PAGE_SIZE))
-  const safePage = Math.min(page, pageCount)
-  const pageItems = filtered.slice((safePage - 1) * WALLPAPER_PAGE_SIZE, safePage * WALLPAPER_PAGE_SIZE)
-  // A new inventory or a new filter restarts at the first page.
-  useEffect(() => { setPage(1) }, [rating, items])
-
-  /** Apply the jump input: clamp to [1, pageCount] and land. */
-  const jumpToPage = (): void => {
-    const target = Number(jumpInput)
-    if (Number.isInteger(target) && target >= 1 && target <= pageCount) setPage(target)
-    setJumpInput('')
-  }
 
   /** Fetch the inventory and reconcile the mounted layer with the selection. */
   const load = useCallback((): void => {
@@ -200,6 +152,8 @@ export function WallpaperPanel({ t, wallpaper }: { t: PropsLocale<'skinCenter'>[
         }
         setLoadError(null)
         setItems(payload.wallpapers)
+        // A fresh inventory restarts the paged grid from the first page.
+        setPage(1)
         setInstallDir(typeof payload.installDir === 'string' ? payload.installDir : null)
         setSystemCount(typeof payload.systemCount === 'number' ? payload.systemCount : 0)
         const selected = wallpaper.selection()
@@ -268,6 +222,25 @@ export function WallpaperPanel({ t, wallpaper }: { t: PropsLocale<'skinCenter'>[
   const renderable = (item: WallpaperItem): boolean =>
     item.playable || item.frameUrl !== null || item.previewUrl !== null
 
+  const filteredItems = (items ?? []).filter(item => (item.rating ?? 'g') === ratingFilter)
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE))
+  const currentPage = Math.min(Math.max(1, page), totalPages)
+  const pagedItems = filteredItems.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+
+  const handleJump = (): void => {
+    const target = parseInt(jumpInput.trim(), 10)
+    if (!isNaN(target) && target >= 1 && target <= totalPages) {
+      setPage(target)
+      setJumpInput('')
+    }
+  }
+
+  const onSelectRatingFilter = (filter: 'g' | 'pg13' | 'r18'): void => {
+    setRatingFilter(filter)
+    setPage(1)
+    setJumpInput('')
+  }
+
   const activeSelection = selection
 
   return (
@@ -299,20 +272,6 @@ export function WallpaperPanel({ t, wallpaper }: { t: PropsLocale<'skinCenter'>[
                     ? <span>{t('wallpaperLibrarySystem')} · {items.length}</span>
                     : <span>{t('wallpaperLibraryManual')} · {items.length}</span>}
             <button type="button" className={css.button} onClick={load}>{t('wallpaperRefresh')}</button>
-          </div>
-
-          <div className={css.wallpaperRatingTabs} role="group" aria-label={t('wallpaperRating')}>
-            {(['all', 'G', 'PG-13', 'R18'] as const).map(value => (
-              <button
-                type="button"
-                key={value}
-                className={css.themeButton + (rating === value ? ' ' + css.themeButtonActive : '')}
-                aria-pressed={rating === value}
-                onClick={() => { setRating(value) }}
-              >
-                {value === 'all' ? t('wallpaperRatingAll') : value}
-              </button>
-            ))}
           </div>
 
           {activeSelection !== '' && (
@@ -516,13 +475,42 @@ export function WallpaperPanel({ t, wallpaper }: { t: PropsLocale<'skinCenter'>[
 
           {actionError !== null && <div className={css.error}>{actionError}</div>}
 
-          {items !== null && filtered.length > 0 && (
+          {items !== null && items.length > 0 && (
+            <div className={css.wallpaperToolbar}>
+              <div className={css.ratingFilterGroup} role="tablist" aria-label={t('wallpaperTitle')}>
+                {(['g', 'pg13', 'r18'] as const).map(filter => {
+                  const active = ratingFilter === filter
+                  const key = filter === 'g'
+                    ? 'wallpaperRatingG'
+                    : filter === 'pg13'
+                      ? 'wallpaperRatingPg13'
+                      : 'wallpaperRatingR18'
+                  return (
+                    <button
+                      type="button"
+                      key={filter}
+                      role="tab"
+                      aria-selected={active}
+                      className={css.ratingFilterButton + (active ? ' ' + css.ratingFilterActive : '')}
+                      onClick={() => { onSelectRatingFilter(filter) }}
+                    >
+                      {t(key)}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className={css.pageTotalInfo}>
+                {t('wallpaperPageTotal', { page: String(currentPage), total: String(totalPages) })}
+              </div>
+            </div>
+          )}
+
+          {items !== null && pagedItems.length > 0 && (
             <div className={css.wallpaperGrid}>
-              {pageItems.map(item => {
+              {pagedItems.map(item => {
                 const isApplied = item.id === activeSelection
                 const isMounted = item.id === activeId
                 const busy = workingId === item.id
-                const itemRating = ratingOf(item)
                 return (
                   <div className={css.wallpaperCard} key={item.id}>
                     <div className={css.wallpaperThumbWrap}>
@@ -534,8 +522,12 @@ export function WallpaperPanel({ t, wallpaper }: { t: PropsLocale<'skinCenter'>[
                           ? <video className={css.wallpaperThumb} src={item.videoUrl} preload="metadata" muted playsInline aria-hidden="true" />
                           : <div className={css.wallpaperThumbEmpty} aria-hidden="true" />}
                       <span className={css.wallpaperType}>{t(typeKey(item))}</span>
-                      {itemRating !== 'G' && (
-                        <span className={css.wallpaperRatingBadge + (itemRating === 'R18' ? ' ' + css.wallpaperRatingBadgeR18 : '')}>{itemRating}</span>
+                      {item.rating === 'r18' ? (
+                        <span className={css.wallpaperRating + ' ' + css.ratingR18}>R18</span>
+                      ) : item.rating === 'pg13' ? (
+                        <span className={css.wallpaperRating + ' ' + css.ratingPg13}>PG-13</span>
+                      ) : (
+                        <span className={css.wallpaperRating + ' ' + css.ratingG}>G</span>
                       )}
                       {isMounted && (
                         <span className={css.badge + ' ' + (trying ? css.badgeTrying : css.badgeActive)}>
@@ -614,60 +606,64 @@ export function WallpaperPanel({ t, wallpaper }: { t: PropsLocale<'skinCenter'>[
               })}
             </div>
           )}
-          {items !== null && items.length > 0 && filtered.length === 0 && (
-            <p className={css.backgroundHintMuted}>{t('wallpaperRatingEmpty')}</p>
-          )}
-          {items !== null && filtered.length > WALLPAPER_PAGE_SIZE && (
-            <div className={css.wallpaperPager}>
+          {totalPages > 1 && (
+            <div className={css.wallpaperPagination} role="navigation" aria-label={t('wallpaperTitle')}>
               <button
                 type="button"
-                className={css.button}
-                disabled={safePage <= 1}
-                onClick={() => { setPage(safePage - 1) }}
+                className={css.pageButton}
+                disabled={currentPage <= 1}
+                onClick={() => { setPage(p => Math.max(1, p - 1)) }}
+                aria-label={t('wallpaperPagePrev')}
               >
                 {t('wallpaperPagePrev')}
               </button>
-              <div className={css.wallpaperPageNumbers}>
-                {pageNumbers(safePage, pageCount).map((value, index) =>
-                  value === '…'
-                    ? <span key={'ellipsis' + index} className={css.wallpaperPageEllipsis} aria-hidden="true">…</span>
-                    : (
-                      <button
-                        type="button"
-                        key={value}
-                        className={css.wallpaperPageNumber + (value === safePage ? ' ' + css.wallpaperPageNumberActive : '')}
-                        aria-current={value === safePage ? 'page' : undefined}
-                        onClick={() => { setPage(value) }}
-                      >
-                        {value}
-                      </button>
-                    ),
-                )}
-              </div>
+              {paginationRange(currentPage, totalPages).map((p, idx) => {
+                if (p === 'ellipsis') {
+                  return <span key={'ellipsis-' + String(idx)} className={css.pageEllipsis}>…</span>
+                }
+                const isActive = p === currentPage
+                return (
+                  <button
+                    type="button"
+                    key={p}
+                    className={css.pageButton + (isActive ? ' ' + css.pageButtonActive : '')}
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={() => { setPage(p) }}
+                  >
+                    {p}
+                  </button>
+                )
+              })}
               <button
                 type="button"
-                className={css.button}
-                disabled={safePage >= pageCount}
-                onClick={() => { setPage(safePage + 1) }}
+                className={css.pageButton}
+                disabled={currentPage >= totalPages}
+                onClick={() => { setPage(p => Math.min(totalPages, p + 1)) }}
+                aria-label={t('wallpaperPageNext')}
               >
                 {t('wallpaperPageNext')}
               </button>
-              <span className={css.wallpaperPagerInfo}>{safePage} / {pageCount}</span>
-              <input
-                className={css.wallpaperJumpInput}
-                type="number"
-                min="1"
-                max={pageCount}
-                value={jumpInput}
-                placeholder={String(safePage)}
-                aria-label={t('wallpaperPageJump')}
-                onChange={(event) => { setJumpInput(event.target.value) }}
-                onKeyDown={(event) => { if (event.key === 'Enter') jumpToPage() }}
-              />
-              <button type="button" className={css.button} onClick={jumpToPage}>{t('wallpaperPageJump')}</button>
+              <form
+                className={css.pageJumpForm}
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleJump()
+                }}
+              >
+                <input
+                  type="text"
+                  className={css.pageJumpInput}
+                  value={jumpInput}
+                  aria-label={t('wallpaperPageJump')}
+                  onChange={(e) => { setJumpInput(e.target.value) }}
+                />
+                <button type="submit" className={css.pageButton} disabled={jumpInput.trim() === ''}>
+                  {t('wallpaperPageJump')}
+                </button>
+              </form>
             </div>
           )}
-          {items !== null && items.length === 0 && loadError === null && (
+          {items !== null && (items.length === 0 || pagedItems.length === 0) && loadError === null && (
             <p className={css.backgroundHintMuted}>{t('wallpaperEmpty')}</p>
           )}
         </>

@@ -21,11 +21,12 @@ test('copies cover the settings trio for all consumers plus host and http helper
   // Normalize separators: node:path join yields backslashes on Windows, and
   // the copy-count buckets below match on forward slashes.
   const entries = copyEntries().map(entry => ({ ...entry, target: entry.target.replaceAll('\\', '/') }))
-  // 8 consumer packages for the card chrome pair, 7 for the form source,
-  // 2 panel-mount consumers for the takeover lifecycle source.
-  assert.equal(entries.length, 114)
+  // The total is every generated copy in the manifest; the single-instance
+  // guard alone contributes one mount-once.ts per host half (17 today). The
+  // buckets below partition the same set by target location.
+  assert.equal(entries.length, 110)
   const clientTrio = entries.filter(entry => entry.target.includes('/src/client/'))
-  assert.equal(clientTrio.length, 43)
+  assert.equal(clientTrio.length, 37)
   const hostCopies = entries.filter(entry => entry.target.includes('/src/host/')
     || entry.target.includes('/src/dsh-home.ts')
     || entry.target.includes('/src/mount-once.ts')
@@ -33,7 +34,7 @@ test('copies cover the settings trio for all consumers plus host and http helper
     || entry.target.includes('/src/pair-access.ts')
     || entry.target.includes('/src/agent/')
     || entry.target.endsWith('/packages/dsh-task-board/src/http.ts'))
-  assert.equal(hostCopies.length, 59)
+  assert.equal(hostCopies.length, 61)
 })
 
 test('checkSync detects drift and applySync repairs it', async () => {

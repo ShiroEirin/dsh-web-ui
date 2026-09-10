@@ -74,10 +74,19 @@ export interface ExecutionPresetOption {
   isDefault: boolean
 }
 
+/** One model option the execution-target pickers offer. */
+export interface ExecutionModelOption {
+  id: string
+  name?: string
+  label?: string
+  provider?: string
+}
+
 /** The execution-target option sets the UI feeds into the controller. */
 export interface ExecutionOptionsSnapshot {
   workspaces: readonly ExecutionWorkspaceOption[]
   presets: readonly ExecutionPresetOption[]
+  models?: readonly ExecutionModelOption[]
 }
 
 /** Immutable controller snapshot for UI subscriptions. */
@@ -129,7 +138,7 @@ export class BoardController {
   private boardOpen = false
   private archiveView = false
   private selectedTaskId: string | undefined
-  private executionOptions: ExecutionOptionsSnapshot = { workspaces: [], presets: [] }
+  private executionOptions: ExecutionOptionsSnapshot = { workspaces: [], presets: [], models: [] }
   private listeners = new Set<() => void>()
   private disposers: Array<() => void> = []
   private readonly now: () => number
@@ -318,9 +327,8 @@ export class BoardController {
   }
 
   /**
-   * Archive a settled task (done/failed). Running or on-board-unsettled
-   * tasks are refused so the runner keeps exclusive ownership of their
-   * lifecycle.
+   * Archive a task from any status but `running`, whose lifecycle the runner
+   * keeps exclusive ownership of until it settles.
    * @returns true when applied.
    */
   archiveTask(id: string): boolean {

@@ -1,0 +1,5 @@
+# Bilingual-pair consistency record (docs/i18n.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with git hash-object.
+2026-09-06-windows-ci-lanes-for-desktop.md: fab8e2b3eca3056991d5d9ecf2679c21b24e7a11
+2026-09-06-windows-ci-lanes-for-desktop.zh.md: 0580036f0f048a1e8f5d6f816bb6a5bad56ef711

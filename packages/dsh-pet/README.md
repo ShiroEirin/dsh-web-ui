@@ -164,7 +164,9 @@ Model licensing: the official Live2D sample models (Hiyori, Haru, and friends) a
 
 Frames2d pets ship directory-style frame sequences instead of an atlas: `thumb/<track>/<frame>.webp`, with per-frame durations from an optional `_<ms>` filename tail or the track's `frameMs` list (default 200 ms, bounds 16–5000). The manifest maps the activity phases onto tracks; a `drag` track follows the chrome's drag gesture, and non-looping tracks settle into their `fallback` (default the idle track), so intro/loop splits (sleep-intro → sleep) are plain manifest data.
 
-A frames2d pet may declare a `gameplay` block — an opt-in mini-game layer generalized from the miku desktop pet: decaying stat bars (`stats` with per-minute decay, a working variant and an idle variant), the unified treat (小鱼干) currency — gameplay income and shop spending ride the same panel treat stock (capped at 20): `work` success, `passiveIncome` and lottery prizes grant treats, and shop items are priced and paid in treats, with no separate wallet page — a weighted `idleDirector` (rolls an act every `intervalMs`, `maxMiss` forces one after consecutive idle rolls), `touch` zones inside a `hitBox` (roll branches with effects, a track hold and phrase bubbles), a `work` loop (host-adjudicated ticks with success/fail result tracks), a `sleep` loop (lazy stat restore), `passiveIncome`, and a `shop` whose items carry effects or tiered lotteries. All rolls and bookkeeping are host-authoritative (`POST /api/pet/gameplay/*`); state persists per pet in `pet.json` and settles lazily on the treats-economy discipline. The browser half renders the menu card (stat bars, work/sleep toggles, shop grid) automatically for any pet that declares the block.
+A frames2d block may also declare **skins**: an optional array of `{ id, label, idleTrack }` entries. Selecting a skin swaps the pet's base idle target (the idle phase, unmapped phases and every fallback back to idle) onto `idleTrack`, so the resting look changes while gameplay tracks (shy/work/sleep…) stay attached to the default assets. Each skin may further declare `clickActions` — probability-rolled tap reactions exclusive to that skin (`{ track, probability, phrases? }`): while the skin is active, a tap rolls each action in declared order and plays the winner's track once on a hit, falling back to the plain click boost on a miss (never the default touch zones).
+
+A frames2d pet may declare a `gameplay` block — an opt-in mini-game layer generalized from the miku desktop pet: decaying stat bars (`stats` with per-minute decay, a working variant and an idle variant), the unified treat (小鱼干) currency — gameplay income and shop spending ride the same panel treat stock (capped at 20): `work` success, `passiveIncome` and lottery prizes grant treats, and shop items are priced and paid in treats, with no separate wallet page — a weighted `idleDirector` (rolls an act every `intervalMs`, `maxMiss` forces one after consecutive idle rolls), `touch` zones inside a `hitBox` (roll branches with effects, a track hold and phrase bubbles), a `work` loop (host-adjudicated ticks with success/fail result tracks), a `sleep` loop (lazy stat restore), `passiveIncome`, and a `shop` whose items carry effects or tiered lotteries. All rolls and bookkeeping are host-authoritative (`POST /api/pet/gameplay/*`); state persists per pet in `pet.json` and settles lazily on the treats-economy discipline. The browser half renders the menu card (stat bars, work/sleep toggles, skin picker, shop grid) automatically for any pet that declares the block. The sprite display size range is 32–1024 px.
 
 The **Miku pet** (contributed by stushansusu under MIT; Hatsune Miku character rights belong to Crypton Future Media under the Piapro Character License — see THIRD_PARTY_NOTICES.md) is the reference frames2d gameplay pet. It ships through the **Workshop** only (not the npm bundle): install it from the Workshop's pet list and it lands in `$DSH_HOME/pets/miku/`.
 
@@ -204,6 +206,8 @@ Host-side sibling plugins can push one structured announcement through the `pet`
 
 | Registry id | Selector label | Source |
 |---|---|---|
+| `blue-throated-bee-eater` | 蓝喉蜂虎 | Companion art contributed by the repository contributor under Apache-2.0 (12 AI-illustrated pose references in the palette of the blue-throated-bee-eater skin; composed by docs/archive/blue-throated-bee-eater-pet/gen-pet.py with per-track standalone poses: perched, flight, front hover, waving, landing, droop, tilt, review; ship 小蜜蜂 as the treat name) |
+| `jyn` | 女仆鲸鱼娘 | Frames2d gameplay pet (contributed by stushansusu under MIT): maid-whale desktop pet with work/sleep/touch gameplay and three selectable skins (暗夜鎏金 / 蓝海霓裳 / 冰晶公主), each with a probability-rolled click action; 暗夜鎏金 also swaps its own rest loop into the sleep gameplay | (docs(dsh-pet): list three jyn skins in the registry rows and re-record pairing)
 | `ouo-neko` | OUO Neko | Pink-sakura cat-eared companion contributed by `Pessimist0906` under MIT |
 | `whale-girl` | 鲸鱼娘（原版） | The repository's original whale-girl atlas |
 | `whale-girl-refined` | 鲸鱼娘（精致版） | An AI-assisted derivative with repaired and refined details, based on the whale-girl design direction |
@@ -223,6 +227,16 @@ Sprite pets use 8-column atlases with 192×208 cells generated by the [hatch-pet
 | waving | review | failed | move left/right |
 |---|---|---|---|
 | ![waving](assets/whale/previews/waving.gif) | ![review](assets/whale/previews/review.gif) | ![failed](assets/whale/previews/failed.gif) | ![running-left](assets/whale/previews/running-left.gif) ![running-right](assets/whale/previews/running-right.gif) |
+
+The built-in **Blue-throated Bee-eater** pet carries the same preview set:
+
+| idle | waiting | running | jumping |
+|---|---|---|---|
+| ![idle](assets/blue-throated-bee-eater/previews/idle.gif) | ![waiting](assets/blue-throated-bee-eater/previews/waiting.gif) | ![running](assets/blue-throated-bee-eater/previews/running.gif) | ![jumping](assets/blue-throated-bee-eater/previews/jumping.gif) |
+
+| waving | review | failed | move left/right |
+|---|---|---|---|
+| ![waving](assets/blue-throated-bee-eater/previews/waving.gif) | ![review](assets/blue-throated-bee-eater/previews/review.gif) | ![failed](assets/blue-throated-bee-eater/previews/failed.gif) | ![running-left](assets/blue-throated-bee-eater/previews/running-left.gif) ![running-right](assets/blue-throated-bee-eater/previews/running-right.gif) |
 
 The community **Starry Doll** pet (Workshop-only, contributed by Theater-ahyeon under CC-BY-NC-SA-4.0) ships the same preview set:
 
@@ -259,6 +273,7 @@ dsh-pet/
 |-- assets/whale/            # built-in original whale-girl (manifest + atlas + previews)
 |-- assets/whale-refined/    # built-in refined whale-girl registry variant
 |-- assets/ouo-neko/         # built-in OUO Neko v2 pet (11-row atlas + previews)
+|-- assets/blue-throated-bee-eater/  # built-in Blue-throated Bee-eater pet (9-row atlas + previews)
 `-- cordis.patch.yml         # bundle patch: inserts the pet plugin row
 ```
 
@@ -274,7 +289,7 @@ global React root (createRoot → document.body) <-- polling 2s -- pet-client (b
                                        PetSprite floating layer (portal + rAF)
 ```
 
-- **Status source**: the host projects official `turn/start`, `step/start`, `assistant/chunk`, `assistant/message`, `tool/call`, `tool/result`, and `turn/end` events into waiting/thinking/tool/review/done/failed states. Optional legacy `activity/status` events remain a compatibility input.
+- **Status source**: the host projects official `turn/start`, `step/start`, `assistant/message`, `tool/call`, `tool/result`, and `turn/end` events plus live `agent/assistant-stream` chunks into waiting/thinking/tool/review/done/failed states. Optional legacy `activity/status` events remain a compatibility input.
 - **Registry**: the host normalizes every manifest into a full render definition (geometry, per-row frame counts, per-track durations) and serves it over `/api/pet/pets`; the browser half renders any entry from that definition and carries no per-pet code.
 - **Selection & naming**: `petId` lives in the settings namespace; per-pet names live in `pet.json` under `names`, edited through the hover-panel rename of the active pet. Legacy installs migrate their flat `name` onto the whale girl.
 - **Multi-session semantics**: the API and browser mount are host-global and expose no foreground-session identity. Concurrent sessions each keep their own projected state: the most recent meaningful event drives the sprite animation, while every active TOP-LEVEL session reports its stage in its own bubble (the state view's sessions list, capped at 12 most-recent). Subagent children are tracked for animation, rewards, and the single display bubble but render no bubble of their own, so N conversations never multiply into an N-plus-subagents stack. Every session's completed turns are still rewarded independently; disposing a session removes its bubble, and disposing the display session falls back to the most recent remaining one.

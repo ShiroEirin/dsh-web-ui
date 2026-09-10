@@ -256,7 +256,7 @@ describe('anchored-tool-bootstrap', () => {
     const hint = first.messages[1]
     expect(typeof hint.id).toBe('string')
     expect(hint.id).not.toBe('')
-    expect(hint.source.kind).toBe('instruction-hint')
+    expect(hint.source.kind).toBe('plugin')
     expect(hint.id).toBe('instructions')
     expect(hint.content[0].text).toContain('Reference documents exist: ~/.dsh/AGENTS.md, AGENTS.md.')
     expect(hint.content[0].text).toContain('not task instructions')
@@ -294,7 +294,7 @@ describe('anchored-tool-bootstrap', () => {
       async () => ({ kind: 'enter', messages }),
     )
     const hint = result.messages[1]
-    expect(hint.source.kind).toBe('instruction-hint')
+    expect(hint.source.kind).toBe('plugin')
     expect(hint.id).toEqual(expect.any(String))
     expect(hint.id).not.toBe('')
   })
@@ -865,5 +865,20 @@ describe('anchored-tool-bootstrap', () => {
     )
     expect(result.sections[0].text).toContain('Programmatic Tool Calling (PTC) mode')
     expect(result.sections[0].text).toContain('run_code')
+  })
+
+  test('scans events safely from session.snapshotEvents() (#1350)', async () => {
+    const events = [{ type: 'tool/call' }]
+    const sessionObj = {
+      snapshotEvents: () => events,
+      header: { cwd: '/workspace' },
+    }
+    const assembleListener = listener(register(), 'system-prompt/assemble')
+    const result = await assembleListener(
+      undefined,
+      { agent: { session: sessionObj } },
+      async () => ({ system: 'minimal persona', tools: [{ name: 'bash' }, { name: 'read' }, { name: 'edit' }], contexts: [], sections: SECTIONS }),
+    )
+    expect(result.tools.map((tool: any) => tool.name)).toEqual(['bash', 'read', 'edit'])
   })
 })

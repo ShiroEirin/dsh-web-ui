@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { SkillApi, type ListPayload, type SkillEntry } from './api.ts'
 import { zh, type SkillExplorerKey } from './locales.ts'
 import { tt } from './panel-helpers.ts'
+import { selectGroups } from './skill-filter.ts'
 import css from './skill-panel.module.css'
 
 /** Panel props: the API client and the close callback. */
@@ -78,10 +79,25 @@ function SkillCard({ skill, api, onChanged }: { skill: SkillEntry; api: SkillApi
     }
   }
 
+  const isIsolated = skill.isActiveWorkspace === false
+
   return (
-    <article className={css.skill} data-dsh-part="skill-row">
+    <article className={`${css.skill}${isIsolated ? ` ${css.skillIsolated}` : ''}`} data-dsh-part="skill-row">
       <header className={css.skillHeader}>
         <span className={css.skillName}>{skill.name}</span>
+        {skill.workspaceName !== undefined && (
+          <span className={`${css.badge} ${css.badgeWorkspace}`}>
+            {skill.workspaceName}
+          </span>
+        )}
+        {isIsolated && (
+          <span
+            className={`${css.badge} ${css.badgeIsolated}`}
+            title={tt('workspace.isolatedHint', { workspace: skill.workspaceName ?? '' })}
+          >
+            {tt('workspace.isolated')}
+          </span>
+        )}
         {skill.provider !== undefined && (
           <span
             className={css.badge}
@@ -131,6 +147,8 @@ function SkillCard({ skill, api, onChanged }: { skill: SkillEntry; api: SkillApi
 /** The grouped skill list tab. */
 function ListTab({ api, refreshTick, onCwd }: { api: SkillApi; refreshTick: number; onCwd: (cwd: string) => void }): React.JSX.Element {
   const [payload, setPayload] = useState<ListPayload | undefined>(undefined)
+  const [selectedWorkspace, setSelectedWorkspace] = useState<string>('all')
+  const [query, setQuery] = useState('')
   const [error, setError] = useState<string | undefined>(undefined)
   // Sequence guard: a slow earlier load must not overwrite a newer one.
   const loadSeq = useRef(0)
@@ -158,10 +176,57 @@ function ListTab({ api, refreshTick, onCwd }: { api: SkillApi; refreshTick: numb
   if (payload === undefined) return <div className={css.status}>{tt('list.loading')}</div>
   if (payload.groups.length === 0) return <div className={css.status}>{tt('list.empty')}</div>
 
+  const visibleGroups = selectGroups(payload.groups, { workspace: selectedWorkspace, query })
+  const visibleCount = visibleGroups.reduce((total, group) => total + group.skills.length, 0)
+
   return (
     <div>
       {error !== undefined && <p className={css.feedback}>{error}</p>}
-      {payload.groups.map((group) => {
+      <div className={css.filterBar} data-dsh-part="filter-bar">
+        <div className={css.filterRow}>
+          <label htmlFor="dsh-skill-search" className={css.filterLabel}>
+            {tt('filter.searchLabel')}:
+          </label>
+          <input
+            id="dsh-skill-search"
+            className={css.filterInput}
+            type="text"
+            value={query}
+            spellCheck={false}
+            placeholder={tt('filter.searchPlaceholder')}
+            onChange={(e) => { setQuery(e.target.value) }}
+            onKeyDown={(e) => { if (e.key === 'Escape' && query !== '') setQuery('') }}
+          />
+          {query !== '' && (
+            <button type="button" className={css.filterClear} onClick={() => { setQuery('') }}>
+              {tt('filter.clear')}
+            </button>
+          )}
+        </div>
+        {payload.workspaces !== undefined && payload.workspaces.length > 1 && (
+          <div className={css.filterRow}>
+            <label htmlFor="dsh-skill-workspace-filter" className={css.filterLabel}>
+              {tt('filter.workspaceLabel')}:
+            </label>
+            <select
+              id="dsh-skill-workspace-filter"
+              className={css.filterSelect}
+              value={selectedWorkspace}
+              onChange={(e) => { setSelectedWorkspace(e.target.value) }}
+            >
+              <option value="all">{tt('filter.workspaceAll')}</option>
+              {payload.workspaces.map((ws) => (
+                <option key={ws.root} value={ws.root}>
+                  {ws.active ? tt('filter.workspaceCurrent', { name: ws.name }) : ws.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+      {visibleCount === 0
+        ? <p className={css.filterEmpty}>{query.trim() === '' ? tt('filter.emptyWorkspace') : tt('filter.empty', { query: query.trim() })}</p>
+        : visibleGroups.map((group) => {
         const groupKey = `group.${group.key}` as keyof typeof zh
         const hintKey = `groupHint.${group.key}` as keyof typeof zh
         const title = groupKey in zh ? tt(groupKey) : group.title

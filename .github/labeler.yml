@@ -23,11 +23,6 @@ area/i18n:
           - '**/README.zh-CN.md'
           - '**/locales/**'
 
-area/perf:
-  - changed-files:
-      - any-glob-to-any-file:
-          - 'packages/dsh-perf/**'
-
 area/settings:
   - changed-files:
       - any-glob-to-any-file:
@@ -52,7 +47,6 @@ area/plugin:
   - changed-files:
       - any-glob-to-any-file:
           - 'packages/dsh-community-plugins/**'
-          - 'packages/dsh-desktop-launcher/**'
           - 'packages/dsh-doctor/**'
           - 'packages/dsh-git-graph/**'
           - 'packages/dsh-liangshen/**'

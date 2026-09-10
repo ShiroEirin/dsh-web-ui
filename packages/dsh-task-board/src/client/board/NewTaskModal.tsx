@@ -6,26 +6,41 @@ import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { isValidCron, nextRunAtMs } from '../../core/schedule.ts'
 import { parseFreezeRequest } from '../../core/freeze-snapshot.ts'
-import { TASK_PERMISSIONS, type TaskPermission } from '../../core/tasks.ts'
+import { TASK_PERMISSIONS, type TaskPermission, type TaskRecord } from '../../core/tasks.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import { SCHEDULE_PRESETS } from '../schedule-presets.ts'
 import { ModalShell, TaskContentFields } from './TaskForm.tsx'
 import css from '../board.module.css'
 
+export interface NewTaskModalProps {
+  controller: BoardController
+  onClose: () => void
+  /** Optional task template to clone/duplicate from. */
+  initialTask?: TaskRecord
+  /** Optional callback after successful duplication (e.g. to archive source). */
+  onDuplicateSuccess?: (sourceTaskId: string) => Promise<void>
+}
+
 /** New-task form overlay. */
-export function NewTaskModal({ controller, onClose }: { controller: BoardController; onClose: () => void }) {
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [prompt, setPrompt] = useState('')
-  const [workspaceId, setWorkspaceId] = useState('')
-  const [mode, setMode] = useState('')
-  const [permission, setPermission] = useState('')
-  const [scheduleEnabled, setScheduleEnabled] = useState(false)
-  const [scheduleCron, setScheduleCron] = useState('')
+export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSuccess }: NewTaskModalProps) {
+  const isDuplicate = initialTask !== undefined
+  const [title, setTitle] = useState(initialTask?.title ?? '')
+  const [description, setDescription] = useState(initialTask?.description ?? '')
+  const [prompt, setPrompt] = useState(initialTask?.prompt ?? '')
+  const [workspaceId, setWorkspaceId] = useState(initialTask?.workspaceId ?? '')
+  const [mode, setMode] = useState(initialTask?.mode ?? '')
+  const [permission, setPermission] = useState(initialTask?.permission ?? '')
+  const [model, setModel] = useState(initialTask?.model ?? '')
+  const [reuseSession, setReuseSession] = useState(initialTask?.reuseSession ?? false)
+  const [scheduleEnabled, setScheduleEnabled] = useState(initialTask?.schedule?.enabled ?? false)
+  const [scheduleCron, setScheduleCron] = useState(initialTask?.schedule?.cron ?? '')
   const [scheduleError, setScheduleError] = useState<string | undefined>(undefined)
   const [freezeText, setFreezeText] = useState('')
   const [freezeError, setFreezeError] = useState<string | undefined>(undefined)
-  const [handoverText, setHandoverText] = useState('')
+  const [handoverText, setHandoverText] = useState(
+    initialTask?.handover?.references !== undefined ? initialTask.handover.references.join('\n') : '',
+  )
+  const [archiveOriginal, setArchiveOriginal] = useState(true)
   const [error, setError] = useState<string | undefined>(undefined)
   const [pending, setPending] = useState(false)
   const [options, setOptions] = useState(controller.getSnapshot().executionOptions)
@@ -76,12 +91,21 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
       workspaceId: workspaceId === '' ? undefined : workspaceId,
       mode: mode === '' ? undefined : mode,
       permission: permission === '' ? undefined : permission as TaskPermission,
+      model: model === '' ? undefined : model,
+      ...(reuseSession ? { reuseSession: true } : {}),
       schedule: scheduleEnabled ? { enabled: true, cron: scheduleCron.trim() } : undefined,
     })
     if (task === undefined) {
       setPending(false)
       setError(controller.getSnapshot().transportError ?? t('new.required'))
       return
+    }
+    if (isDuplicate && archiveOriginal && initialTask !== undefined) {
+      if (onDuplicateSuccess !== undefined) {
+        await onDuplicateSuccess(initialTask.id)
+      } else {
+        await controller.archiveTask(initialTask.id)
+      }
     }
     onClose()
   }
@@ -91,10 +115,12 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
     ? nextRunAtMs(scheduleCron, Date.now())
     : undefined
 
+  const modalTitle = isDuplicate ? t('new.duplicateTitle') : t('board.new')
+
   return (
     <ModalShell
-      ariaLabel={t('board.new')}
-      title={t('board.new')}
+      ariaLabel={modalTitle}
+      title={modalTitle}
       error={error}
       pending={pending}
       submitLabel={t('new.submit')}
@@ -181,6 +207,30 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
           </select>
         </label>
 
+        <label className={css.field}>
+          <span className={css.fieldLabel}>{t('new.model')}</span>
+          <select
+            className={css.select}
+            value={model}
+            onChange={event => { setModel(event.target.value) }}
+          >
+            <option value="">{t('exec.model.default')}</option>
+            {options.models?.map(item => (
+              <option key={item.id} value={item.id}>{item.name ?? item.id}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className={css.scheduleToggle}>
+          <input
+            type="checkbox"
+            checked={reuseSession}
+            onChange={event => { setReuseSession(event.target.checked) }}
+          />
+          <span>{t('exec.reuseSession')}</span>
+        </label>
+        <p className={css.detailText}>{t('exec.reuseSessionHint')}</p>
+
         <section className={css.detailSection}>
           <h4>{t('detail.schedule')}</h4>
           <label className={css.scheduleToggle}>
@@ -230,6 +280,16 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
             </>
           )}
         </section>
+        {isDuplicate && (
+          <label className={css.checkboxLabel} style={{ marginTop: '12px' }}>
+            <input
+              type="checkbox"
+              checked={archiveOriginal}
+              onChange={event => { setArchiveOriginal(event.target.checked) }}
+            />
+            <span>{t('new.archiveOriginal')}</span>
+          </label>
+        )}
     </ModalShell>
   )
 }

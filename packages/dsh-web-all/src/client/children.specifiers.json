@@ -25,11 +25,6 @@
     "source": "packages/dsh-git-graph/src/client/index.ts"
   },
   {
-    "name": "@linxin666/dsh-perf",
-    "specifier": "@linxin666/dsh-perf/client",
-    "source": "packages/dsh-perf/src/client/index.ts"
-  },
-  {
     "name": "@linxin666/dsh-remote-web-ui",
     "specifier": "@linxin666/dsh-remote-web-ui/client",
     "source": "packages/dsh-remote-web-ui/src/client/index.ts"
@@ -55,11 +50,6 @@
     "source": "packages/dsh-skill-explorer/src/client/index.ts"
   },
   {
-    "name": "@linxin666/dsh-desktop-launcher",
-    "specifier": "@linxin666/dsh-desktop-launcher/client",
-    "source": "packages/dsh-desktop-launcher/src/client/index.ts"
-  },
-  {
     "name": "@linxin666/dsh-doctor",
     "specifier": "@linxin666/dsh-doctor/client",
     "source": "packages/dsh-doctor/src/client/index.ts"
@@ -73,6 +63,16 @@
     "name": "@linxin666/dsh-session-archive",
     "specifier": "@linxin666/dsh-session-archive/client",
     "source": "packages/dsh-session-archive/src/client/index.ts"
+  },
+  {
+    "name": "@linxin666/dsh-client-ui-model-capabilities",
+    "specifier": "@linxin666/dsh-client-ui-model-capabilities/client",
+    "source": "packages/dsh-model-capabilities/src/client/index.ts"
+  },
+  {
+    "name": "@linxin666/dsh-client-ui-preset-center",
+    "specifier": "@linxin666/dsh-client-ui-preset-center/client",
+    "source": "packages/dsh-preset-center/src/client/index.ts"
   },
   {
     "name": "@linxin666/dsh-client-ui-skin-center",
