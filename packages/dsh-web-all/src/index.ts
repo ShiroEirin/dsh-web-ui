@@ -10,12 +10,12 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { apply as shellApply } from './shell.ts'
-import type { ShellConfig } from './shell.ts'
+import type { ShellConfigInput } from './shell.ts'
 
 /** Required services: none — the shell must activate before anything else. */
 export const inject = [] as const
 
 /** Host plugin body: mount the configured real plugin behind the shell boundary. */
-export function apply(ctx: Context, config: ShellConfig): Promise<void> {
+export function apply(ctx: Context, config: ShellConfigInput): Promise<void> {
   return shellApply(ctx, config)
 }

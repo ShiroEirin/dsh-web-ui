@@ -1,19 +1,16 @@
 area/skins:
   - changed-files:
       - any-glob-to-any-file:
-          - 'packages/skins/**'
-          - 'packages/dsh-skins/**'
+          - 'satellites/**'
+          - 'market-inputs.lock.json'
+          - 'scripts/market-fetch-inputs.mjs'
+          - 'scripts/market-verify-assets.mjs'
 
 area/market:
   - changed-files:
       - any-glob-to-any-file:
           - 'market/**'
           - 'packages/dsh-market/**'
-
-area/pet:
-  - changed-files:
-      - any-glob-to-any-file:
-          - 'packages/dsh-pet/**'
 
 area/i18n:
   - changed-files:
@@ -38,16 +35,9 @@ area/skills:
       - any-glob-to-any-file:
           - 'packages/dsh-skill-explorer/**'
 
-area/tools:
-  - changed-files:
-      - any-glob-to-any-file:
-          - 'packages/dsh-tool-describe-image/**'
-
 area/plugin:
   - changed-files:
       - any-glob-to-any-file:
-          - 'packages/dsh-community-plugins/**'
-          - 'packages/dsh-doctor/**'
           - 'packages/dsh-git-graph/**'
           - 'packages/dsh-liangshen/**'
           - 'packages/dsh-plugin-manager/**'

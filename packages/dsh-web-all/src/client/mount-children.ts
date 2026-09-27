@@ -14,9 +14,12 @@
  * payload already mounts through its own loader entry (profile-level direct
  * bundle rows) and is skipped here; the global mount registry shares
  * mountOnce's symbol so two module instances of the same package (npm copy
- * vs repository link) keep one verdict. Registry entries are deliberately
- * never unmarked — inlined children live for the page lifetime, and the
- * loader reloads the page on any plugin change.
+ * vs repository link) keep one verdict. The claims one mount adds are
+ * released when its fiber unloads: the loader replaces a rebuilt application
+ * entry IN PLACE (dsh-client-modules tears the old fiber down and re-applies
+ * the new code without reloading the page — only bootstrap entries force a
+ * page reload), so a successor that inherited a dead instance's claims would
+ * skip every child and leave the whole family dark until a manual reload.
  *
  * The boot payload's entries carry client-bundle package ids only (the host
  * graphRow wire shape: id/url/rev per served bundle). Patch row ids such as
@@ -60,7 +63,9 @@ function mountedRegistry(): Set<string> {
 }
 
 /** Same-origin row-state route served by the host shell (src/shell.ts). */
-const ROWS_ROUTE = '/api/dsh-web-all/rows'
+// DOCUMENT-RELATIVE (issue #1707): resolved against the served
+// `<base href="./">`, so the family gate works under a sub-path deployment.
+const ROWS_ROUTE = 'api/dsh-web-all/rows'
 
 /** Row-state fetch ceiling: a hung route must not delay the family UI. */
 const ROWS_TIMEOUT_MS = 1500
@@ -107,14 +112,27 @@ async function fetchActiveRows(): Promise<Set<string> | undefined> {
  * open, and per-child failures degrade alone.
  */
 export async function mountClientChildren(ctx: ClientContext): Promise<void> {
+  const registry = mountedRegistry()
+  // Claims this mount made, released when its fiber unloads. A rebuilt
+  // aggregate is replaced in place (see the module doc), and keeping the dead
+  // instance's claims would make the successor treat every child as already
+  // mounted. Registered before the first await so the effect lands inside the
+  // caller's apply phase, and scoped to the names THIS call added so a
+  // sibling instance's claims survive.
+  const claimed = new Set<string>()
+  ctx.effect(() => () => {
+    for (const name of claimed) registry.delete(name)
+    claimed.clear()
+  }, 'dsh-web-all: client child mount claims')
+
   const active = await fetchActiveRows()
   const own = ownClientEntryIds()
-  const registry = mountedRegistry()
   for (const child of clientChildren) {
     if (active !== undefined && !active.has(child.name)) continue
     if (own.has(child.name)) continue
     if (registry.has(child.name)) continue
     registry.add(child.name)
+    claimed.add(child.name)
     const mod = child.module as { apply?: unknown; default?: unknown; inject?: readonly string[] }
     const face = (mod.default ?? mod) as { apply?: unknown; inject?: readonly string[] }
     const apply = typeof face === 'function' ? face : face.apply

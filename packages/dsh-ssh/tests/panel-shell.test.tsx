@@ -8,24 +8,21 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mountPanel } from '../src/client/mount.tsx'
 import { SshPanel } from '../src/client/panel/SshPanel.tsx'
 import type { SshApi } from '../src/client/api.ts'
-import type { PanelController } from '../src/client/panel/controller.ts'
+import { PanelController } from '../src/client/panel/controller.ts'
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const roots: Root[] = []
-let disposeMount: (() => void) | undefined
 
 afterEach(() => {
-  disposeMount?.()
-  disposeMount = undefined
   for (const root of roots.splice(0)) {
     act(() => { root.unmount() })
   }
   document.body.replaceChildren()
   document.documentElement.removeAttribute('data-dsh-ssh-active')
+  vi.useRealTimers()
 })
 
 function fakeApi(): SshApi {
@@ -34,12 +31,9 @@ function fakeApi(): SshApi {
   } as unknown as SshApi
 }
 
+/** The real controller: the panel reads its tab and session state from it. */
 function fakeController(): PanelController {
-  return {
-    getSnapshot: () => ({ panelOpen: false }),
-    subscribe: () => () => {},
-    close: () => {},
-  } as unknown as PanelController
+  return new PanelController()
 }
 
 describe('SshPanel L2 semantic attributes (#506)', () => {
@@ -90,19 +84,5 @@ describe('SshPanel L2 semantic attributes (#506)', () => {
     const back = container.querySelector('[data-dsh-center-view-back=""]')
     expect(back).not.toBeNull()
     expect(back?.tagName).toBe('BUTTON')
-  })
-})
-
-describe('mountPanel L2 semantic attributes (#506)', () => {
-  it('tags the injected panel container with data-dsh-plugin', async () => {
-    const column = document.createElement('div')
-    column.setAttribute('data-pane', 'conversation')
-    document.body.appendChild(column)
-
-    await act(async () => { disposeMount = mountPanel(fakeController(), fakeApi()) })
-
-    const view = column.querySelector('[data-dsh-ssh-view]')
-    expect(view).not.toBeNull()
-    expect(view!.getAttribute('data-dsh-plugin')).toBe('ssh')
   })
 })

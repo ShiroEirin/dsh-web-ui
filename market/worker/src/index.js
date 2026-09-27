@@ -6,7 +6,8 @@
  * described by /openapi.json and documented at /api-docs.html.
  */
 
-import { handleTelemetryPost, handleTelemetrySummary, handleTelemetryUsersBadge, pruneOldEvents, refreshBadgeCache, refreshSummaryCache } from './telemetry.js'
+import { handleTelemetryPost, handleTelemetrySummary, handleTelemetryUsersBadge, pruneOldEvents, refreshBadgeCache, refreshDailyRollups, refreshSummaryCache } from './telemetry.js'
+import { handleAssetAttest } from './asset-attest.js'
 import { readJsonCapped } from './body.js'
 import { isKnownAsset } from './asset-allowlist.js'
 import { handleNpmBadge, handleNpmDownloads } from './npm-badge.js'
@@ -262,13 +263,19 @@ async function mutateLike(env, kind, assetId, hash, unlike) {
 }
 
 export default {
-  /** Cron trigger: recompute the public badge counts, refresh the summary
-   * rollup cache the dashboard reads, and prune expired telemetry events
+  /** Cron trigger: recompute the public badge counts, roll the finished UTC
+   * days up (and backfill the days a fresh deployment still owes), refresh the
+   * summary cache the dashboard reads, and prune expired telemetry
    * (wrangler.jsonc triggers.crons). */
   async scheduled(controller, env) {
     try {
       await refreshBadgeCache(env)
     } catch { /* best-effort; the badge serves the last computed row */ }
+    // Before the pre-warm: the summary reads only the rollup tables, and a
+    // tick that spends its budget backfilling simply keeps the previous cache.
+    try {
+      await refreshDailyRollups(env)
+    } catch { /* best-effort; the rollup cursor makes the next tick resume */ }
     try {
       await refreshSummaryCache(env)
     } catch { /* best-effort; stale rows keep serving until the next tick */ }
@@ -308,6 +315,7 @@ export default {
 
     if (request.method === 'OPTIONS' && (path === '/api/like' || path === '/api/install' || path === '/api/stats' || path === '/api/telemetry/event')) return preflight(request)
     if (path === '/api/health') return json({ ok: true })
+    if (path === '/api/asset-attest') return handleAssetAttest(request, env, json)
     if (path === '/api/npm-badge/downloads' && request.method === 'GET') return handleNpmBadge('downloads', json)
     if (path === '/api/npm-badge/version' && request.method === 'GET') return handleNpmBadge('version', json)
     if (path === '/api/npm-badge/total' && request.method === 'GET') return handleNpmBadge('total', json, env)

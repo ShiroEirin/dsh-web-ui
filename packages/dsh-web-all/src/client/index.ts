@@ -16,6 +16,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { mountClientChildren } from './mount-children.ts'
+import { subscribeBodyInvalidations } from './body-mutations.ts'
 
 /** Column shims: element selector → attribute to stamp. */
 const COLUMN_SHIMS: ReadonlyArray<readonly [selector: string, attribute: string]> = [
@@ -27,14 +28,58 @@ const COLUMN_SHIMS: ReadonlyArray<readonly [selector: string, attribute: string]
 /** Stable hooks consumed by the responsive compat layer (never text/hash selectors). */
 export const RESPONSIVE_CSS = `
 [data-dsh-frame] { min-height: 0; }
+/* Viewport lock for installs with no active visual. The identical lock lives in
+   the skin-center shell-rendering stylesheet, but that stylesheet is inert
+   unless a catalog skin, custom theme or wallpaper is active, so a stock
+   install keeps html/body at their inherited "overflow: visible". Every
+   conversation disclosure control (the tool/step-process collapse bar carrying
+   the step summary, and the whole-turn process bar) calls focus() on itself
+   when toggled; a focused element below any document overflow scrolls the page
+   down by that overflow, which reads as the page being stretched downward with
+   the titlebar and sidebar top pushed out of the viewport: issue #1135's
+   symptom, reachable here with no skin active. Locking only the scrolling root
+   (never the app root element, whose own lock clipped content in
+   #1222/#1225) removes the overflow scroll target without touching the frame's
+   box in any state. Scoped through :has() so the rule stays inert until the
+   shell frame exists. */
+html:has([data-dsh-frame]),
+html:has([data-dsh-frame]) > body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+/* macOS window-drag guard. The official base stylesheet turns every DIRECT body
+   child into a "-webkit-app-region: no-drag" region (its selector spares only
+   the app's own root element), so a body-level element that spans the viewport
+   subtracts the whole window from the macOS draggable region and cancels the
+   official [data-window-drag] chrome rows with it: the window
+   can no longer be dragged by its title area, and macOS no longer runs the
+   system double-click action (zoom to fit the screen) there. "pointer-events:
+   none" does not exempt an element from that computation - only a declaration
+   of its own does. Family decorations are exactly such elements: the skin
+   center mounts its six fixed decoration layers and the backdrop-blur veil as
+   full-viewport body children and declares them non-interactive (aria-hidden,
+   pointer-events: none; decoration must never eat clicks). The "initial"
+   keyword is the initial value ("none"), which leaves the element and its whole
+   subtree out of the app-region computation; the declaration must be !important
+   because the official selector outranks this one. */
+html[data-platform="darwin"] body > :is(
+  [data-dsh-skin-layer],
+  [data-dsh-boot-splash],
+  [aria-hidden="true"]
+) {
+  -webkit-app-region: initial !important;
+}
 [data-dsh-frame] [data-dsh-responsive-part="composer"],
 [data-dsh-frame] [data-dsh-responsive-part="sidebar-toggle"],
   [data-dsh-frame] [data-dsh-responsive-part="menu"] { touch-action: manipulation; }
 @media (max-width: 768px) {
   [data-dsh-frame] [data-dsh-responsive-part="sidebar-toggle"] { min-width: 44px; min-height: 44px; }
   [data-dsh-frame] {
+    box-sizing: border-box;
     height: 100dvh;
     min-height: 100dvh;
+    max-height: 100dvh;
     grid-template-columns: minmax(0, 1fr) !important;
     grid-template-rows: 100%;
     padding-bottom: env(safe-area-inset-bottom);
@@ -74,6 +119,14 @@ export const RESPONSIVE_CSS = `
   [data-dsh-frame][data-sidebar-collapsed] [data-pane="sidebar"] [data-dsh-responsive-part="sidebar-toggle"] {
     pointer-events: auto;
     display: inline-flex !important;
+  }
+  /* The official settings dialog renders inside the sidebar foot, so collapsing
+     the rail would both hide it (the rule above) and freeze it (a collapsed pane
+     sets pointer-events: none). Restore only the subtree that actually carries an
+     open dialog; with no dialog open the collapsed rail is unchanged (issue #1510). */
+  [data-dsh-frame][data-sidebar-collapsed] [data-pane="sidebar"] > [data-slot="sidebar"] > :first-child > :not(:first-child):has([role="dialog"], [aria-modal="true"]) {
+    display: flex !important;
+    pointer-events: auto;
   }
   /* Center-view plugins own this marker; the aggregate shell owns its mobile offset. */
   [data-dsh-frame][data-sidebar-collapsed] [data-dsh-center-view-back] {
@@ -289,7 +342,7 @@ function installMobileSidebarDismiss(frame: HTMLElement): () => void {
     if (!(target instanceof Element)) return
     if (typeof window.matchMedia !== 'function' || !window.matchMedia('(max-width: 768px)').matches) return
     const sidebar = frame.querySelector<HTMLElement>('[data-pane="sidebar"]')
-  const toggle = frame.querySelector<HTMLElement>('[data-dsh-responsive-part="sidebar-toggle"]')
+    const toggle = frame.querySelector<HTMLElement>('[data-dsh-responsive-part="sidebar-toggle"]')
     if (!frame.hasAttribute('data-sidebar-collapsed') && sidebar !== null && !sidebar.contains(target)) {
       event.preventDefault()
       event.stopPropagation()
@@ -297,7 +350,19 @@ function installMobileSidebarDismiss(frame: HTMLElement): () => void {
       return
     }
     if (target.closest('[data-dsh-responsive-part="sidebar-toggle"]') !== null) return
-    if (target.closest('[data-dsh-part="sidebar-entry"], [role="treeitem"]') === null) return
+    // A group row toggles its own aria-expanded in place, so folding the drawer
+    // on that tap hides the rows it just revealed; its menu trigger opens a
+    // menu the fold would discard (issue #1716). The group row's trailing
+    // new-session button navigates away and keeps the fold, matching the
+    // remote package's own workspace-row rule.
+    const sessionRow = target.closest('[class*="sessionRow"]')
+    if (sessionRow === null && target.closest('[class*="projectRow"]') !== null) {
+      const actions = target.closest('[class*="rowActions"]')
+      if (actions === null) return
+      const buttons = actions.querySelectorAll('button')
+      if (target.closest('button') !== buttons[buttons.length - 1]) return
+    }
+    if (sessionRow === null && target.closest('[data-dsh-part="sidebar-entry"]') === null && target.closest('[role="treeitem"]') === null) return
     if (raf !== 0) cancelAnimationFrame(raf)
     raf = requestAnimationFrame(() => {
       raf = 0
@@ -335,27 +400,6 @@ function applyShims(): boolean {
   if (frame !== null) changed = stampSemanticParts(frame) || changed
   return changed
 }
-
-/**
- * Coalesce mutation bursts into one pass per frame. React renders burst
- * dozens of subtree mutations per commit; stamping on every single mutation
- * callback turned each render into many querySelector sweeps. A scheduled
- * rAF plus a done flag folds the whole burst into a single pass, and the
- * idempotence check stops the work entirely once every attribute is set.
- */
-function schedulePass(): void {
-  if (shimScheduled) return
-  shimScheduled = true
-  requestAnimationFrame(() => {
-    shimScheduled = false
-    applyShims()
-    shimAfterPass?.()
-  })
-}
-
-/** True while a coalesced pass is pending. */
-let shimScheduled = false
-let shimAfterPass: (() => void) | undefined
 
 function installBootShield(): { dismiss: () => void; remove: () => void } {
   if (typeof document === 'undefined') return { dismiss: () => {}, remove: () => {} }
@@ -408,35 +452,36 @@ export function apply(ctx: Context): void {
     applyShims()
     let removeMobileDismiss = (): void => {}
     let dismissFrame: HTMLElement | null = null
+    let resolvedFrame: HTMLElement | null = null
     const ensureMobileDismiss = (): void => {
-      const frame = document.querySelector<HTMLElement>('[data-dsh-frame]')
-      if (frame !== null) {
-        bootShield.dismiss()
-      }
-      if (frame === null || frame === dismissFrame) return
+      // The frame element is stable for the page lifetime; re-query only when
+      // the cached one is gone. A document.querySelector per mutation batch
+      // was paid for every streaming commit even though the answer never
+      // changed.
+      if (resolvedFrame !== null && !resolvedFrame.isConnected) resolvedFrame = null
+      const frame = resolvedFrame ?? document.querySelector<HTMLElement>('[data-dsh-frame]')
+      resolvedFrame = frame
+      if (frame === null) return
+      bootShield.dismiss()
+      if (frame === dismissFrame) return
       removeMobileDismiss()
       removeMobileDismiss = installMobileSidebarDismiss(frame)
       dismissFrame = frame
     }
     ensureMobileDismiss()
-    shimAfterPass = ensureMobileDismiss
     // The shell renders after boot settlement and React can re-create the
-    // columns on re-render; re-stamp on any DOM mutation. The callback only
-    // schedules a coalesced pass — mutations never run the sweep inline, and
-    // the pass short-circuits once every attribute is in place. Writes only
-    // the same attribute values, so this never fights React.
-    const observer = new MutationObserver(() => {
-      schedulePass()
+    // columns on re-render. The hub already coalesces callbacks per frame;
+    // scheduling another frame here would delay hooks and leave work alive
+    // after this effect is disposed. Attribute writes remain idempotent.
+    const unsubscribeBody = subscribeBodyInvalidations(() => {
+      applyShims()
       ensureMobileDismiss()
     })
-    observer.observe(document.body, { childList: true, subtree: true })
     return () => {
-      observer.disconnect()
+      unsubscribeBody()
       bootShield.remove()
       responsiveStyle.remove()
       removeMobileDismiss()
-      shimAfterPass = undefined
-      shimScheduled = false
     }
   })
 }

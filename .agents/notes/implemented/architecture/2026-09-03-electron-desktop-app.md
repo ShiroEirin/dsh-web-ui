@@ -4,6 +4,8 @@ Status: implemented
 
 Superseded in part (2026-09-03, see [desktop separate host on reserved-port-free range](../bug-fix/2026-09-03-desktop-separate-host-reserved-ports.md)): the handoff-on-3080 design and the unqualified free-port pick are gone — the app now always spawns its own host on a dedicated range that never takes 3080/3081.
 
+Superseded (2026-09-24, see [remove the repository's Electron desktop app](../simplification/2026-09-24-remove-electron-desktop-app.md)): the app and its packaging workflow were deleted; the desktop surface is the official DeepSeek Harness desktop client.
+
 ## Problem
 
 dsh-web ships as a plugin bundle that requires a working dsh installation: Node 22+, the npm-installed `@deepseek-ai/dsh` host, a seeded `~/.dsh`, and the web profile with the plugins installed. That is a developer toolchain, not something a non-technical user can be asked to set up. The [desktop-launcher plugin](../bug-fix/2026-08-29-desktop-launcher-browser-launch.md) only created a desktop shortcut that started an already-installed `dsh web` — it did not remove the environment requirement (the plugin has since been removed completely; see [its removal note](../simplification/2026-09-03-remove-dsh-desktop-launcher.md)). The goal is a desktop app anyone can install and double-click, with zero environment concerns.

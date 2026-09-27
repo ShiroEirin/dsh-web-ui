@@ -13,7 +13,7 @@
 - 预览工具改指向市场：`scripts/capture-previews` 渲染 `market/dist/preview.html` 并从 `market/dist/manifest.js` 取清单（本就是同一模拟器、同一皮肤预览契约）；`scripts/skins-montage.mjs` 改读市场清单生成 README 一览图。
 - 移除 gallery 301 维护：`scripts/deploy-market` 不再创建或更新 `gallery.dsh-market.com` 重定向规则集（`--skip-redirect` / `--redirect-only` 一并删除；脚本只剩 D1 + worker 部署）。
 - Cloudflare 侧清理（Pages 项目 `dsh-market-gallery`、`gallery.dsh-market.com` DNS 记录、zone 301 规则集）属于账号侧，仓库代码不再维护；由维护者在控制台删除。
-- `scripts/pr-review.mjs` 删除画廊页截图与 gallery 注册适配检查；皮肤 PR 检查改为 `checkSkinPreviews`（新皮肤必须提交 `preview/{light,dark}.jpg`），并修复预览图复制路径为 `packages/skins/skin-center/skins/<id>/preview/<mode>.jpg`（原指向迁移前的旧路径且扩展名已过期）。
+- `scripts/pr-review.mjs` 删除画廊页截图与 gallery 注册适配检查，并不再带皮肤 PR 检查：皮肤在 dsh-skins 仓提交与把关，该工具只看本仓接收的改动。
 - 皮肤 README 双语与皮肤开发者技能改为指引 `pnpm market:build` + `open market/dist/preview.html?...`；改动过的皮肤均已 `docs:write-pair` 重新记录配对。
 
 ## 备选方案

@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Superseded (2026-09-24, see [remove the repository's Electron desktop app](../simplification/2026-09-24-remove-electron-desktop-app.md)): the `desktop-windows` lane and the `pnpm test:desktop` step were deleted with the desktop payload.
+
 ## Problem
 
 Nothing in CI executed anything on Windows: the main lane runs on ubuntu, and the desktop release job cross-builds the Windows installers on macOS, where the win payload can only be presence-checked ("it cannot execute on macOS"). The win32 semantics the desktop helpers encode (Path/PATH case normalization, NTFS junctions, Windows tmpdir layouts) and the payload's real boot path had no automated evidence; Windows compatibility relied on manual runs.

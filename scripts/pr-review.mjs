@@ -16,16 +16,13 @@
  *   --repo owner/repo      目标仓库（默认从 git remote 推断）
  *   --include-draft        包含 draft PR（默认跳过）
  *   --skip-build           跳过 worktree 构建验证（只做静态检查）
- *   --workdir <path>       worktree 工作区根目录（默认 ~/remote-e2e，e2e 验证同区）
+ *   --workdir <path>       worktree 工作区根目录（默认 ~/remote-e2e）
  *   --cleanup              清理工作区全部 worktree 与遗留 refs 后退出
  *
- * worktree 建在 ~/remote-e2e/pr-<N>（同 head 复用，跑完保留便于排查），
- * e2e 验证产物同区存放；定期用 --cleanup 或手动 rm -rf ~/remote-e2e 清理
- * （工具启动时会自动 prune 已失效的 worktree 记录）。
+ * worktree 建在 ~/remote-e2e/pr-<N>（同 head 复用，跑完保留便于排查）；
+ * 定期用 --cleanup 或手动 rm -rf ~/remote-e2e 清理（工具启动时会自动
+ * prune 已失效的 worktree 记录）。
  *
- * 皮肤 PR 额外：生成亮/暗预览截图（~/remote-e2e/e2e-<pr>/previews/），
- * 像素指标自动判定过曝（太闪）与对比度不足（看不清），截图供视觉模型复核；
- * 提醒作者声明贡献者版权，并检查新皮肤是否提供 preview/{light,dark}.jpg 预览图。
  *   --concurrency N        并行审核数（默认 2）
  *   --max-added N          新增行上限，超过即拒绝（默认 10000）
  *   --max-deleted N        删除行上限，超过即拒绝（默认 10000）
@@ -51,7 +48,7 @@
  */
 
 import { spawnSync } from "node:child_process"
-import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, rmSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -65,7 +62,7 @@ export const DEFAULT_MAX_DELETED = 10000
 export const DEFAULT_MAX_FILE_BYTES = 1024 * 1024
 export const DEFAULT_CONCURRENCY = 2
 
-/** worktree 与 e2e 验证工作区根目录（定期用 --cleanup 清理）。 */
+/** worktree 工作区根目录（定期用 --cleanup 清理）。 */
 export const DEFAULT_WORKTREE_ROOT = join(homedir(), `remote-e2e`)
 
 /** 与 ci.yml 的 emoji 检查完全一致的码点范围（U+1F000-1FAFF / 2600-27BF / 2B00-2BFF / 区域指示符 / FE0F / ZWJ）。 */
@@ -140,13 +137,13 @@ const TEST_PATH_RE = /(^|\/)(test|tests|__tests__|fixtures?)(\/|$)|(\.test|\.spe
 const BUILD_STEPS = [
   [`install`, `pnpm`, [`install`, `--frozen-lockfile`, `--ignore-scripts`], 20 * 60 * 1000],
   [`typecheck`, `pnpm`, [`typecheck`], 10 * 60 * 1000],
-  [`skin-center:check`, `pnpm`, [`skin-center:check`], 10 * 60 * 1000],
-  [`community:check`, `pnpm`, [`community:check`], 10 * 60 * 1000],
   [`build`, `pnpm`, [`build`], 20 * 60 * 1000],
   [`test`, `pnpm`, [`test`], 15 * 60 * 1000],
   [`test:scripts`, `pnpm`, [`test:scripts`], 10 * 60 * 1000],
+  [`test:standards`, `pnpm`, [`test:standards`], 5 * 60 * 1000],
   [`aggregate:check`, `pnpm`, [`aggregate:check`], 10 * 60 * 1000],
   [`docs:check`, `pnpm`, [`docs:check`], 10 * 60 * 1000],
+  [`i18n:check`, `pnpm`, [`i18n:check`], 5 * 60 * 1000],
 ]
 
 // ---------------------------------------------------------------- 纯函数（可测）
@@ -304,66 +301,6 @@ export function checkLockfile(changes) {
   }))
 }
 
-/** 皮肤变更识别：返回 { isSkin, skinIds }。仅源码类变更触发（README/preview/文档不算）。
-    v2 布局（issue #506）：皮肤事实源是 skin-center 包内的资产目录。 */
-export function checkSkinChanges(changes) {
-  const ids = new Set()
-  const SKIP_RE = /(README(\.zh)?\.md|README\.i18n\.yaml|preview\/|^docs\/)/i
-  for (const c of changes) {
-    if (SKIP_RE.test(c.path)) continue
-    const m = c.path.match(/^packages\/skins\/skin-center\/skins\/([^/]+)\//)
-    if (m) ids.add(m[1])
-  }
-  return { isSkin: ids.size > 0, skinIds: [...ids] }
-}
-
-/** 皮肤 PR 版权提醒：外部贡献者未在模板「贡献者版权声明」节声明时提示（warn）。 */
-export function checkCopyright(prInfo, isSkin, repoOwner) {
-  if (!isSkin) return []
-  const isRepoOwner = prInfo.author && prInfo.author.login === repoOwner
-  if (isRepoOwner) return []
-  const section = readSection(prInfo.body || ``, `贡献者版权声明（Contributor Copyright）`)
-  if (section && section.trim()) return []
-  return [{
-    severity: `warn`, rule: `copyright`,
-    message: `皮肤 PR 请提醒作者在 PR 模板「贡献者版权声明（Contributor Copyright）」节声明贡献者版权（在 README 版权表追加一行）`,
-  }]
-}
-/** 新皮肤市场预览检查：缺 preview/{light,dark}.jpg 即警告（市场清单由 market-build 自动派生，无需手改产物）。 */
-export function checkSkinPreviews(changes, skinIds) {
-  if (!skinIds.length) return []
-  const findings = []
-  for (const id of skinIds) {
-    const isNew = changes.some((c) => c.status === `A` &&
-      c.path.startsWith(`packages/skins/skin-center/skins/` + id + `/`))
-    if (!isNew) continue
-    for (const mode of [`light`, `dark`]) {
-      const hasPreview = changes.some((c) =>
-        c.path === `packages/skins/skin-center/skins/` + id + `/preview/` + mode + `.jpg`)
-      if (!hasPreview) {
-        findings.push({ severity: `warn`, rule: `preview`, message: `新皮肤 ` + id + ` 未提供 ` + mode + ` 预览图：请运行 node scripts/capture-previews ` + id + ` 并提交 preview/` + mode + `.jpg` })
-      }
-    }
-  }
-  return findings
-}
-/** 视觉指标阈值判定：过曝（太闪）/ 对比度不足（看不清）。返回 warn findings。 */
-export function judgeVisualMetrics(metrics) {
-  const findings = []
-  for (const m of metrics || []) {
-    const name = m.file || `?`
-    if (m.avgLuma > 215) {
-      findings.push({ severity: `warn`, rule: `visual`, message: name + ` 亮度过高（avgLuma ` + m.avgLuma + `），可能太闪` })
-    }
-    if (m.hiPct > 40) {
-      findings.push({ severity: `warn`, rule: `visual`, message: name + ` 有 ` + m.hiPct + `% 像素接近纯白，可能过曝` })
-    }
-    if (m.stdLuma < 20) {
-      findings.push({ severity: `warn`, rule: `visual`, message: name + ` 对比度过低（std ` + m.stdLuma + `），可能看不清` })
-    }
-  }
-  return findings
-}
 /** 提取 PR body 中某个 ## 小节的内容（去除 HTML 注释）。 */
 export function readSection(body, label) {
   const escaped = label.replace(/[.*+?^${{}()|[\]\\]/g, `\\$&`)
@@ -698,7 +635,6 @@ export function collectPrDiff(repoRoot, prInfo, maxAdded = DEFAULT_MAX_ADDED, ma
 /** 静态审核：纯数据 -> findings。规模超限直接拒绝，不做内容扫描与模板检查。 */
 export function staticReview(prInfo, diff, opts, repoOwner) {
   const sizeFindings = checkSize(diff.stat, opts.maxAdded, opts.maxDeleted)
-  const skin = checkSkinChanges(diff.allChanges)
   if (sizeFindings.some((f) => f.severity === `reject`)) {
     return [...sizeFindings, ...checkForbiddenFiles(diff.addedFiles, diff.sizes, opts.maxFileBytes)]
   }
@@ -713,8 +649,6 @@ export function staticReview(prInfo, diff, opts, repoOwner) {
     ...checkLockfile(diff.allChanges),
     ...checkTemplate(prInfo, repoOwner),
     ...checkCommits(prInfo.commits),
-    ...checkCopyright(prInfo, skin.isSkin, repoOwner),
-    ...checkSkinPreviews(diff.allChanges, skin.skinIds),
   ]
 }
 
@@ -763,91 +697,6 @@ export function buildVerify(repoRoot, number, headRef, worktreeRoot) {
   return results
 }
 
-/** 皮肤视觉验证：在已构建的 worktree 里生成预览截图并复制到 e2e 工作区。 */
-export function skinVisualVerify(repoRoot, number, skinIds, worktreeRoot, workdir) {
-  const outDir = join(worktreeRoot, `e2e-` + number, `previews`)
-  mkdirSync(outDir, { recursive: true })
-  const previews = []
-  try {
-    const res = run(`node`, [`scripts/capture-previews`, ...skinIds], { cwd: workdir, timeout: 10 * 60 * 1000, maxBuffer: 64 * 1024 * 1024 })
-    if (res.status !== 0) {
-      return { error: `预览截图失败: ` + res.stderr.trim().split(`\n`).slice(-3).join(` `), previews }
-    }
-    for (const id of skinIds) {
-      for (const mode of [`light`, `dark`]) {
-        const src = join(workdir, `packages`, `skins`, `skin-center`, `skins`, id, `preview`, mode + `.jpg`)
-        if (existsSync(src)) {
-          const dst = join(outDir, id + `-` + mode + `.png`)
-          copyFileSync(src, dst)
-          previews.push(dst)
-        }
-      }
-    }
-    if (!previews.length) return { error: `未找到预览截图（确认皮肤包已构建且含 lib/client.js）`, previews }
-    // 像素指标分析：亮度（太闪）/ 对比度（看不清），结果写 metrics.json
-    const metrics = analyzePixels(workdir, previews)
-    writeFileSync(join(outDir, `metrics.json`), JSON.stringify(metrics, null, 2))
-    return { previews, metrics, findings: judgeVisualMetrics(metrics) }
-  } catch (e) {
-    return { error: String(e.message), previews }
-  }
-}
-
-/** 用 playwright 在页面里解码截图并统计亮度/对比度/饱和度指标。 */
-function analyzePixels(workdir, previews) {
-  const script = [
-    "const { chromium } = require('playwright');",
-    "const fs = require('fs');",
-    "(async () => {",
-    "  const b = await chromium.launch()",
-    "  const page = await b.newPage()",
-    "  await page.setContent('<html><body><img id=\"i\" style=\"display:none\"></body></html>')",
-    "  const results = []",
-    "  for (const p of process.argv.slice(2)) {",
-    "    const b64 = fs.readFileSync(p).toString('base64')",
-    "    const r = await page.evaluate(async (src) => {",
-    "      const img = document.getElementById('i')",
-    "      img.src = src",
-    "      await img.decode().catch(() => {})",
-    "      const c = document.createElement('canvas')",
-    "      c.width = img.naturalWidth || 1; c.height = img.naturalHeight || 1",
-    "      const ctx = c.getContext('2d')",
-    "      ctx.drawImage(img, 0, 0)",
-    "      let data",
-    "      try { data = ctx.getImageData(0, 0, c.width, c.height).data } catch (e) { return { error: String(e).slice(0, 120) } }",
-    "      let sum = 0, sumsq = 0, hi = 0, lo = 0, satSum = 0",
-    "      const n = data.length / 4",
-    "      for (let i = 0; i < data.length; i += 4) {",
-    "        const rr = data[i], g = data[i + 1], bl = data[i + 2]",
-    "        const y = 0.299 * rr + 0.587 * g + 0.114 * bl",
-    "        sum += y; sumsq += y * y",
-    "        if (y > 235) hi++",
-    "        if (y < 20) lo++",
-    "        const mx = Math.max(rr, g, bl), mn = Math.min(rr, g, bl)",
-    "        satSum += mx === 0 ? 0 : (mx - mn) / mx",
-    "      }",
-    "      const avg = sum / n",
-    "      return { w: c.width, h: c.height, avgLuma: Math.round(avg * 10) / 10, stdLuma: Math.round(Math.sqrt(sumsq / n - avg * avg) * 10) / 10, hiPct: Math.round(hi / n * 1000) / 10, loPct: Math.round(lo / n * 1000) / 10, satAvg: Math.round(satSum / n * 1000) / 10 }",
-    "    }, 'data:image/png;base64,' + b64)",
-    "    results.push({ file: p.split('/').pop(), ...r })",
-    "  }",
-    "  console.log('PIXRESULT' + JSON.stringify(results))",
-    "  await b.close()",
-    "})()",
-  ].join(`\n`)
-  try {
-    const shotFile = join(workdir, `.pr-review-pixel-shot.cjs`)
-    writeFileSync(shotFile, script)
-    try {
-      const res = run(`node`, [shotFile, ...previews], { cwd: workdir, timeout: 180 * 1000, maxBuffer: 16 * 1024 * 1024 })
-      const m = res.stdout.match(/PIXRESULT(\[.*\])/)
-      if (m) return JSON.parse(m[1])
-    } finally {
-      rmSync(shotFile, { force: true })
-    }
-  } catch { /* 指标分析失败不阻塞 */ }
-  return []
-}
 /** 清理工作区：移除其下全部 worktree、删除目录与遗留 refs。返回移除数。 */
 export function cleanupWorktrees(repoRoot, worktreeRoot) {
   const removed = []
@@ -897,7 +746,7 @@ const HELP = `用法: node scripts/pr-review.mjs [选项] [PR编号...]
   --repo owner/repo         目标仓库（默认从 git remote 推断）
   --include-draft           包含 draft PR（默认跳过）
   --skip-build              跳过 worktree 构建验证（只做静态检查）
-  --workdir <path>          worktree 工作区根目录（默认 ~/remote-e2e，e2e 验证同区）
+  --workdir <path>          worktree 工作区根目录（默认 ~/remote-e2e）
   --cleanup                 清理工作区全部 worktree 后退出（定期清理用）
   --concurrency N           并行审核数（默认 2）
   --max-added N             新增行上限，超过即拒绝（默认 10000）
@@ -943,12 +792,6 @@ async function reviewPr(number, prInfo, ctx) {
         ? { failures: [] }
         : buildVerify(repoRoot, number, headRef, opts.worktreeRoot || DEFAULT_WORKTREE_ROOT)
     }
-    const skin = checkSkinChanges(diff.allChanges)
-    let visual = null
-    if (skin.isSkin && buildResult && buildResult.workdir) {
-      visual = skinVisualVerify(repoRoot, number, skin.skinIds, worktreeRoot, buildResult.workdir)
-      if (visual && visual.findings) findings.push(...visual.findings)
-    }
     const verdict = finalVerdict(findings, buildResult)
     const result = {
       number, title: prInfo.title, url: prInfo.url,
@@ -964,7 +807,6 @@ async function reviewPr(number, prInfo, ctx) {
       },
       findings,
       build: buildResult ? { failures: buildResult.failures, workdir: buildResult.workdir || null, skipped: opts.skipBuild, reused: buildResult.reused || false } : null,
-      visual,
     }
     if (verdict === `FAIL`) result.reason = `构建门禁失败: ` + buildResult.failures.join(`, `)
     return result
@@ -1006,18 +848,6 @@ function formatHuman(results, opts) {
       lines.push(c(`32`, `  [通过] worktree 构建与全部门禁通过`))
     }
     if (r.build && r.build.workdir && !r.build.skipped) lines.push(`  worktree: ` + r.build.workdir + (r.build.reused ? `（复用）` : ``))
-    if (r.visual && r.visual.previews.length) {
-      lines.push(`  [视觉] 皮肤预览截图 ` + r.visual.previews.length + ` 张（light/dark），像素指标与截图见 ` + (r.visual.metrics ? `metrics.json` : ``))
-      if (r.visual.metrics && r.visual.metrics.length) {
-        for (const m of r.visual.metrics) {
-          lines.push(`         ` + m.file + `  avg=` + m.avgLuma + `  std=` + m.stdLuma + `  过曝=` + m.hiPct + `%  饱和度=` + m.satAvg)
-        }
-      }
-      for (const p of r.visual.previews) lines.push(`         ` + p)
-    }
-    if (r.visual && r.visual.error) {
-      lines.push(c(`33`, `  [视觉] ` + r.visual.error))
-    }
     lines.push(``)
   }
   const summary = results.map((r) => {

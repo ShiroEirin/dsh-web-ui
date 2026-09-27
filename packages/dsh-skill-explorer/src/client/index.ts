@@ -1,11 +1,12 @@
 /**
- * Browser-half entry for the skill-explorer plugin — runs inside the dsh web GUI.
+ * Browser-half entry for the dsh-skill-explorer plugin — runs inside the dsh web GUI.
  *
- * Registers the skill-explorer locale dictionaries and mounts the two DOM
- * surfaces: the sidebar entry row (toggles the panel) and the skill center
- * overlay panel. Failure policy: DOM mounting problems are logged, never
- * thrown — the web shell fails the whole boot when a plugin apply throws, and
- * an external plugin must not take the GUI down.
+ * Registers the skill-explorer locale dictionaries and mounts the panel as a
+ * native center-column page: a row in the shell's own sidebar panel list and a
+ * keyed `main` page, both through the official slot seats. Failure policy:
+ * registration problems are logged, never thrown — the web shell fails the
+ * whole boot when a plugin apply throws, and an external plugin must not take
+ * the GUI down.
  *
  * Export discipline (packages/client rule): the /client surface carries what
  * cordis loading needs plus types only — all value exports stay internal.
@@ -18,10 +19,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the LocaleNamespaceMap merge table.
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { SkillApi } from './api.ts'
+import { PanelController, SKILL_EXPLORER_PANEL_ID } from './panel/controller.ts'
 import { setRuntimeTranslate } from './panel-helpers.ts'
 import { en, zh, type SkillExplorerKey } from './locales.ts'
-import { mountPanel } from './panel-mount.tsx'
-import { mountSidebarEntry } from './sidebar-entry.ts'
+import { registerSkillExplorerPanel } from './native-panel.tsx'
 import { reportDailyHeartbeat } from './telemetry.ts'
 
 /** Locale namespace this plugin owns. */
@@ -38,7 +39,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const inject = ['slots', 'locale']
 
 /** Type-only surface (export discipline: no value exports beyond the plugin contract). */
-export type { SkillPanelProps } from './SkillPanel.tsx'
+export type { SkillPanelProps } from './panel/SkillPanel.tsx'
 export type { SkillExplorerKey } from './locales.ts'
 export type { SkillApi } from './api.ts'
 
@@ -59,20 +60,43 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'skill-explorer: dictionaries')
 
-  // Wire the SDK translate seat into the module-level tt (sidebar row and
+  // Wire the SDK translate seat into the module-level tt (panel chrome and
   // other plain-DOM callers): reads the active locale at call time, so they
   // follow the Language setting without a reload.
   try { setRuntimeTranslate(ctx.locale.bind(NS)) } catch { /* locale missing: document-language fallback stays */ }
 
   const api = new SkillApi()
-  const panel = mountPanel(api, ctx.locale)
+  // Panel navigation belongs to the layout service: the panel asks it to
+  // select its own panel id (or the conversation) instead of taking over the
+  // center column at the DOM level. The lookup stays lazy so a selection
+  // issued before the service settles still lands once it does, and the face
+  // throws by contract before the layout root entry mounts, which the
+  // controller tolerates.
+  const controller = new PanelController({
+    panel: {
+      select: panelId => {
+        const layout = ctx.get('layout') as { selectPanel?: (id: string | null) => void } | undefined
+        layout?.selectPanel?.(panelId)
+      },
+    },
+  })
   const disposers: Array<() => void> = []
   try {
-    disposers.push(mountSidebarEntry(() => panel.toggle(), ctx.locale))
-    disposers.push(() => panel.dispose())
+    disposers.push(registerSkillExplorerPanel(ctx, controller, api))
+    // The layout's panel selection is reconciled back into the controller, so
+    // the panel follows the user clicking another panel row.
+    const layoutFace = ctx.get('layout') as { panelInfo?: { subscribe(listener: () => void): () => void; getSnapshot(): { activePanelId: unknown } } } | undefined
+    if (layoutFace?.panelInfo !== undefined) {
+      const sync = (): void => {
+        const active = layoutFace.panelInfo!.getSnapshot().activePanelId
+        controller.syncPanelSelection(active === SKILL_EXPLORER_PANEL_ID ? SKILL_EXPLORER_PANEL_ID : null)
+      }
+      sync()
+      disposers.push(layoutFace.panelInfo.subscribe(sync))
+    }
   } catch (error) {
-    // DOM failures degrade the panel, never the GUI.
-    console.warn('[skill-explorer] mount failed:', error)
+    // Registration failures degrade the panel, never the GUI.
+    console.warn('[skill-explorer] panel registration failed:', error)
   }
   ctx.effect(() => () => {
     for (const dispose of disposers.splice(0)) dispose()

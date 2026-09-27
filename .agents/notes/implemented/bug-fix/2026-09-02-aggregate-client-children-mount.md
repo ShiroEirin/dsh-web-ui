@@ -49,6 +49,22 @@ mirror of the host shell:
   session-archive on this machine) are skipped, and the shared
   `Symbol.for('dsh-web.mounted-plugins')` registry (the mountOnce symbol)
   keeps one verdict across module instances.
+- A mount's claims last exactly as long as its fiber: `mountClientChildren`
+  registers an effect that deletes the names it claimed when the aggregate's
+  fiber unloads, and only those names, so a sibling instance's claims survive.
+  This is what makes an in-place replacement recoverable — the loader replaces
+  a rebuilt application entry in place (fiber teardown plus re-apply, no page
+  reload; only bootstrap entries force a reload), and a successor that
+  inherited a dead instance's claims mounted nothing at all (2026-09-24
+  report: 使用统计, Web 插件, 创意工坊 and 已归档会话 gone from the settings
+  nav until the page was manually reloaded).
+- A family surface is fiber-owned, not document-owned. dsh-task-board binds
+  its DOM mounts (sidebar row and board container) and its settings-form
+  subscription through one `ctx.effect` that runs on fiber unload. The locale
+  dictionaries die in that same teardown, so a row that outlived its fiber
+  kept a live controller rendering raw dictionary keys (`entry.label`,
+  `board.title`, `board.showSubtasks`) while its usage and market siblings
+  disappeared outright.
 
 ## Consequences
 
@@ -61,6 +77,9 @@ mirror of the host shell:
   double-mounting their client halves.
 - Adding a family package with a client face requires only
   `node scripts/aggregate.mjs` + rebuild — the mount list regenerates.
+- An in-place bundle replacement now recovers instead of killing the family:
+  the old fiber's teardown releases its claims and disposes its DOM surfaces,
+  and the successor's apply mounts the children again into the same document.
 
 ## Verification
 
@@ -68,7 +87,19 @@ mirror of the host shell:
   settings nav restored (Web 插件 / 皮肤 / 宠物 / 创意工坊 / 使用统计 return
   beside Codex 订阅 / 侧边卡片 / 会话归档管理), the pet dock and task-board
   DOM fingerprints present, and no degraded console lines.
-- `packages/dsh-web-all` tests 19/19 including the new
-  `client-children-mount.spec.ts` (skip/guard/isolation semantics).
+- In-place replacement, measured on the running host (2026-09-24): touching
+  the aggregate bundle that still held the pre-fix artifact kills every family
+  surface in the open page (`entry.label` row, no usage foot card, and 使用统计 /
+  创意工坊 / Web 插件 / 已归档会话 gone from the settings nav); the same
+  treatment on the fixed artifact leaves one 任务看板 row, the usage foot card
+  and the complete settings nav in place, with no reload and no duplicates. The
+  one exception is that transition itself — a page whose predecessor was the
+  pre-fix bundle still needs one reload, because that dead instance never
+  released its claims.
+- `packages/dsh-web-all` tests 67/67 and
+  `@linxin666/dsh-client-ui-task-board` 553 passed / 1 skipped, including the
+  new cases (`client-children-mount.spec.ts`: claim release and re-mount;
+  `client-apply-teardown.spec.ts`: the DOM belongs to the fiber). Both fail
+  against the pre-fix sources.
 - Repository-wide `pnpm test` exit 0; `pnpm typecheck`, `pnpm i18n:check`,
   `pnpm docs:check`, `pnpm aggregate:check` all green.

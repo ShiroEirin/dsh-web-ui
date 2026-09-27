@@ -19,15 +19,14 @@ export const FAMILY_NAMESPACES = [
   'task-board',
   'remote-web-ui',
   'pet',
-  'describe-image',
   'skin-background',
   'skin-custom-theme',
   'skin-wallpaper',
   'community-plugins',
   'dsh-web-ui-market',
   'dsh-market',
+  'ui-market',
   'usage',
-  'doctor',
   'liangshen',
   'session-archive',
 ] as const
@@ -53,8 +52,6 @@ const NAMESPACE_ALIASES: Readonly<Record<string, string | null>> = {
   'skin-background': 'skin-background',
   'skin-custom-theme': 'skin-custom-theme',
   'skin-wallpaper': 'skin-wallpaper',
-  'describe-image': 'describe-image',
-  'dsh-tool-describe-image': 'describe-image',
   'community-plugins': 'community-plugins',
   'dsh-community-plugins': 'community-plugins',
   'dsh-client-ui-community-plugins': 'community-plugins',
@@ -62,11 +59,12 @@ const NAMESPACE_ALIASES: Readonly<Record<string, string | null>> = {
   dshmarket: 'dsh-market',
   'dsh-client-ui-market': 'dsh-web-ui-market',
   'dsh-web-ui-market': 'dsh-web-ui-market',
+  'ui-market': 'dsh-web-ui-market',
+  'web-ui-market': 'dsh-web-ui-market',
+  'dsh-workshop': 'dsh-web-ui-market',
   market: 'dsh-market',
   usage: 'usage',
   'dsh-usage': 'usage',
-  doctor: 'doctor',
-  'dsh-doctor': 'doctor',
   liangshen: 'liangshen',
   'dsh-liangshen': 'liangshen',
   'session-archive': 'session-archive',
@@ -82,8 +80,31 @@ const NAMESPACE_ALIASES: Readonly<Record<string, string | null>> = {
  * Resolve one user-configured allowlist entry to all matching settings namespaces.
  * Handles both the official dshmarket namespace ('dsh-market') and the family
  * aggregate namespace ('dsh-web-ui-market') interchangeably.
+ *
+ * An entry may also be spelled as a full npm name (the scoped package a family
+ * plugin installs as, or the aggregate's `@linxin666/dsh-web-all/<x>` subplugin
+ * row). Such an identity resolves through its bare package segment, because
+ * the profile row is the only place a package name still appears — the
+ * settings surface itself carries entry ids alone.
  */
 export function resolveNamespaceEntries(entry: string): string[] {
+  const direct = resolveDirectNamespaceEntries(entry)
+  if (direct.length > 0) return direct
+  const bare = bareIdentity(entry)
+  return bare === undefined ? [] : resolveDirectNamespaceEntries(bare)
+}
+
+/** The last path segment of an scoped npm name (`@scope/pkg` and `@scope/bundle/sub`). */
+function bareIdentity(entry: string): string | undefined {
+  const key = entry.trim()
+  if (!key.startsWith('@')) return undefined
+  const slash = key.lastIndexOf('/')
+  if (slash < 0 || slash === key.length - 1) return undefined
+  return key.slice(slash + 1)
+}
+
+/** Resolve one allowlist entry spelled exactly as the alias table or the family list spells it. */
+function resolveDirectNamespaceEntries(entry: string): string[] {
   const key = entry.trim()
   if (key === '') return []
   if (key === 'dsh-market' || key === 'market' || key === 'dsh-client-ui-market' || key === 'dsh-web-ui-market' || key === 'dshmarket') {

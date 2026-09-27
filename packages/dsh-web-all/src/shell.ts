@@ -17,12 +17,20 @@
  * normal scope chain, its lifecycle (config updates, disposal) tracks the
  * shell entry, and a later failure retracts only its own services.
  *
- * Config contract (written by scripts/aggregate.mjs):
- *   - id: web-ui-usage
- *     name: '@linxin666/dsh-web-all'
+ * Config contract (written by scripts/aggregate.mjs, then edited by the Host
+ * settings surface):
+ *   - id: web-ui-task-board
+ *     name: '@linxin666/dsh-web-all/task-board'
  *     config:
- *       plugin: '@linxin666/dsh-usage'
- *       (config: {...})   forwarded verbatim to the real plugin
+ *       plugin: '@linxin666/dsh-client-ui-task-board'
+ *       (the real plugin's own config fields, at the row config root)
+ *
+ * `plugin` is the shell's own key; every other key of the row config IS the
+ * real plugin's config, forwarded verbatim. The flattened shape is what makes
+ * the row configurable: the Host settings surface edits an entry's own Config
+ * schema, so the family plugin's fields must sit where a standalone install of
+ * that package keeps them — one shape whether a profile mounts the aggregate
+ * row or the package on its own. See {@link Config}.
  *
  * The aggregate's SELF row (web-ui-compat) mounts this package with NO
  * config: that is the compat shim's own mount (its host half is a no-op and
@@ -42,9 +50,10 @@
  * /api route; it only leaks active family package names, which the served
  * client bundle already reveals.
  */
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import z from '@deepseek-ai/schemastery'
 import { listDegraded, recordDegraded } from './degraded.ts'
 import { listActiveRows, recordActiveRow, removeActiveRow } from './rows.ts'
 import { shellState } from './state.ts'
@@ -52,11 +61,61 @@ import { shellState } from './state.ts'
 /** Required services: none — the shell must activate before anything else. */
 export const inject = [] as const
 
+/** The shell's own row-config key: the real plugin's module specifier. */
 export interface ShellConfig {
   /** Import specifier of the real plugin package, resolved from the profile root. */
-  plugin: string
-  /** Config forwarded verbatim to the real plugin. */
-  config?: unknown
+  readonly plugin?: string
+  /** The real plugin's own config fields, forwarded verbatim. */
+  readonly [field: string]: unknown
+}
+
+/**
+ * Row config as the Loader hands it to {@link apply}: a reference for a
+ * root-volatile schema (the schema below), or a plain object on a
+ * programmatic mount.
+ */
+export type ShellConfigInput = Volatile<ShellConfig> | ShellConfig | undefined
+
+/**
+ * The shell row's Config schema — deliberately shapeless.
+ *
+ * The shell mounts the real plugin, so the row config IS that plugin's config,
+ * and the Host serves a settings form and accepts writes only for an entry
+ * whose own Config schema declares the edited fields as volatile. The shell
+ * cannot declare those fields: it would have to import the family module to
+ * learn its schema, and importing it eagerly is the failure mode this shell
+ * exists to contain. Two properties of this stand-in make the real fields
+ * editable anyway:
+ *
+ * - `any` (not an object) keeps them at the form root: an object schema
+ *   projects only its own declared keys, and every family card would read
+ *   empty values.
+ * - `.volatile()` is what puts the entry on the settings surface at all
+ *   (`SettingsForms.describe` skips an entry with no volatile field) and what
+ *   admits a write to any path. It also moves the edit to the live path: the
+ *   Loader commits the new config into this entry's reference instead of
+ *   remounting the row, and {@link apply} mounts the family plugin again with
+ *   the committed config.
+ *
+ * The accepted cost: the Host cannot validate family fields at write time. The
+ * family plugin's own Config validates them when the shell mounts it, and a
+ * value it refuses leaves that one row degraded (the ledger and log say so)
+ * instead of taking the boot down.
+ */
+export const Config = z.any().volatile()
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * Volatile config values were committed into the running fiber without a
+     * remount; dispatched to the owning fiber only. Spelled here because the
+     * Loader package is not a dependency of this plugin, with the Loader's own
+     * shape so the two declarations merge when a Host program carries both.
+     * @param paths - changed config paths as key arrays; every value is committed before dispatch.
+     * @mode emit
+     */
+    'loader/volatile-update'(paths: readonly (readonly string[])[]): void
+  }
 }
 
 /** Loopback-fenced degraded-state route (installed once per shell context). */
@@ -177,10 +236,58 @@ function holdHealthRoutes(ctx: Context): void {
   })
 }
 
+/** One mounted family plugin, kept so a later config edit can be applied to it. */
+interface MountedFamily {
+  /** Module specifier the mounted plugin was imported from. */
+  spec: string
+  /** The config the real plugin was mounted with (undefined when the row declared none). */
+  config: unknown
+  /** Dispose the nested plugin's fiber (a real mount; a test double may omit it). */
+  dispose?: () => Promise<void>
+}
+
+/** Whether one row config is a mapping (the shape every real row has). */
+function isRowConfig(value: unknown): value is ShellConfig {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Read the live row config. The schema is root-volatile, so the Loader hands a
+ * stable reference it commits a new config into without remounting the entry —
+ * every read goes through it instead of capturing the value at activation.
+ * @param config - the row config as handed to {@link apply}.
+ * @returns the plain row config, or undefined when this entry has none.
+ */
+function liveRowConfig(config: ShellConfigInput): unknown {
+  if (config === undefined) return undefined
+  const read = (config as { get?: unknown }).get
+  return typeof read === 'function' ? (read as () => unknown).call(config) : config
+}
+
+/** The config the real plugin receives: every row key but the shell's own. */
+function familyConfigOf(row: ShellConfig): unknown {
+  const { plugin: _spec, ...family } = row
+  return Object.keys(family).length === 0 ? undefined : family
+}
+
+/** Whether two family configs carry the same values (row configs are JSON data). */
+function sameFamilyConfig(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+}
+
+/** Render one config value for a degraded-log message without ever throwing. */
+function describeConfig(value: unknown): string {
+  try {
+    return JSON.stringify(value ?? null)
+  } catch {
+    return '[unrepresentable]'
+  }
+}
+
 /** Config shapes that must mount quietly: absent (self row) or a bare-row override. */
-function isOverrideShape(config: ShellConfig | undefined): boolean {
+function isOverrideShape(config: unknown): boolean {
   if (config === undefined) return true
-  if (typeof config !== 'object' || config === null) return false
+  if (!isRowConfig(config)) return false
   const keys = Object.keys(config)
   return keys.length === 0 || !('plugin' in config)
 }
@@ -194,65 +301,127 @@ const RETIRED_PLUGINS = new Set([
   '@linxin666/dsh-desktop-launcher',
 ])
 
-/** Apply one shell entry: mount the configured real plugin behind an isolation boundary. */
-export async function apply(ctx: Context, config: ShellConfig | undefined): Promise<void> {
+/**
+ * Apply one shell entry: mount the configured real plugin behind an isolation
+ * boundary, and re-mount it whenever the row config changes.
+ *
+ * The entry's schema is root-volatile (see {@link Config}), so a settings edit
+ * never remounts this entry: the Loader commits the new config into the
+ * reference handed here and emits `loader/volatile-update`. The shell applies
+ * that itself by mounting the family plugin again with the committed config,
+ * which is also what keeps a hand-edited `plugin` (or any other key) honest.
+ * @param ctx - the shell entry's context.
+ * @param config - the row config: the plugin specifier plus the real plugin's own fields.
+ */
+export async function apply(ctx: Context, config: ShellConfigInput): Promise<void> {
   holdHealthRoutes(ctx)
-  const spec = config?.plugin
-  if (typeof spec === 'string' && RETIRED_PLUGINS.has(spec)) {
-    // Stale row from an older profile whose plugin has been retired. Mount empty quietly.
-    return
+  let mounted: MountedFamily | undefined
+  let activeRow: string | undefined
+  /** Serializes config syncs: an update may land while a mount is still running. */
+  let tail: Promise<void> = Promise.resolve()
+
+  /**
+   * Publish the family row this entry currently serves. Only a row the loader
+   * never applied (disabled) stays out of the ledger, so the browser half's
+   * mount gate keeps a row whose plugin degraded.
+   */
+  const publishRow = (spec: string | undefined): void => {
+    if (activeRow === spec) return
+    if (activeRow !== undefined) removeActiveRow(activeRow)
+    activeRow = spec
+    if (spec !== undefined) recordActiveRow(spec)
   }
-  if (typeof spec !== 'string' || spec === '') {
-    // Two legitimate shapes land here and must mount QUIETLY (no degraded
-    // record, no throw — an async apply's rejection escapes the loader
-    // lifecycle as an unhandled rejection and the host's fail-loud guard
-    // kills the whole process):
-    // - the SELF row (web-ui-compat): no config at all (undefined or {}).
-    //   The compat shim's host half has no host behavior; its browser half
-    //   rides the package's ./client face.
-    // - a USER bare-row override (`- id: <row>` + `config:` in a patch
-    //   layer): patch overrides REPLACE the row config wholesale, so the
-    //   user's tuning (e.g. remote-web-ui's autoTunnel) strips the `plugin`
-    //   key. The real plugin already mounted under the same entry id from
-    //   the bundle layer's shell config — a bare override is a RE-patch of
-    //   an existing shell entry, not a fresh mount, so mounting empty must
-    //   be silent (and the override should carry the plugin key; the
-    //   aggregate docs show the correct form).
-    // Anything else still lands in the ledger for visibility.
-    if (isOverrideShape(config)) return
-    recordDegraded('(no plugin)', 'shape', new Error(`shell row config is missing the "plugin" package name (row config: ${JSON.stringify(config ?? null)}); the entry mounted empty`))
-    return
+  ctx.effect(() => () => { publishRow(undefined) }, 'dsh-web-all: active row ledger')
+
+  /** Mount the real plugin the current row config names, replacing any previous mount. */
+  const sync = async (): Promise<void> => {
+    const raw = liveRowConfig(config)
+    const row = isRowConfig(raw) ? raw : undefined
+    if (row === undefined) {
+      publishRow(undefined)
+      if (raw === undefined) return
+      recordDegraded('(no plugin)', 'shape', new Error(`shell row config is not a mapping (row config: ${describeConfig(raw)}); the entry mounted empty`))
+      return
+    }
+    const spec = row.plugin
+    if (typeof spec !== 'string' || spec === '') {
+      // Two legitimate shapes land here and must mount QUIETLY (no degraded
+      // record, no throw — an async apply's rejection escapes the loader
+      // lifecycle as an unhandled rejection and the host's fail-loud guard
+      // kills the whole process):
+      // - the SELF row (web-ui-compat): no config at all (undefined or {}).
+      //   The compat shim's host half has no host behavior; its browser half
+      //   rides the package's ./client face.
+      // - a USER bare-row override (`- id: <row>` + `config:` in a patch
+      //   layer): patch overrides REPLACE the row config wholesale, so a
+      //   hand-written tuning that drops the `plugin` key leaves this row
+      //   with nothing to mount. Silence is the documented behavior for that
+      //   shape; anything else still lands in the ledger for visibility.
+      publishRow(undefined)
+      if (isOverrideShape(row)) return
+      recordDegraded('(no plugin)', 'shape', new Error(`shell row config is missing the "plugin" package name (row config: ${describeConfig(row)}); the entry mounted empty`))
+      return
+    }
+    if (RETIRED_PLUGINS.has(spec)) {
+      // Stale row from an older profile whose plugin has been retired. Mount empty quietly.
+      publishRow(undefined)
+      return
+    }
+    const family = familyConfigOf(row)
+    if (mounted !== undefined && mounted.spec === spec && sameFamilyConfig(mounted.config, family)) return
+    if (mounted !== undefined) {
+      const previous = mounted
+      mounted = undefined
+      try {
+        await previous.dispose?.()
+      } catch (error) {
+        // A failed unmount must never keep the new config from mounting.
+        console.warn('[dsh-web-all] unmounting the previous family plugin failed:', error)
+      }
+    }
+    // Record the row active BEFORE importing the real plugin: a row whose
+    // plugin degrades (import/start failure captured below) is still an ACTIVE
+    // row and keeps its UI entry — the degraded surface is the honest signal.
+    publishRow(spec)
+    let mod: unknown
+    try {
+      mod = await import(/* @vite-ignore */ spec)
+    } catch (error) {
+      recordDegraded(spec, 'import', error)
+      return
+    }
+    const plugin = (mod as { default?: unknown; apply?: unknown })?.default ?? mod
+    if (typeof plugin !== 'function' && !(typeof plugin === 'object' && plugin !== null && typeof (plugin as { apply?: unknown }).apply === 'function')) {
+      recordDegraded(spec, 'shape', new Error(`module has no usable plugin shape (expected a function or { apply })`))
+      return
+    }
+    try {
+      // Sync application errors (invalid config, throwing apply) escape the
+      // ctx.plugin() call itself; async ones settle on the returned fiber.
+      // Both paths are captured here so the shell fiber never fails.
+      const fiber = ctx.plugin(plugin as Parameters<Context['plugin']>[0], family)
+      mounted = { spec, config: family, dispose: fiber.dispose }
+      void Promise.resolve(fiber).then(
+        () => {},
+        error => recordDegraded(spec, 'start', error),
+      )
+    } catch (error) {
+      recordDegraded(spec, 'start', error)
+    }
   }
-  // Record the row active BEFORE importing the real plugin: a row whose
-  // plugin degrades (import/start failure captured below) is still an ACTIVE
-  // row and keeps its UI entry — the degraded surface is the honest signal.
-  // Only a row the loader never applied (disabled) stays out of the ledger.
-  recordActiveRow(spec)
-  ctx.effect(() => () => {
-    removeActiveRow(spec)
-  }, 'dsh-web-all: active row ledger')
-  let mod: unknown
-  try {
-    mod = await import(/* @vite-ignore */ spec)
-  } catch (error) {
-    recordDegraded(spec, 'import', error)
-    return
+
+  const schedule = (): Promise<void> => {
+    tail = tail.then(() => sync().catch((error: unknown) => {
+      // An async apply's rejection escapes the loader lifecycle as an
+      // unhandled rejection (the host's fail-loud guard then kills the whole
+      // process), so every path out of a sync is captured here.
+      console.error('[dsh-web-all] applying the shell row config failed:', error)
+    }))
+    return tail
   }
-  const plugin = (mod as { default?: unknown; apply?: unknown })?.default ?? mod
-  if (typeof plugin !== 'function' && !(typeof plugin === 'object' && plugin !== null && typeof (plugin as { apply?: unknown }).apply === 'function')) {
-    recordDegraded(spec, 'shape', new Error(`module has no usable plugin shape (expected a function or { apply })`))
-    return
-  }
-  try {
-    // Sync application errors (invalid config, throwing apply) escape the
-    // ctx.plugin() call itself; async ones settle on the returned fiber.
-    // Both paths are captured here so the shell fiber never fails.
-    const fiber = ctx.plugin(plugin as Parameters<Context['plugin']>[0], config?.config)
-    void Promise.resolve(fiber).then(
-      () => {},
-      error => recordDegraded(spec, 'start', error),
-    )
-  } catch (error) {
-    recordDegraded(spec, 'start', error)
-  }
+
+  // A settings edit on this entry commits the new config into the reference
+  // and reaches the family plugin through this listener, not through a remount.
+  ctx.on('loader/volatile-update', () => { void schedule() })
+  await schedule()
 }

@@ -46,7 +46,10 @@ function mockHost() {
     // registration rides this nested inject fiber, fired by provideWebServer().
     inject: (_deps: readonly string[], cb: (scoped: unknown) => void) => { pendingInject.push(cb) },
     effect: (fn: () => () => void) => { effects.push(fn()) },
-    plugin: vi.fn(),
+    // The shell re-applies a settings edit through this event, and mounts the
+    // real plugin through ctx.plugin (a fiber whose dispose it holds).
+    on: vi.fn(),
+    plugin: vi.fn(() => ({ dispose: async () => {} })),
   })
   const provideWebServer = () => {
     const scoped = { webServer, effect: (fn: () => () => void) => { effects.push(fn()) } }

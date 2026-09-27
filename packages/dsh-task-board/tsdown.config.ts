@@ -12,7 +12,6 @@ import { clientBundle } from '../../shared/tsdown.client.ts'
 
 export default clientBundle('@linxin666/dsh-client-ui-task-board', ['src/index.ts', 'src/invariant.ts'], {
   libExternal: [
-    '@deepseek-ai/dsh-agent-presets',
     '@deepseek-ai/dsh-api-gateway',
     '@deepseek-ai/dsh-api-remotes',
     '@deepseek-ai/dsh-api-session-controller',
@@ -24,6 +23,8 @@ export default clientBundle('@linxin666/dsh-client-ui-task-board', ['src/index.t
     '@deepseek-ai/dsh-client-ui-settings',
     '@deepseek-ai/dsh-client-ui-slots',
     '@deepseek-ai/dsh-host-webserver',
+    '@deepseek-ai/dsh-llm',
+    '@deepseek-ai/dsh-tools',
     '@deepseek-ai/dsh-workspace',
     '@deepseek-ai/dsh-settings',
     '@deepseek-ai/dsh-system-prompt',

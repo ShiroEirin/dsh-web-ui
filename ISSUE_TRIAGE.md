@@ -85,9 +85,9 @@ gh issue list -R zhu1090093659/dsh-web --state open \
 ## 贡献者指引
 
 - 提 Issue 前先检索标签与关键词，确认没有重复；
-- 改动不在四类内容贡献范围内（插件申请 / 皮肤增加 / 宠物增加 / 预设增加，见
-  [CONTRIBUTING.md](CONTRIBUTING.md) 的「PR 范围」）时不要直接开 PR，请以
-  Issue 提交讨论；
+- 本仓不接受外部直接提交的 PR：四类内容贡献均已迁至各自的独立仓（见
+  [CONTRIBUTING.md](CONTRIBUTING.md) 的「PR 范围」），插件功能等其余改动也请先以
+  Issue 提交讨论，由维护者处理；
 - 用 [Issue 模板](.github/ISSUE_TEMPLATE/standard_issue.yml) 提交；Bug 报告用
   「Bug 报告」表单提交，自动附加 `bug` 标签，并包含复现步骤、环境信息、截图、冒烟测试、引用代码；
 - 想认领任务，优先挑选 `good first issue` 或 `help wanted`，在评论区留言；

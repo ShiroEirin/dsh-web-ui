@@ -1,5 +1,3 @@
-# Bilingual-pair consistency record (docs/i18n.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with git hash-object.
-.agents/notes/implemented/feature/2026-09-09-aggregate-row-level-management.md: 19c9be7d7d141ad280d1c4a94fa55e59f361c75f
-.agents/notes/implemented/feature/2026-09-09-aggregate-row-level-management.zh.md: caae4bac19da853eaba3424b4c93a0df06bf7f88
+# Bilingual-pair consistency record; re-record with git hash-object.
+.agents/notes/implemented/feature/2026-09-09-aggregate-row-level-management.md: d304f4bd406a27e00f2cc5c535a2c4db1ad0adfe
+.agents/notes/implemented/feature/2026-09-09-aggregate-row-level-management.zh.md: c74733685cffea8f225d7f2b398296cde0a5a4cf

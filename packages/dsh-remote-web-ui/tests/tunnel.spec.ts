@@ -4,8 +4,9 @@
  * (no real cloudflared binary or network).
  */
 import { EventEmitter } from 'node:events'
+import { createServer } from 'node:http'
 import { describe, expect, it, vi } from 'vitest'
-import { quickTunnelFlags, namedTunnelArgs, TunnelManager, namedTunnelHandle, binaryRuns, createBinaryReadiness, type TunnelHandle, type TunnelPhase, type TunnelTarget } from '../src/tunnel.ts'
+import { MAX_BINARY_INSTALL_ATTEMPTS, quickTunnelFlags, namedTunnelArgs, withTunnelTokenEnv, TunnelManager, namedTunnelHandle, binaryRuns, createBinaryReadiness, probeTunnelUrl, type TunnelHandle, type TunnelPhase, type TunnelTarget } from '../src/tunnel.ts'
 
 /** A fake tunnel process: an EventEmitter the test drives by hand. */
 class FakeTunnel extends EventEmitter implements TunnelHandle {
@@ -49,7 +50,17 @@ interface Harness {
   fireOne: () => void
 }
 
-function makeHarness(overrides: { urlTimeoutMs?: number; restartBaseMs?: number } = {}): Harness {
+interface HarnessOverrides {
+  urlTimeoutMs?: number
+  restartBaseMs?: number
+  restartMaxMs?: number
+  probe?: (url: string, timeoutMs: number) => Promise<boolean>
+  healthCheckIntervalMs?: number
+  healthCheckFailures?: number
+  probeTimeoutMs?: number
+}
+
+function makeHarness(overrides: HarnessOverrides = {}): Harness {
   const tunnels: FakeTunnel[] = []
   const targets: TunnelTarget[] = []
   const ensure = vi.fn(async () => {})
@@ -68,6 +79,12 @@ function makeHarness(overrides: { urlTimeoutMs?: number; restartBaseMs?: number 
     urlTimeoutMs: overrides.urlTimeoutMs ?? 30_000,
     restartBaseMs: overrides.restartBaseMs ?? 5_000,
     restartMaxMs: overrides.restartMaxMs ?? 60_000,
+    // A probe that always answers keeps the readiness watchdog inert for the
+    // lifecycle cases; the watchdog suite injects failing probes instead.
+    probe: overrides.probe ?? (async () => true),
+    healthCheckIntervalMs: overrides.healthCheckIntervalMs ?? 60_000,
+    healthCheckFailures: overrides.healthCheckFailures ?? 2,
+    probeTimeoutMs: overrides.probeTimeoutMs ?? 10_000,
   })
   manager.onPhase(info => { phases.push(info.phase) })
   manager.onUrl(url => { urls.push(url) })
@@ -245,6 +262,151 @@ describe('TunnelManager', () => {
   })
 })
 
+describe('TunnelManager readiness watchdog', () => {
+  it('operator sees a responsive tunnel stay running across probe rounds', async () => {
+    // Given a running tunnel whose public URL keeps answering.
+    const probes: string[] = []
+    const h = makeHarness({
+      healthCheckIntervalMs: 1_000,
+      probe: async (url) => { probes.push(url); return true },
+    })
+    h.manager.start('http://127.0.0.1:3080')
+    const tunnel = await nextTunnel(h)
+    tunnel.emitUrl('https://alive.trycloudflare.com')
+    // When two scheduled probe rounds elapse, then both read the public URL,
+    // the phase stays running, and no replacement process is spawned.
+    h.fireOne()
+    await vi.waitFor(() => { expect(probes).toHaveLength(1) })
+    h.fireOne()
+    await vi.waitFor(() => { expect(probes).toHaveLength(2) })
+    expect(probes).toEqual(['https://alive.trycloudflare.com', 'https://alive.trycloudflare.com'])
+    expect(h.manager.info).toEqual({ phase: 'running', url: 'https://alive.trycloudflare.com' })
+    expect(h.tunnels).toHaveLength(1)
+  })
+
+  it('operator gets a fresh tunnel after the public URL stops answering (issue #1723)', async () => {
+    // Given a connector that still reports a URL while the minted hostname is
+    // gone: the process stays alive and the public URL answers nothing.
+    const h = makeHarness({ healthCheckIntervalMs: 60_000, restartBaseMs: 10, probe: async () => false })
+    h.manager.start('http://127.0.0.1:3080')
+    const first = await nextTunnel(h)
+    first.emitUrl('https://dead.trycloudflare.com')
+    expect(h.manager.info.phase).toBe('running')
+    // When the first probe fails, then the phase is still running: one miss
+    // only arms the verdict while the tunnel may be briefly unreachable.
+    h.fireOne()
+    await new Promise(resolve => setImmediate(resolve))
+    expect(h.manager.info.phase).toBe('running')
+    // When a second consecutive probe fails, then the attempt fails with the
+    // public-URL reason, the old process is stopped, and the ordinary backoff
+    // restart surfaces a new URL on the same onUrl channel.
+    h.fireOne()
+    await vi.waitFor(() => { expect(h.manager.info.phase).toBe('failed') })
+    expect(h.manager.info.error).toContain('public URL')
+    expect(first.stop).toHaveBeenCalled()
+    h.fireOne() // backoff
+    const second = await nextTunnel(h)
+    second.emitUrl('https://fresh.trycloudflare.com')
+    expect(h.manager.info).toEqual({ phase: 'running', url: 'https://fresh.trycloudflare.com' })
+    expect(h.urls).toEqual(['https://dead.trycloudflare.com', 'https://fresh.trycloudflare.com'])
+    expect(h.tunnels).toHaveLength(2)
+  })
+
+  it('operator keeps the tunnel through one transient probe miss', async () => {
+    // Given a URL that misses one probe and then answers again.
+    let alive = false
+    const h = makeHarness({ healthCheckIntervalMs: 60_000, restartBaseMs: 10, probe: async () => alive })
+    h.manager.start('http://127.0.0.1:3080')
+    const tunnel = await nextTunnel(h)
+    tunnel.emitUrl('https://flaky.trycloudflare.com')
+    h.fireOne()
+    await new Promise(resolve => setImmediate(resolve))
+    alive = true
+    // When the next probe succeeds, then the failure counter restarts, so a
+    // later single miss is again only one miss and nothing was recycled.
+    h.fireOne()
+    await new Promise(resolve => setImmediate(resolve))
+    alive = false
+    h.fireOne()
+    await new Promise(resolve => setImmediate(resolve))
+    expect(h.manager.info).toEqual({ phase: 'running', url: 'https://flaky.trycloudflare.com' })
+    expect(h.tunnels).toHaveLength(1)
+  })
+
+  it('operator stops probing when the tunnel is turned off', async () => {
+    // Given a running tunnel with a pending probe round.
+    const probes: string[] = []
+    const h = makeHarness({ healthCheckIntervalMs: 60_000, probe: async (url) => { probes.push(url); return false } })
+    h.manager.start('http://127.0.0.1:3080')
+    const tunnel = await nextTunnel(h)
+    tunnel.emitUrl('https://gone.trycloudflare.com')
+    // When the operator stops the tunnel, then the pending probe is cancelled
+    // and the status settles on stopped instead of a failed restart.
+    h.manager.stop()
+    h.fireOne()
+    await new Promise(resolve => setImmediate(resolve))
+    expect(probes).toEqual([])
+    expect(h.manager.info.phase).toBe('stopped')
+  })
+
+  it('operator sees a replaced target keep its own probe verdict', async () => {
+    // Given a probe of the old tunnel still in flight when the target changes.
+    const releases: Array<(alive: boolean) => void> = []
+    const h = makeHarness({
+      healthCheckIntervalMs: 60_000,
+      restartBaseMs: 10,
+      probe: () => new Promise<boolean>(resolve => { releases.push(resolve) }),
+    })
+    h.manager.start('http://127.0.0.1:3080')
+    const first = await nextTunnel(h)
+    first.emitUrl('https://a.trycloudflare.com')
+    h.fireOne()
+    h.manager.start('http://127.0.0.1:3081')
+    await nextTunnel(h)
+    // When that stale probe resolves as dead, then the fresh tunnel is
+    // untouched and still starting.
+    releases[0]!(false)
+    await new Promise(resolve => setImmediate(resolve))
+    expect(h.manager.info.phase).toBe('starting')
+  })
+})
+
+describe('probeTunnelUrl', () => {
+  it('operator sees an unauthenticated 401 as a live tunnel', async () => {
+    // Given a harness that answers 401 without credentials (a normal round trip).
+    const server = createServer((_req, res) => { res.writeHead(401); res.end('auth required') })
+    await new Promise<void>(resolve => { server.listen(0, '127.0.0.1', resolve) })
+    const address = server.address()
+    if (address === null || typeof address === 'string') throw new Error('probe server did not bind')
+    try {
+      // When the probe reads it, then it is reachable.
+      expect(await probeTunnelUrl(`http://127.0.0.1:${String(address.port)}/`, 5_000)).toBe(true)
+    } finally {
+      await new Promise<void>(resolve => { server.close(() => resolve()) })
+    }
+  })
+
+  it('operator sees a Cloudflare 530 (Origin DNS error) as a dead tunnel', async () => {
+    // Given an edge answering 530 for a hostname whose origin is gone, when the
+    // probe reads it, then it is not alive.
+    const server = createServer((_req, res) => { res.writeHead(530); res.end('Origin DNS error') })
+    await new Promise<void>(resolve => { server.listen(0, '127.0.0.1', resolve) })
+    const address = server.address()
+    if (address === null || typeof address === 'string') throw new Error('probe server did not bind')
+    try {
+      expect(await probeTunnelUrl(`http://127.0.0.1:${String(address.port)}/`, 5_000)).toBe(false)
+    } finally {
+      await new Promise<void>(resolve => { server.close(() => resolve()) })
+    }
+  })
+
+  it('operator sees a refused connection as a dead tunnel instead of an error', async () => {
+    // Given port 1 on loopback has no listener, when the probe reads it, then
+    // it resolves false rather than rejecting.
+    expect(await probeTunnelUrl('http://127.0.0.1:1/', 2_000)).toBe(false)
+  })
+})
+
 describe('TunnelManager named mode', () => {
   const NAMED: TunnelTarget = { kind: 'named', token: 'tok-1', publicUrl: 'https://dsh.example.com' }
 
@@ -356,21 +518,55 @@ describe('quickTunnelFlags', () => {
 })
 
 describe('namedTunnelArgs', () => {
-  it('places top-level flags before the run subcommand and appends the token flag after run', () => {
-    const args = namedTunnelArgs('test-token-123')
-    expect(args).toEqual([
-      'tunnel',
-      '--no-autoupdate',
-      '--protocol',
-      'http2',
-      'run',
-      '--token',
-      'test-token-123',
-    ])
+  it('operator keeps the account token out of the child argv', () => {
+    // Given the named tunnel's spawn flags.
+    const args = namedTunnelArgs()
+    // When cloudflared is spawned with them, then the top-level flags precede
+    // the run subcommand (issues #1432/#1433) and no token reaches argv, where
+    // any local user could read it from ps/proc.
+    expect(args).toEqual(['tunnel', '--no-autoupdate', '--protocol', 'http2', 'run'])
     const runIdx = args.indexOf('run')
     expect(args.indexOf('--no-autoupdate')).toBeLessThan(runIdx)
     expect(args.indexOf('--protocol')).toBeLessThan(runIdx)
-    expect(args.indexOf('--token')).toBeGreaterThan(runIdx)
+    expect(args).not.toContain('--token')
+  })
+})
+
+describe('withTunnelTokenEnv', () => {
+  it('operator gets the token in the environment for the spawn call only', () => {
+    // Given no TUNNEL_TOKEN in the ambient environment.
+    delete process.env.TUNNEL_TOKEN
+    let seen: string | undefined
+    // When the spawn call runs.
+    const result = withTunnelTokenEnv('tok-abc', () => {
+      seen = process.env.TUNNEL_TOKEN
+      return 'handle'
+    })
+    // Then the child would have inherited it and the host environment is clean.
+    expect(seen).toBe('tok-abc')
+    expect(result).toBe('handle')
+    expect(process.env.TUNNEL_TOKEN).toBeUndefined()
+  })
+
+  it('operator keeps a pre-existing TUNNEL_TOKEN value across the spawn call', () => {
+    // Given the host already carries a value.
+    process.env.TUNNEL_TOKEN = 'ambient'
+    try {
+      // When a named tunnel spawns, then the previous value is restored even
+      // though the spawn call itself saw the tunnel's own token.
+      expect(withTunnelTokenEnv('tok-1', () => process.env.TUNNEL_TOKEN)).toBe('tok-1')
+      expect(process.env.TUNNEL_TOKEN).toBe('ambient')
+    } finally {
+      delete process.env.TUNNEL_TOKEN
+    }
+  })
+
+  it('operator keeps the ambient environment clean when the spawn call throws', () => {
+    // Given no TUNNEL_TOKEN in the ambient environment.
+    delete process.env.TUNNEL_TOKEN
+    // When the spawn call fails, then the variable is still removed.
+    expect(() => withTunnelTokenEnv('tok-2', () => { throw new Error('spawn failed') })).toThrow('spawn failed')
+    expect(process.env.TUNNEL_TOKEN).toBeUndefined()
   })
 })
 
@@ -403,6 +599,22 @@ describe('createBinaryReadiness', () => {
     const ensure = createBinaryReadiness('/payload/bin/cloudflared.exe', { exists, runs, install })
     await expect(ensure()).rejects.toThrow(/still does not run/)
     expect(install).toHaveBeenCalledOnce()
+  })
+
+  it('operator is not charged one archive download per restart attempt', async () => {
+    // Given a binary that can never be made to run (the documented wrong-arch
+    // payload) and a manager that retries forever.
+    const exists = vi.fn(() => false)
+    const runs = vi.fn(async () => false)
+    const install = vi.fn(async () => undefined)
+    const ensure = createBinaryReadiness('/payload/bin/cloudflared.exe', { exists, runs, install })
+    // When the readiness check is consulted across restart rounds.
+    for (let round = 0; round < 6; round += 1) {
+      await expect(ensure()).rejects.toThrow()
+    }
+    // Then the platform archive is fetched at most MAX_BINARY_INSTALL_ATTEMPTS
+    // times instead of once per attempt.
+    expect(install).toHaveBeenCalledTimes(MAX_BINARY_INSTALL_ATTEMPTS)
   })
 
   it('binaryRuns probes real executability: node runs, a missing file does not', async () => {

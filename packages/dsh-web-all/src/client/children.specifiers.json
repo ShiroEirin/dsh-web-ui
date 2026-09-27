@@ -30,9 +30,9 @@
     "source": "packages/dsh-remote-web-ui/src/client/index.ts"
   },
   {
-    "name": "@linxin666/dsh-pet",
-    "specifier": "@linxin666/dsh-pet/client",
-    "source": "packages/dsh-pet/src/client/index.ts"
+    "name": "@linxin666/dsh-update",
+    "specifier": "@linxin666/dsh-update/client",
+    "source": "packages/dsh-update/src/client/index.ts"
   },
   {
     "name": "@linxin666/dsh-ssh",
@@ -40,19 +40,14 @@
     "source": "packages/dsh-ssh/src/client/index.ts"
   },
   {
-    "name": "@linxin666/dsh-tool-describe-image",
-    "specifier": "@linxin666/dsh-tool-describe-image/client",
-    "source": "packages/dsh-tool-describe-image/src/client/index.ts"
+    "name": "@linxin666/dsh-liangshen",
+    "specifier": "@linxin666/dsh-liangshen/client",
+    "source": "packages/dsh-liangshen/src/client/index.ts"
   },
   {
     "name": "@linxin666/dsh-client-ui-skill-explorer",
     "specifier": "@linxin666/dsh-client-ui-skill-explorer/client",
     "source": "packages/dsh-skill-explorer/src/client/index.ts"
-  },
-  {
-    "name": "@linxin666/dsh-doctor",
-    "specifier": "@linxin666/dsh-doctor/client",
-    "source": "packages/dsh-doctor/src/client/index.ts"
   },
   {
     "name": "@linxin666/dsh-usage",
@@ -68,15 +63,5 @@
     "name": "@linxin666/dsh-client-ui-model-capabilities",
     "specifier": "@linxin666/dsh-client-ui-model-capabilities/client",
     "source": "packages/dsh-model-capabilities/src/client/index.ts"
-  },
-  {
-    "name": "@linxin666/dsh-client-ui-preset-center",
-    "specifier": "@linxin666/dsh-client-ui-preset-center/client",
-    "source": "packages/dsh-preset-center/src/client/index.ts"
-  },
-  {
-    "name": "@linxin666/dsh-client-ui-skin-center",
-    "specifier": "@linxin666/dsh-client-ui-skin-center/client",
-    "source": "packages/skins/skin-center/src/client/index.ts"
   }
 ]

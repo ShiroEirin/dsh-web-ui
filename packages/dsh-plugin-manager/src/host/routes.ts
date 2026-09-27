@@ -10,7 +10,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { readJsonBody, writeJson } from './http.ts'
+import { readJsonBody, withIdentityEncoding, writeJson } from './http.ts'
 import { isLoopbackRequest } from './loopback.ts'
 import { detectOfficialChannels, findDshBinary, spawnDsh, unsafeSpecReason, type CliGateway } from './gateway.ts'
 import { dshRequirementOf, meetsMinimumDsh, parseDshVersion } from '../core/version.ts'
@@ -18,6 +18,7 @@ import { readPatchText, readProfileManifest, type ProfileFacts } from './profile
 import { legacyMigrationFor, targetSpecForLegacy } from './legacy-migration.ts'
 import { setRowEnabled, writePatchAtomic } from './rows.ts'
 import { buildPluginRow, claimedEntryRowsOf, findRowOwner, LOCKED_ENTRY_IDS, snapshotGateway } from './state.ts'
+import { createOutputCapture, type OutputCapture } from './console-output.ts'
 
 /** Route prefix the browser half mirrors. */
 export const GATEWAY_PREFIX = '/api/plugin-manager'
@@ -28,8 +29,8 @@ const REGISTRY_TIMEOUT_MS = 30_000
 /** Deadline for one dsh --version probe. */
 const VERSION_TIMEOUT_MS = 10_000
 
-/** Bounded capture of the version probe output. */
-const VERSION_MAX_OUTPUT_CHARS = 4_096
+/** Bounded capture of the version probe output, counted in bytes. */
+const VERSION_MAX_OUTPUT_BYTES = 4_096
 
 /** Grace period after SIGTERM before a stuck probe child is SIGKILLed. */
 const VERSION_ESCALATION_TIMEOUT_MS = 5_000
@@ -71,9 +72,9 @@ export interface RegistryVersionManifest {
   engines?: unknown
 }
 
-/** Append bounded probe output. */
-function captureProbe(chunk: Buffer, buffer: { value: string }): void {
-  buffer.value = (buffer.value + chunk.toString()).slice(-VERSION_MAX_OUTPUT_CHARS)
+/** Append bounded probe output (bytes accumulate; one decode at read time). */
+function captureProbe(chunk: Buffer, buffer: OutputCapture): void {
+  buffer.push(chunk)
 }
 
 /**
@@ -83,9 +84,9 @@ function captureProbe(chunk: Buffer, buffer: { value: string }): void {
  */
 async function fetchRegistryManifest(name: string): Promise<RegistryVersionManifest | undefined> {
   const encoded = name.startsWith('@') ? name.replace('/', '%2F') : name
-  const response = await fetch(`https://registry.npmjs.org/${encoded}/latest`, {
+  const response = await fetch(`https://registry.npmjs.org/${encoded}/latest`, withIdentityEncoding({
     signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
-  })
+  }))
   if (!response.ok) return undefined
   const body = await response.json() as { version?: unknown; dsh?: unknown; engines?: unknown }
   if (typeof body.version !== 'string') return undefined
@@ -103,7 +104,7 @@ async function probeDshVersion(cliAvailable: () => boolean): Promise<string | un
   if (!cliAvailable()) return undefined
   const binary = findDshBinary()
   if (binary === null) return undefined
-  const output = { value: '' }
+  const output = createOutputCapture(VERSION_MAX_OUTPUT_BYTES)
   const child = spawnDsh(binary, ['--version'], process.env)
   child.stdout?.on('data', (chunk: Buffer) => { captureProbe(chunk, output) })
   child.stderr?.on('data', (chunk: Buffer) => { captureProbe(chunk, output) })
@@ -129,7 +130,7 @@ async function probeDshVersion(cliAvailable: () => boolean): Promise<string | un
     child.once('close', finish)
   })
   if (code !== 0) return undefined
-  const version = output.value.trim().split(/\r?\n/, 1)[0]?.trim() ?? ''
+  const version = output.read().trim().split(/\r?\n/, 1)[0]?.trim() ?? ''
   return parseDshVersion(version) === undefined ? undefined : version
 }
 

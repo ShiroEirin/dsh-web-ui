@@ -14,6 +14,10 @@ dsh Web GUI 的远程 SSH 运维插件：Host 进程内的持久 ssh2 连接池 
   对话记录；传输 / 执行消耗**真实远程资源**，Agent 使用前先确认。
 - `ssh_upload` / `ssh_download` 以宿主进程权限直接读写本机任意路径（不经
   bash 沙箱）；所有 `/api/dsh-ssh/*` 路由仅限 loopback，隧道只监听 `127.0.0.1`。
+- `proxyCommand` 是由宿主进程以其权限执行的 shell 命令（与 `ssh(1)` 执行同一行的
+  信任模型）：只来自用户 0600 配置文件；agent 工具只暴露是否配置、不暴露命令原文，
+  agent 也不能创建 / 修改主机；POSIX 按进程组回收子进程，Windows 只杀 shell
+  （已知限制）。
 
 ## Agent 工具面
 
@@ -21,6 +25,19 @@ dsh Web GUI 的远程 SSH 运维插件：Host 进程内的持久 ssh2 连接池 
   `ssh_tunnel` / `ssh_cluster`，GUI 与 Agent 共享同一份主机配置。
 - Agent 只能用**用户在 GUI 配置过**（或从 `~/.ssh/config` 导入）的主机；别名
   未配置时先告知用户去 GUI 配置，不得臆造。
+
+## 面板与终端会话
+
+- client 半区经官方槽位注册**原生中栏面板**：`native-panel.tsx` 往 shell 自己的
+  面板列表（`sidebar.panellist`）贡献一行、往布局的 keyed `main` 槽贡献页面，
+  并驱动 `ctx.layout.selectPanel`——与任务看板、技能中心同形，行盒 / 标签 /
+  高亮 / 折叠轨道归 shell，本包不再 DOM 接管中栏。
+- 页签、hosts 页的「连接」请求与**终端会话 id** 存在 `panel/controller.ts`：
+  布局只在面板被选中时挂载页面，组件本地 state 会在切面板时丢失。
+- **PTY 会话归 Host**（`src/engine/terminal-sessions.ts`）：会话按 id 存活，
+  视图卸载只 detach、重新挂载按 id reattach 并回放滚动缓冲；只有显式
+  `close` 帧、远端退出后的宽限期到期或空闲回收才结束会话。路由层只做
+  loopback 围栏与 socket 接线，会话表随路由注销一并 dispose。
 
 ## 提交前检查
 

@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "comment": "Content sources for the market build. Each input names the git submodule carrying it (declared in .gitmodules) and the content directory inside that submodule; the commit the market build reads is the submodule gitlink recorded on this branch, so bumping a pin is a submodule checkout plus a commit of that path. scripts/market-fetch-inputs.mjs materializes each content directory into MARKET_INPUTS_DIR.",
+  "inputs": {
+    "skins": {
+      "submodule": "satellites/dsh-skins",
+      "path": "skins",
+      "target": "skins"
+    },
+    "pet": {
+      "submodule": "satellites/dsh-pet",
+      "path": "assets",
+      "target": "pet"
+    },
+    "community": {
+      "submodule": "satellites/dsh-community-plugins",
+      "path": ".",
+      "target": "community"
+    },
+    "presets": {
+      "submodule": "satellites/dsh-presets",
+      "path": "presets",
+      "target": "presets"
+    }
+  }
+}

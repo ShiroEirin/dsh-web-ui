@@ -2,6 +2,8 @@
 
 状态：已实施
 
+被取代（2026-09-24，见[移除本仓库的 Electron 桌面应用](2026-09-24-remove-electron-desktop-app.zh.md)）：`desktop/runtime/*` seed 与 seed 新鲜度不变式随桌面应用一并删除。
+
 [desktop-launcher 移除笔记](../simplification/2026-09-03-remove-dsh-desktop-launcher.md)的后续落地——该笔记记录了桌面 seed 的 `0.3.13` 聚合仍会拉入 launcher，并会在"下一个聚合 bump 自然掉出"。v0.3.14 就是这个 bump。
 
 ## 决策

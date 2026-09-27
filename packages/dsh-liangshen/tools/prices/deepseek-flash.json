@@ -1,0 +1,14 @@
+{
+  "currency": "CNY",
+  "unit": "per-million-tokens",
+  "effectiveDate": "2026-09-10T12:00:00+08:00",
+  "note": "DeepSeek published row for the route every LiangShen comparison runs on. Off-peak values; the published peak is exactly double, so a peak-hour run understates its own cost by 2x. Cache writes bill at the cache-miss rate when no separate rate is published.",
+  "prices": {
+    "deepseek-official/deepseek-flash": {
+      "input": 1,
+      "output": 4,
+      "cacheRead": 0.02,
+      "cacheWrite": 1
+    }
+  }
+}

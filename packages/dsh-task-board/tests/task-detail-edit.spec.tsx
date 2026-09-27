@@ -34,6 +34,7 @@ function task(overrides: Partial<TaskRecord> = {}): TaskRecord {
 function controllerFake(
   taskRecord: TaskRecord,
   updateTask: (id: string, patch: TaskUpdatePatch) => Promise<boolean> = async () => true,
+  teamRunAvailable = true,
 ): { controller: BoardController; snapshot: ControllerSnapshot } {
   const snapshot: ControllerSnapshot = {
     tasks: [taskRecord],
@@ -42,6 +43,13 @@ function controllerFake(
     selectedTaskId: taskRecord.id,
     executionOptions: { workspaces: [], presets: [] },
     pendingTaskIds: [],
+    host: {
+      revision: 1,
+      scheduler: { timeZone: 'UTC' },
+      power: { platform: 'linux', phase: 'unsupported', enabled: false, runningSessions: 0, armedSchedules: 0, sessionStateKnown: true },
+      sessionDefaultPermission: 'read-only',
+      teamRunAvailable,
+    },
   }
   const controller = {
     getSnapshot: () => snapshot,
@@ -61,8 +69,12 @@ function controllerFake(
   return { controller, snapshot }
 }
 
-async function renderDetail(taskRecord: TaskRecord, updateTask?: (id: string, patch: TaskUpdatePatch) => Promise<boolean>): Promise<{ container: HTMLElement; controller: BoardController; snapshot: ControllerSnapshot }> {
-  const { controller, snapshot } = controllerFake(taskRecord, updateTask)
+async function renderDetail(
+  taskRecord: TaskRecord,
+  updateTask?: (id: string, patch: TaskUpdatePatch) => Promise<boolean>,
+  teamRunAvailable = true,
+): Promise<{ container: HTMLElement; controller: BoardController; snapshot: ControllerSnapshot }> {
+  const { controller, snapshot } = controllerFake(taskRecord, updateTask, teamRunAvailable)
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
@@ -75,6 +87,11 @@ function editButtonOf(container: HTMLElement): HTMLButtonElement | undefined {
   return [...container.querySelectorAll('button')].find(button => button.textContent === '编辑')
 }
 
+function teamToggleOf(container: HTMLElement): HTMLInputElement | undefined {
+  const boxes = [...container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+  return boxes.find(input => input.closest('label')?.textContent?.includes('Agent Team'))
+}
+
 function setFieldValue(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
   const prototype = element instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype
   const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set
@@ -82,6 +99,34 @@ function setFieldValue(element: HTMLInputElement | HTMLTextAreaElement, value: s
   element.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
+
+describe('Agent Team opt-in in the execution settings', () => {
+  it('user enabling team execution on a served deployment saves the opt-in', async () => {
+    // Given a task on a deployment that serves Agent Teams
+    const updates: TaskUpdatePatch[] = []
+    const { container } = await renderDetail(task(), async (id, patch) => { updates.push(patch); return true })
+    const toggle = teamToggleOf(container)
+    if (toggle === undefined) throw new Error('no Agent Team toggle')
+
+    // When the user ticks it
+    expect(toggle.disabled).toBe(false)
+    await act(async () => { toggle.click() })
+
+    // Then the opt-in is written through the controller
+    expect(updates).toEqual([{ teamRun: true }])
+  })
+
+  it('operator on a deployment without Agent Teams sees the toggle disabled with the reason', async () => {
+    // Given a task on a deployment that serves no Agent Teams service
+    const { container } = await renderDetail(task(), undefined, false)
+    const toggle = teamToggleOf(container)
+
+    // When the user inspects the execution settings
+    // Then the opt-in is offered read-only and the reason is stated
+    expect(toggle?.disabled).toBe(true)
+    expect(container.textContent).toContain('当前部署未提供 Agent Teams 服务')
+  })
+})
 describe('task content editing before execution (issue #1110)', () => {
   it('offers the edit button for a task that has never executed', async () => {
     const { container } = await renderDetail(task())

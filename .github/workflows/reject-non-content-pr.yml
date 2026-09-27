@@ -33,8 +33,9 @@ jobs:
               return normalized === '' || normalized === 'no response' || normalized === '_no response_';
             };
 
-            const hasCheckedLine = (value, label) => {
-              const pattern = new RegExp(`^-\\s*\\[[xX]\\]\\s*${escapeRegExp(label)}\\s*$`, 'm');
+            // 勾选项按前缀识别：PR 模板可在稳定前缀后追加指向独立仓的说明文字。
+            const hasCheckedPrefix = (value, label) => {
+              const pattern = new RegExp(`^-\\s*\\[[xX]\\]\\s*${escapeRegExp(label)}`, 'm');
               return pattern.test(value);
             };
             const pr = context.payload.pull_request;
@@ -43,18 +44,8 @@ jobs:
             const prCategory = readSection('PR 类别（PR Category）');
             const prType = readSection('PR 类型（PR Type）');
             
-            // 四类内容贡献：皮肤增加（皮肤 / 皮肤中心 类别或新皮肤收录类型）、
-            // 插件申请（社区插件索引 类别）、宠物增加（新宠物收录 类型）、
-            // 预设增加（新预设收录 类型）。
-            const isSkinPR = hasCheckedLine(prCategory, '皮肤 / 皮肤中心（新皮肤收录、皮肤样式）')
-              || hasCheckedLine(prType, '新皮肤收录（内容贡献，欢迎直接提交，无需先提 issue）');
-            const isPluginApplicationPR = hasCheckedLine(prCategory, '社区插件索引');
-            const isNewPetPR = hasCheckedLine(prType, '新宠物收录（内容贡献，欢迎直接提交，无需先提 issue）');
-            const isNewPresetPR = hasCheckedLine(prType, '新预设收录（内容贡献，欢迎直接提交，无需先提 issue）');
-            if (isSkinPR || isPluginApplicationPR || isNewPetPR || isNewPresetPR) {
-              console.log('PR #' + pr.number + ': declared accepted content type, keeping open.');
-              return;
-            }
+            // 本仓库不再接受任何外部内容贡献：四类内容贡献（皮肤、宠物、社区
+            // 插件索引、agent 预设）都在各自的独立仓提交，由下方重定向分支处理。
             
             // 仅文档类 PR 由 reject-docs-pr.yml 处理，避免重复评论 / 关闭。
             const isDocsTitle = /^docs\b/i.test(pr.title || '') || /^docs\s*\(/i.test(pr.title || '');
@@ -89,10 +80,57 @@ jobs:
               return;
             }
             
+            // 已迁出的内容贡献：皮肤、宠物与社区插件索引在各自的独立仓提交；
+            // 本仓收到这类 PR 时关闭并重定向到对应仓库。
+            const movedContribution = [
+              {
+                kind: '新皮肤收录',
+                declared: hasCheckedPrefix(prCategory, '皮肤 / 皮肤中心') || hasCheckedPrefix(prType, '新皮肤收录'),
+                target: '[dsh-skins](https://github.com/' + context.repo.owner + '/dsh-skins) 仓的 `skins/<id>/` 目录',
+              },
+              {
+                kind: '新宠物收录',
+                declared: hasCheckedPrefix(prType, '新宠物收录'),
+                target: '[dsh-pet](https://github.com/' + context.repo.owner + '/dsh-pet) 仓的 `assets/<id>/` 目录',
+              },
+              {
+                kind: '新预设收录',
+                declared: hasCheckedPrefix(prType, '新预设收录'),
+                target: '[dsh-presets](https://github.com/' + context.repo.owner + '/dsh-presets) 仓的 `presets/<id>/` 目录',
+              },
+              {
+                kind: '社区插件索引登记',
+                declared: hasCheckedPrefix(prCategory, '社区插件索引'),
+                target: '[dsh-community-plugins](https://github.com/' + context.repo.owner + '/dsh-community-plugins) 仓的 `community.json`',
+              },
+            ].find((item) => item.declared);
+            if (movedContribution) {
+              const redirectComment = [
+                '本仓库已不接收' + movedContribution.kind + '，本 PR 已自动关闭并重定向。',
+                '',
+                '请在 ' + movedContribution.target + ' 提交，并按对应独立仓的 PR 模板填写。',
+              ].join('\n');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: redirectComment,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                state: 'closed',
+                state_reason: 'not_planned',
+              });
+              core.setFailed('PR #' + pr.number + ' declares ' + movedContribution.kind + ' and was auto-closed with a redirect.');
+              return;
+            }
+            
             const comment = [
-              '本仓库只接受四类内容贡献（插件申请 / 皮肤增加 / 宠物增加 / 预设增加），本 PR 不在接受范围内，已被自动关闭。',
+              '本仓库不接受外部直接提交的 PR，本 PR 已被自动关闭。',
               '',
-              '请在 PR 描述中勾选对应类别或类型后重新打开：新皮肤收录 → 类别「皮肤 / 皮肤中心」；插件申请 → 类别「社区插件索引」；新宠物收录 → 类型「新宠物收录」；新预设收录 → 类型「新预设收录」。',
+              '内容贡献改在各自的独立仓提交：皮肤 / 皮肤中心 dsh-skins、宠物 dsh-pet、社区插件索引 dsh-community-plugins、agent 预设 dsh-presets。',
               '其余改动（bug 修复、功能增强、全新功能、文档、测试、维护等）请先到 [Issues](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/issues) 提 issue 讨论，确认后由维护者处理。',
             ].join('\n');
             

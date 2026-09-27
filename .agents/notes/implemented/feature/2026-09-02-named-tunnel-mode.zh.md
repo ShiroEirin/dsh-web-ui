@@ -10,7 +10,7 @@ Status: implemented
 
 - **新增命名隧道模式**：`dsh-remote-web-ui` 新增 `tunnelToken` 设置（Cloudflare 命名隧道 Token），插件自行运行 `cloudflared tunnel run --token`，指向在 Cloudflare 控制台配置的固定公共主机名。主机名永不变化，手机配对一次，书签与配对 Cookie 跨重启持续有效。
 - **优先级与校验**收敛在纯规划器（`src/tunnel-plan.ts`，`tunnelPlanOf`）：`autoTunnel`（快速隧道）优先于 `tunnelToken`；命名模式要求同时具备 Token 和指向同一固定主机名的有效 `publicBaseUrl`（Token 本身不携带主机名）——否则模式关闭，并给出指明缺失项的警告。
-- **生命周期复用**：命名进程由 `namedTunnelHandle`（`src/tunnel.ts`）包装，在首个边缘连接注册后通过与快速隧道相同的 `url` 事件一次性上报固定 URL——管理器的 URL 超时、崩溃退避重启、停止语义、phase 监听与姿态探测对两种模式完全一致。
+- **生命周期复用**：命名进程由 `namedTunnelHandle`（`src/tunnel.ts`）包装，在首个边缘连接注册后通过与快速隧道相同的 `url` 事件一次性上报固定 URL——管理器的 URL 超时、崩溃退避重启、停止语义、phase 监听与姿态探测对两种模式完全一致。此外，两种模式下运行中的隧道都由其公网地址监督（[the tunnel readiness watchdog](../bug-fix/2026-09-25-tunnel-readiness-watchdog.zh.md)）：连接器失去边缘注册却未退出时按崩溃重启处理，而不是永远报 `running`。
 - **密文处理**：`tunnelToken` 在 section schema 中声明 `role('secret')`，设置面存储时脱敏；卡片经 `secretField` 编辑，从不回读明文。
 - **UI 与文案**：设置卡片新增令牌字段（位于自动隧道开关与局域网状态之间）；包内 zh/en 文案，ru 镜像进 dsh-i18n 中央字典。README 补充配置步骤（控制台 ingress 映射、Token、公网地址），安全模型中关于主机名抖动的条目改为指向新模式。
 

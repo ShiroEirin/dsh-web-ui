@@ -21,6 +21,12 @@ concurrency:
 jobs:
   update-contributors:
     name: Sync contributor list into READMEs
+    # Canonical-repository guard: CONTRIBUTORS_PUSH_PAT is a bypass-capable
+    # token that exists only here, and actions/checkout rejects an empty token
+    # input outright - a fork's scheduled run failed before doing any work.
+    # Skip before checkout rather than falling back to the built-in token
+    # (which could never push past this repository's branch policy anyway).
+    if: github.repository == 'zhu1090093659/dsh-web'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 

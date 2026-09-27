@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Superseded (2026-09-24, see [remove the repository's Electron desktop app](../simplification/2026-09-24-remove-electron-desktop-app.md)): `desktop-release.yml` was deleted with the desktop app.
+
 ## Problem
 
 Desktop installers existed only as local builds: nothing attached them to GitHub Releases, so v0.3.14 shipped without the desktop app even though the Electron skeleton and the rc.1 runtime payload were ready. The user asked for the desktop artifacts to be packaged by Actions and attached to this release.

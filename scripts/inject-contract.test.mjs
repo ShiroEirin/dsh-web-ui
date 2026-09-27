@@ -8,14 +8,23 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 
 /**
  * Pinned union of dsh.client.inject module ids across every workspace
- * package. Approved for the 0.1.2-alpha.2 cohort: each name is a browser
+ * package. Approved for the 0.1.7-alpha.1 cohort: each name is a browser
  * roster row of the shell composition (dsh-web-app cordis.patch.yml
  * dsh.client rows) or a frozen static module (dsh-client-ui-slots;
  * dsh-client-store needs no injection because its value imports ride the
  * platform table). The 0.1.1-rc.2 set's dsh-client-runtime row is gone
  * with its package; the api controller and api-remotes rows are the
- * Typert Remote replacement faces. A rename, removal, or new inject name
- * must update this list together with its runtime-module-table evidence.
+ * Typert Remote replacement faces. dsh-client-ui-workspace joined at
+ * 0.1.7-alpha.1: it is the ui-workspace row of dsh-web-app and the provider
+ * of the ctx.uiWorkspace service that replaced ISessions.open(), so the
+ * plugins that navigate the main view depend on its client half being
+ * loaded. dsh-client-ui-layout joined with the task board's native panel
+ * adoption: it is the ui-layout row of dsh-web-app and the owner of the keyed
+ * `main` seat plus the ctx.layout panel-navigation service the board selects
+ * its page through, so the row must be live before the board can contribute
+ * (the board's own registrations wait on the seat declaration either way).
+ * A rename, removal, or new inject name must update this list together with
+ * its runtime-module-table evidence.
  */
 const APPROVED_INJECT_MODULES = [
   '@deepseek-ai/dsh-api-remotes',
@@ -25,16 +34,18 @@ const APPROVED_INJECT_MODULES = [
   '@deepseek-ai/dsh-client-locale',
   '@deepseek-ai/dsh-client-store',
   '@deepseek-ai/dsh-client-ui-conversation',
+  '@deepseek-ai/dsh-client-ui-layout',
   '@deepseek-ai/dsh-client-ui-renderer',
   '@deepseek-ai/dsh-client-ui-settings',
   '@deepseek-ai/dsh-client-ui-sidebar',
   '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-ui-theme',
+  '@deepseek-ai/dsh-client-ui-workspace',
 ]
 
 function collectInjects() {
   const files = []
-  for (const base of [join(ROOT, 'packages'), join(ROOT, 'packages/skins')]) {
+  for (const base of [join(ROOT, 'packages')]) {
+    if (!existsSync(base)) continue
     for (const entry of readdirSync(base)) {
       const pkg = join(base, entry, 'package.json')
       if (existsSync(pkg)) files.push(pkg)
@@ -48,11 +59,11 @@ function collectInjects() {
   return [...names].sort()
 }
 
-test('every dsh.client.inject name is an approved 0.1.2-alpha.2 client module', () => {
+test('every dsh.client.inject name is an approved 0.1.7-alpha.1 client module', () => {
   for (const name of collectInjects()) {
     assert.ok(
       APPROVED_INJECT_MODULES.includes(name),
-      `inject name outside the approved 0.1.2-alpha.2 module set: ${name}`,
+      `inject name outside the approved 0.1.7-alpha.1 module set: ${name}`,
     )
   }
 })

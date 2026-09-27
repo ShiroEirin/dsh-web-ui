@@ -57,7 +57,9 @@ function post(ids: string[], extra: Record<string, unknown>): RequestInit {
 }
 
 export function createArchiveApi(): ArchiveApi {
-  const prefix = '/api/dsh-session-archive'
+  // DOCUMENT-RELATIVE (issue #1707): resolved against the served
+  // `<base href="./">` so a sub-path deployment reaches the host route.
+  const prefix = 'api/dsh-session-archive'
   return {
     inventory: () => request(`${prefix}/inventory`, undefined, DEFAULT_TIMEOUT_MS),
     preview: (id) => request(`${prefix}/preview?id=${encodeURIComponent(id)}`, undefined, DEFAULT_TIMEOUT_MS),

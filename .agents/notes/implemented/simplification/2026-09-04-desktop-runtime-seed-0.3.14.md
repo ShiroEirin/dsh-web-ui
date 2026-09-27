@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Superseded (2026-09-24, see [remove the repository's Electron desktop app](2026-09-24-remove-electron-desktop-app.md)): the `desktop/runtime/*` seeds and the seed-freshness invariant were deleted with the desktop app.
+
 Follow-through of the [desktop-launcher removal note](../simplification/2026-09-03-remove-dsh-desktop-launcher.md), which recorded that the desktop seed's `0.3.13` aggregate still pulled the launcher and "drops out naturally at the next aggregate bump". v0.3.14 is that bump.
 
 ## Decision

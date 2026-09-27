@@ -5,12 +5,19 @@
  * market-build — regenerate the dsh-market.com static site assets.
  *
  * Single source of truth: the repository itself.
- *   skins   — packages/skins/skin-center/skins/<id>/skin.json        (v2)
- *   pets    — packages/dsh-pet/assets/<dir>/pet.json                 (v2)
- *   plugins — packages/dsh-community-plugins/community.json
- *   presets — packages/dsh-preset-center/presets/<id>/preset.yml
+ *   skins   — .market-inputs/skins/<id>/skin.json                   (v2)
+ *   pets    — .market-inputs/pet/<dir>/pet.json                      (v2)
+ *   plugins — .market-inputs/community/community.json
+ *
+ * The skin, pet, community-index and preset content lives in its own
+ * repositories, carried here as git submodules under satellites/;
+ * scripts/market-fetch-inputs.mjs materializes the content directory of each
+ * pinned gitlink into .market-inputs/.
+ *   presets — .market-inputs/presets/<id>/preset.yml
  *             + presets/catalog.json (market metadata: author, version,
  *               tags, English copy); the preset directory is the asset
+ *   picks   — market/editor-picks.json (hand-curated skin / pet / plugin
+ *             references behind the store card's 编辑推荐 category)
  *
  * Emits market/dist/:
  *   index.html, app.js, preview.html    copied from market/src/
@@ -21,7 +28,9 @@
  *   manifest.js window.SKIN_MANIFEST = { skins: [...] }  (preview.html compat)
  *   sitemap.xml                         generated from the skin catalog
  *   manifest/skins.json  pets.json  plugins.json  presets.json
- *   assets/...                            previews, background media, pet media
+ *   manifest/editor-picks.json
+ *   assets/...                            previews, background media, pet media,
+ *                                         market/src/assets/** site artwork
  *
  * All emitted paths are site-root-relative ("assets/..."), so the deployed
  * static site resolves them directly. Output is deterministic: no absolute
@@ -32,16 +41,58 @@
 
 const fs = require('node:fs')
 const path = require('node:path')
+const { createRequire } = require('node:module')
 const { pathToFileURL } = require('node:url')
 const crypto = require('node:crypto')
 const { crc32 } = require('node:zlib')
 
 const ROOT = path.resolve(__dirname, '..')
-const SKINS_DIR = path.join(ROOT, 'packages', 'skins', 'skin-center', 'skins')
-const PETS_DIR = path.join(ROOT, 'packages', 'dsh-pet', 'assets')
-const PLUGINS_FILE = path.join(ROOT, 'packages', 'dsh-community-plugins', 'community.json')
-const PRESETS_DIR = path.join(ROOT, 'packages', 'dsh-preset-center', 'presets')
+/**
+ * Content sources. The skin, pet and preset assets live in their own
+ * repositories (dsh-skins, dsh-pet, dsh-presets) since the family split;
+ * scripts/market-fetch-inputs.mjs materializes the pinned gitlinks into
+ * MARKET_INPUTS_DIR. The in-repo paths remain as a fallback so the build keeps
+ * working from a checkout that still carries the packages (migration window
+ * and the fixture-based script tests).
+ */
+const MARKET_INPUTS_DIR = process.env.MARKET_INPUTS_DIR
+  ? path.resolve(process.env.MARKET_INPUTS_DIR)
+  : path.join(ROOT, '.market-inputs')
+const IN_REPO_SKINS_DIR = path.join(ROOT, 'packages', 'skins', 'skin-center', 'skins')
+const IN_REPO_PETS_DIR = path.join(ROOT, 'packages', 'dsh-pet', 'assets')
+const IN_REPO_PRESETS_DIR = path.join(ROOT, 'packages', 'dsh-preset-center', 'presets')
+const SKINS_DIR = fs.existsSync(path.join(MARKET_INPUTS_DIR, 'skins')) ? path.join(MARKET_INPUTS_DIR, 'skins') : IN_REPO_SKINS_DIR
+const PETS_DIR = fs.existsSync(path.join(MARKET_INPUTS_DIR, 'pet')) ? path.join(MARKET_INPUTS_DIR, 'pet') : IN_REPO_PETS_DIR
+const PRESETS_DIR = fs.existsSync(path.join(MARKET_INPUTS_DIR, 'presets')) ? path.join(MARKET_INPUTS_DIR, 'presets') : IN_REPO_PRESETS_DIR
+/**
+ * Data sources that ship inside a published package: the community index and
+ * the skin-center CSS pipeline. Resolving through the aggregate's dependency
+ * tree keeps them pinned to the same version the runtime consumes, and keeps
+ * working after the packages leave this repository.
+ */
+const AGGREGATE_DIR = path.join(ROOT, 'packages', 'dsh-web-all')
+const marketRequire = createRequire(path.join(ROOT, 'scripts', 'market-build'))
+function resolveFamilyAsset(specifier, fallback) {
+  try {
+    return marketRequire.resolve(specifier, { paths: [AGGREGATE_DIR, ROOT] })
+  } catch {
+    return fallback
+  }
+}
+const INPUT_COMMUNITY_INDEX = path.join(MARKET_INPUTS_DIR, 'community', 'community.json')
+const PLUGINS_FILE = fs.existsSync(INPUT_COMMUNITY_INDEX)
+  ? INPUT_COMMUNITY_INDEX
+  : resolveFamilyAsset(
+      '@linxin666/dsh-client-ui-community-plugins/community.json',
+      path.join(ROOT, 'packages', 'dsh-community-plugins', 'community.json'),
+    )
+const SKIN_CENTER_LIB = resolveFamilyAsset(
+  '@linxin666/dsh-client-ui-skin-center',
+  path.join(ROOT, 'packages', 'skins', 'skin-center', 'lib', 'index.js'),
+)
 const PRESET_CATALOG = path.join(PRESETS_DIR, 'catalog.json')
+const INSTALLER_SOURCE = path.join(ROOT, 'packages', 'dsh-market', 'src', 'core', 'installer.ts')
+const EDITOR_PICKS_FILE = path.join(ROOT, 'market', 'editor-picks.json')
 const SRC_DIR = path.join(ROOT, 'market', 'src')
 const DIST_DIR = path.join(ROOT, 'market', 'dist')
 const CHECK = process.argv.includes('--check')
@@ -53,6 +104,35 @@ const GENERATED_DATE = CHECK && fs.existsSync(committedManifest)
 function fail(msg) {
   console.error('market-build: ' + msg)
   process.exit(1)
+}
+
+/**
+ * Read the installer's per-asset file cap from its source, so the content
+ * pipeline and the installer policy can never drift apart again: jyn shipped
+ * 1565 files and passed every content check while the installer refused
+ * anything over 200, making the asset uninstallable for every user
+ * (issue #1578).
+ */
+function installerMaxFiles() {
+  const text = fs.readFileSync(INSTALLER_SOURCE, 'utf8')
+  const m = /export const MAX_FILES_PER_ASSET = (\d+)/.exec(text)
+  if (!m) throw new Error('MAX_FILES_PER_ASSET not found in ' + INSTALLER_SOURCE)
+  return Number(m[1])
+}
+
+/** Every catalog asset must stay installable by the market installer. */
+function assertInstallableFileCounts(maxFiles, groups) {
+  for (const { kind, entries } of groups) {
+    for (const { item } of entries) {
+      const count = Array.isArray(item.files) ? item.files.length : 0
+      if (count > maxFiles) {
+        throw new Error(
+          kind + ' ' + item.id + ': declares ' + count + ' files, over the installer limit of ' +
+          maxFiles + ' (packages/dsh-market/src/core/installer.ts MAX_FILES_PER_ASSET)',
+        )
+      }
+    }
+  }
 }
 
 function assertInside(base, rel, label) {
@@ -99,7 +179,7 @@ function scanSkins() {
   if (!fs.existsSync(SKINS_DIR)) return []
   const skins = []
   const dirs = fs.readdirSync(SKINS_DIR).sort()
-  if (!dirs.length) throw new Error('no skins found under packages/skins/skin-center/skins/')
+  if (!dirs.length) throw new Error(`no skins found under ${SKINS_DIR}; run node scripts/market-fetch-inputs.mjs`)
   for (const name of dirs) {
     const dir = path.join(SKINS_DIR, name)
     if (!fs.statSync(dir).isDirectory()) continue
@@ -160,7 +240,7 @@ function scanSkins() {
     item.files = listFiles(dir)
     // Source GitHub link: preserve an explicit sourceUrl, otherwise point to
     // this repository's catalog directory so every published skin is discoverable.
-    item.repo = meta.sourceUrl || `https://github.com/zhu1090093659/dsh-web/tree/dev/packages/skins/skin-center/skins/${name}`
+    item.repo = meta.sourceUrl || `https://github.com/zhu1090093659/dsh-skins/tree/main/skins/${name}`
     if (Object.keys(contributes).length) item.contributes = contributes
     if (meta.requires) item.requires = meta.requires
     if (meta.facets) item.facets = meta.facets
@@ -264,6 +344,45 @@ function scanPlugins() {
   return plugins
 }
 
+/** --- editor picks --------------------------------------------------------- */
+
+/**
+ * Catalog kinds the 编辑推荐 category may reference. Presets are deliberately
+ * out of scope: the category curates skins, pets and community plugins only.
+ */
+const EDITOR_PICK_KINDS = ['skin', 'pet', 'plugin']
+
+/**
+ * Read the hand-curated "editor picks" list (market/editor-picks.json) and
+ * resolve every reference against the catalogs this build just scanned. A pick
+ * that names a removed, renamed or mistyped asset fails the build, so the
+ * store card can never advertise a fixed entry that no longer exists.
+ */
+function scanEditorPicks(catalogIds) {
+  const raw = readJson(EDITOR_PICKS_FILE, 'editor picks')
+  if (!Array.isArray(raw.items)) throw new Error('editor picks: "items" must be an array')
+  const seen = new Set()
+  return raw.items.map((entry, index) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(`editor picks #${index}: entry must be an object`)
+    }
+    const { kind, id } = entry
+    if (!EDITOR_PICK_KINDS.includes(kind)) {
+      throw new Error(`editor picks #${index}: kind must be one of ${EDITOR_PICK_KINDS.join(' / ')}: ${String(kind)}`)
+    }
+    if (typeof id !== 'string' || id === '') {
+      throw new Error(`editor picks #${index}: id must be a non-empty string`)
+    }
+    const key = kind + ':' + id
+    if (seen.has(key)) throw new Error(`editor picks #${index}: duplicate reference: ${key}`)
+    seen.add(key)
+    if (!catalogIds[kind].has(id)) {
+      throw new Error(`editor picks #${index}: ${key} is not in the ${kind} catalog`)
+    }
+    return { kind, id }
+  })
+}
+
 /** Preset ids the harness ships; a community preset may never claim one. */
 const PRESET_RESERVED_IDS = ['minimal', 'ptc', 'standard', 'cordis']
 
@@ -274,7 +393,7 @@ const PRESET_RESERVED_IDS = ['minimal', 'ptc', 'standard', 'cordis']
  */
 const PRESET_CATEGORIES = ['roleplay']
 
-/** Official preset directory rule (mirrors PRESET_ID in @deepseek-ai/dsh-agent-presets). */
+/** Official preset directory rule (mirrors the registry's own preset id rule). */
 const PRESET_ID_RE = /^[a-z0-9][a-z0-9-]*$/
 
 /**
@@ -395,7 +514,7 @@ function buildSitemap(skins) {
 
 /** --- emit ---------------------------------------------------------------- */
 
-function emit(outDir, files, binary, skins, pets, plugins, presets, transformSkinCss) {
+function emit(outDir, files, binary, skins, pets, plugins, presets, picks, transformSkinCss) {
   let preservedTryon = null
   const tryonPath = path.join(outDir, 'tryon')
   const canRebuildTryon = fs.existsSync(TRYON_SHELL_DIR) && fs.existsSync(path.join(TRYON_SHELL_DIR, 'index.html'))
@@ -488,6 +607,7 @@ function emit(outDir, files, binary, skins, pets, plugins, presets, transformSki
   fs.writeFileSync(path.join(manDir, 'pets.json'), mk(pets.map(({ item }) => item)))
   fs.writeFileSync(path.join(manDir, 'plugins.json'), mk(plugins.map(({ item }) => item)))
   fs.writeFileSync(path.join(manDir, 'presets.json'), mk(presets.map(({ item }) => item)))
+  fs.writeFileSync(path.join(manDir, 'editor-picks.json'), mk(picks))
 }
 
 function walkFiles(dir, base) {
@@ -653,12 +773,26 @@ function verifyTryonManifest(outDir) {
 }
 
 async function main() {
-  const skinCenter = await import(pathToFileURL(path.join(ROOT, 'packages', 'skins', 'skin-center', 'lib', 'index.js')).href)
-  const transformSkinCss = skinCenter.transformSkinCss
   const skins = scanSkins()
   const pets = scanPets()
   const plugins = scanPlugins()
   const presets = scanPresets()
+  // Policy gate first: the catalog is pure source data, so a content/policy
+  // mismatch is reported before the build needs its generated inputs.
+  assertInstallableFileCounts(installerMaxFiles(), [
+    { kind: 'skin', entries: skins },
+    { kind: 'pet', entries: pets },
+    { kind: 'preset', entries: presets },
+  ])
+  // Curated store-card category: every reference must resolve in the catalogs
+  // scanned above.
+  const picks = scanEditorPicks({
+    skin: new Set(skins.map(({ item }) => item.id)),
+    pet: new Set(pets.map(({ item }) => item.id)),
+    plugin: new Set(plugins.map(({ item }) => item.id)),
+  })
+  const skinCenter = await import(pathToFileURL(SKIN_CENTER_LIB).href)
+  const transformSkinCss = skinCenter.transformSkinCss
 
   // static sources
   const files = new Map()
@@ -672,6 +806,14 @@ async function main() {
   // binary assets — full tree copy per skin/pet so a consumer can install
   // the exact directory from the static site (files list mirrors this layout)
   const binary = new Map()
+  // site-owned artwork (market/src/assets/**) — copied verbatim so the
+  // deployed site can reference it like any other static asset.
+  const SRC_ASSETS = path.join(SRC_DIR, 'assets')
+  if (fs.existsSync(SRC_ASSETS)) {
+    for (const rel of listFiles(SRC_ASSETS)) {
+      binary.set('assets/' + rel, path.join(SRC_ASSETS, rel))
+    }
+  }
   for (const { name, dir, item } of skins) {
     for (const rel of item.files) {
       binary.set(`assets/skins/${name}/${rel}`, assertInside(dir, rel, 'skin file'))
@@ -691,7 +833,7 @@ async function main() {
   if (CHECK) {
     const tmp = path.join(ROOT, '.market-check-tmp')
     fs.rmSync(tmp, { recursive: true, force: true })
-    emit(tmp, files, binary, skins, pets, plugins, presets, transformSkinCss)
+    emit(tmp, files, binary, skins, pets, plugins, presets, picks, transformSkinCss)
     const canRebuildTryon = fs.existsSync(path.join(TRYON_SHELL_DIR, 'index.html'))
     if (canRebuildTryon) {
       emitTryon(tmp, skins)
@@ -720,9 +862,9 @@ async function main() {
     return
   }
 
-  emit(DIST_DIR, files, binary, skins, pets, plugins, presets, transformSkinCss)
+  emit(DIST_DIR, files, binary, skins, pets, plugins, presets, picks, transformSkinCss)
   emitTryon(DIST_DIR, skins)
-  console.log(`market-build: wrote ${walkFiles(DIST_DIR).length} files (${skins.length} skins, ${pets.length} pets, ${plugins.length} plugins, ${presets.length} presets)`)
+  console.log(`market-build: wrote ${walkFiles(DIST_DIR).length} files (${skins.length} skins, ${pets.length} pets, ${plugins.length} plugins, ${presets.length} presets, ${picks.length} editor picks)`)
 }
 
 main().catch((error) => { console.error(error); process.exit(1) })

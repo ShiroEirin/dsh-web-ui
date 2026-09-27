@@ -11,7 +11,7 @@ Two distinct defects affected production stability on desktop/server environment
 
 ## Decision
 
-1. In `packages/dsh-remote-web-ui/src/update.ts`:
+1. In `packages/dsh-update/src/update.ts` (then `packages/dsh-remote-web-ui/src/update.ts`):
    - Added tolerant decoding (`decodeProcessChunk`) which tries UTF-8 first and falls back to GBK (`new TextDecoder('gbk')`) on invalid byte sequences.
    - Expanded `WIN_CMD_MISSING_RE` to match both English and Chinese command-not-found patterns, and also recognized Windows exit code 9009 as command-not-found.
    - Attributed non-zero exit error messages to the actual candidate command rather than hardcoding `pnpm`.
@@ -35,5 +35,5 @@ Two distinct defects affected production stability on desktop/server environment
 
 ## Testing
 
-- Unit tests in `packages/dsh-remote-web-ui/tests/update.spec.ts` verify GBK decoding, localized Chinese command missing fallback, and exit code 9009.
+- Unit tests in `packages/dsh-update/tests/update.spec.ts` verify GBK decoding, localized Chinese command missing fallback, and exit code 9009.
 - Unit tests in `packages/dsh-task-board/tests/host-ledger.spec.ts` and `host-service.spec.ts` verify startup tmp cleanup, ENOSPC heartbeat degradation, and stream error guards.

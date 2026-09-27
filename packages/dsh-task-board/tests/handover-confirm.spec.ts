@@ -123,10 +123,40 @@ function makeGateway(createSpy = vi.fn(async (_req?: unknown) => ({ sessionId: '
   return { gateway: { invoke } as unknown as TypertGateway, invoke, create: createSpy, prompt: promptSpy }
 }
 
+/**
+ * A controllable Host timer face: the board arms one schedule timer at its next
+ * cron target, so the cron specs fire that exact timer instead of advancing a
+ * fixed heartbeat. Mirrors the helper in host-service.spec.ts.
+ */
+function timerProbe() {
+  let last: { callback: () => void; delay: number } | undefined
+  return {
+    timers: {
+      timeout(callback: () => void, delay: number): () => void {
+        last = { callback, delay }
+        return () => {}
+      },
+      interval(): () => void {
+        return () => {}
+      },
+    },
+    get delay(): number { return last?.delay ?? 0 },
+    async trigger(): Promise<void> {
+      const armed = last
+      last = undefined
+      armed?.callback()
+      for (let turn = 0; turn < 50; turn += 1) await Promise.resolve()
+    },
+  }
+}
+
 function makeService(ledger: HostTaskLedger, now: () => number) {
   const { gateway, create, prompt } = makeGateway()
-  const service = new TaskBoardHostService(gateway, { ledger, power: new PowerInhibitor({ platform: 'linux' }), now })
-  return { service, create, prompt }
+  const probe = timerProbe()
+  const service = new TaskBoardHostService(gateway, {
+    ledger, power: new PowerInhibitor({ platform: 'linux' }), timers: probe.timers, now,
+  })
+  return { service, create, prompt, ...probe }
 }
 
 describe('confirmation gate: unconfirmed high-permission binding refuses execution', () => {
@@ -208,10 +238,12 @@ describe('confirmation gate: cron refuses unconfirmed cards', () => {
       kind: 'create', id: 'card',
       input: { title: '定时高权卡', description: '', prompt: 'p', handover: HANDOVER, schedule: { enabled: true, cron: '* * * * *' } },
     })
-    const { service, create } = makeService(ledger, () => now)
+    const { service, create, trigger } = makeService(ledger, () => now)
+    service.start()
     now = new Date(2026, 7, 16, 10, 1, 0).getTime()
-    await (service as unknown as { tickSchedule(first: boolean): Promise<void> }).tickSchedule(false)
-    await new Promise(resolve => { setTimeout(resolve, 0) })
+    await trigger()
+    // The unconfirmed card refuses the cron run and rolls its target forward
+    // instead of opening a session.
     expect(create).not.toHaveBeenCalled()
     expect(ledger.state().tasks[0].executions).toEqual([])
     expect(ledger.state().tasks[0].schedule?.nextRunAt).toBe(new Date(2026, 7, 16, 10, 2, 0).getTime())
@@ -226,10 +258,10 @@ describe('confirmation gate: cron refuses unconfirmed cards', () => {
       input: { title: '定时高权卡', description: '', prompt: 'p', handover: HANDOVER, schedule: { enabled: true, cron: '* * * * *' } },
     })
     ledger.applyRequest('req-confirm', { kind: 'confirm-permission', taskId: 'card' })
-    const { service, create } = makeService(ledger, () => now)
+    const { service, create, trigger } = makeService(ledger, () => now)
+    service.start()
     now = new Date(2026, 7, 16, 10, 1, 0).getTime()
-    await (service as unknown as { tickSchedule(first: boolean): Promise<void> }).tickSchedule(false)
-    await new Promise(resolve => { setTimeout(resolve, 0) })
+    await trigger()
     expect(create).toHaveBeenCalledOnce()
     expect(ledger.state().tasks[0].executions).toHaveLength(1)
     service.dispose()

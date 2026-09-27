@@ -6,11 +6,36 @@
 
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { useEffect, useState } from 'react'
 import type { TaskBoardPowerSnapshot } from '../protocol.ts'
-import { PluginSettingsCard, BooleanField } from './PluginSettingsCard.tsx'
-import { CardForm, booleanField, type CardActions, type CardShell, type FieldState as CardFieldState } from './settings-form.ts'
+import { PluginSettingsCard, BooleanField, ChoiceField } from './PluginSettingsCard.tsx'
+import { SUBTASK_DEPTH_MAX, SUBTASK_DEPTH_MIN } from '../core/subtask.ts'
+import { CardForm, booleanField, type CardActions, type CardShell, type FieldSpec, type FieldState as CardFieldState } from './settings-form.ts'
+
+/** The depth choices the card offers, derived from the supported range. */
+const SUBTASK_DEPTH_CHOICES: readonly string[] = Array.from(
+  { length: SUBTASK_DEPTH_MAX - SUBTASK_DEPTH_MIN + 1 },
+  (_, index) => String(SUBTASK_DEPTH_MIN + index),
+)
+
+/**
+ * The depth field: a choice among the supported levels whose draft text is a
+ * number, because the Host schema (`maxSubtaskDepth`) is numeric. A draft
+ * outside the range blocks the save instead of staging a value the Host
+ * refuses.
+ */
+function subtaskDepthField(): FieldSpec {
+  return {
+    field: 'maxSubtaskDepth',
+    format: value => typeof value === 'number' && Number.isInteger(value) ? String(value) : '',
+    parse: (text) => {
+      const trimmed = text.trim()
+      if (trimmed === '') return { kind: 'clear' }
+      return SUBTASK_DEPTH_CHOICES.includes(trimmed) ? { kind: 'set', value: Number(trimmed) } : undefined
+    },
+  }
+}
 
 /** The task-board fields this card edits (the namespace's full schema). */
 export interface TaskBoardSettings {
@@ -20,6 +45,8 @@ export interface TaskBoardSettings {
   announceToAgent?: boolean
   /** Prevent host idle sleep while sessions run or schedules are armed. */
   preventIdleSleep?: boolean
+  /** Subtask depth limit (1..3); 1 means a single level of subtasks. */
+  maxSubtaskDepth?: number
 }
 
 /** What the task-board card renders. */
@@ -30,6 +57,8 @@ export interface TaskBoardSettingsCardState extends CardShell {
   announceToAgent: CardFieldState
   /** Idle-system-sleep protection flag. */
   preventIdleSleep: CardFieldState
+  /** Subtask depth limit field. */
+  maxSubtaskDepth: CardFieldState
 }
 
 /** The registration-side face the card's slot entry injects. */
@@ -40,17 +69,18 @@ export interface TaskBoardSettingsCardFace extends CardActions {
   }
 }
 
-/** Bridges the `task-board` scope onto the card's staged form. */
+/** Bridges the `task-board` settings form onto the card's staged form. */
 export class TaskBoardSettingsCardController {
   private readonly form: CardForm<TaskBoardSettings>
   private readonly store: SnapshotStore<TaskBoardSettingsCardState>
 
-  /** @param scope - the bound settings scope for the `task-board` namespace. */
-  constructor(scope: SettingsScope<TaskBoardSettings>) {
+  /** @param scope - the bound configuration form for the `task-board` namespace. */
+  constructor(scope: ConfigForm<TaskBoardSettings>) {
     this.form = new CardForm(scope, [
       booleanField('enabled'),
       booleanField('announceToAgent'),
       booleanField('preventIdleSleep'),
+      subtaskDepthField(),
     ])
     this.store = this.form.bind(() => this.projection())
   }
@@ -61,6 +91,7 @@ export class TaskBoardSettingsCardController {
       enabled: this.form.field('enabled'),
       announceToAgent: this.form.field('announceToAgent'),
       preventIdleSleep: this.form.field('preventIdleSleep'),
+      maxSubtaskDepth: this.form.field('maxSubtaskDepth'),
     }
   }
 
@@ -73,7 +104,7 @@ export class TaskBoardSettingsCardController {
   }
 
   /**
-   * Release the card's scope subscription and bound stores; the slot
+   * Release the card's form subscription and bound stores; the slot
    * disposer calls this on teardown.
    */
   dispose(): void {
@@ -102,7 +133,7 @@ export function TaskBoardSettingsCard(props: TaskBoardSettingsCardProps) {
     // one frame on subscribe; polling the full /state snapshot every 5 s
     // re-cloned and re-serialized the whole ledger server-side for one field.
     let live = true
-    const events = new EventSource('/api/task-board/events')
+    const events = new EventSource('api/task-board/events')
     events.onmessage = (message: MessageEvent<string>): void => {
       try {
         const frame = JSON.parse(message.data) as { power?: TaskBoardPowerSnapshot }
@@ -126,6 +157,8 @@ export function TaskBoardSettingsCard(props: TaskBoardSettingsCardProps) {
       descriptionKey="settings.description"
       defaultOpen={false}
       state={state}
+      renderChildrenWhenNotExposed
+      hideNotExposedNotice
       onSave={props.save}
       onDiscard={props.discard}
     >
@@ -164,6 +197,20 @@ export function TaskBoardSettingsCard(props: TaskBoardSettingsCardProps) {
         {...state.preventIdleSleep}
         onEdit={(text) => { props.edit('preventIdleSleep', text) }}
         onReset={() => { props.resetField('preventIdleSleep') }}
+      />
+      <ChoiceField
+        id="settings-task-board-subtask-depth"
+        label={t('settings.maxSubtaskDepth')}
+        hint={t('settings.maxSubtaskDepthHint')}
+        inheritLabel={t('settings.inherit')}
+        choices={SUBTASK_DEPTH_CHOICES.map(value => ({
+          value,
+          label: t('settings.maxSubtaskDepthOption', { depth: value }),
+        }))}
+        {...fieldProps}
+        {...state.maxSubtaskDepth}
+        onEdit={(text) => { props.edit('maxSubtaskDepth', text) }}
+        onReset={() => { props.resetField('maxSubtaskDepth') }}
       />
       <p>
         {t('settings.powerStatus', {

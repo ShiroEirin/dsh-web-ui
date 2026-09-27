@@ -40,6 +40,17 @@ dsh-better-sidebar、@linxin666/dsh-perf、
   perf、session-archive 等直挂行）跳过；共享的
   `Symbol.for('dsh-web.mounted-plugins')` 注册表（mountOnce 符号）保证跨
   模块实例只有一个判定。
+- 一次挂载的 claim 只活到它的 fiber 结束：`mountClientChildren` 注册一个
+  effect，在聚合包 fiber 卸载时只删除**本次**认领的名字，兄弟实例的 claim
+  原样保留。这正是原地替换可恢复的原因——loader 对重建的应用条目做原地替换
+  （拆 fiber 再 apply，不刷页面；只有 bootstrap 条目才强制刷新），而继承了
+  死实例 claim 的后继会一个子插件都挂不上（2026-09-24 报告：设置导航里的
+  使用统计、Web 插件、创意工坊、已归档会话全部消失，直到人工刷新页面）。
+- 家族表面归 fiber 所有，而不是归 document 所有。dsh-task-board 把 DOM 挂载
+  （侧栏行 + 看板容器）与设置表单订阅一起绑定到同一个 `ctx.effect`，fiber
+  卸载即回收。字典在同一次拆解里被移除，所以活得比 fiber 久的行会带着仍然
+  活着的 controller 渲染原始 key（`entry.label`、`board.title`、
+  `board.showSubtasks`），而 usage、market 这些兄弟表面则直接消失。
 
 ## 后果
 
@@ -50,13 +61,23 @@ dsh-better-sidebar、@linxin666/dsh-perf、
   直挂行，而不会双挂 client 半区。
 - 新增带 client face 的家族包只需 `node scripts/aggregate.mjs` + 重建，
   挂载清单自动再生。
+- 原地替换现在会自愈而不是杀死家族：旧 fiber 拆解时释放 claim 并回收 DOM，
+  后继的 apply 在同一个 document 里重新挂载子插件。
 
 ## 验证
 
 - 实例 GUI（profile `web`，仅刷新页面——无重启）：设置导航恢复（Web 插件 /
   皮肤 / 宠物 / 创意工坊 / 使用统计 与 Codex 订阅 / 侧边卡片 / 会话归档管理
   并列），宠物 dock 与任务板 DOM 指纹在位，无降级 console 行。
-- `packages/dsh-web-all` 测试 19/19（含新增 `client-children-mount.spec.ts`：
-  跳过/守卫/隔离语义）。
+- 实例 GUI（profile `web`）上实测的原地替换（2026-09-24）：对**修复前**
+  产物 touch 聚合 bundle，打开着的页面里全部家族表面消失（`entry.label`
+  行、速览卡消失、设置导航缺少 使用统计 / 创意工坊 / Web 插件 / 已归档会话）；
+  对**修复后**产物做同样操作，页面无需刷新即保持一行「任务看板」、usage
+  速览卡与完整的设置导航。唯一例外是这次切换本身：如果页面的前任实例是修复
+  前的 bundle，仍需刷新一次——那个死实例从未释放自己的 claim。
+- `packages/dsh-web-all` 测试 67/67，
+  `@linxin666/dsh-client-ui-task-board` 553 通过 / 1 跳过；新增用例
+  （`client-children-mount.spec.ts`：claim 释放与重新挂载；
+  `client-apply-teardown.spec.ts`：DOM 归 fiber 所有）在修复前源码上均失败。
 - 全仓 `pnpm test` 退出码 0；`pnpm typecheck`、`pnpm i18n:check`、
   `pnpm docs:check`、`pnpm aggregate:check` 全绿。

@@ -2,6 +2,8 @@
 
 Status: implemented
 
+已被取代（2026-09-24，见[预设中心迁往 dsh-presets 仓](../architecture/2026-09-24-preset-center-satellite-repository.zh.md)）：门禁不再接受预设贡献。预设 PR 与另外三类内容一样被重定向到 dsh-presets，本仓不再直接接受任何外部贡献；本笔记引入的投稿清单由该仓自己的模板承接。
+
 ## Problem
 
 外部贡献门禁（`.github/workflows/reject-non-content-pr.yml`、PR 模板、CONTRIBUTING.md、`.github/pr-review-routes.json`）此前只认三类内容贡献：社区插件索引登记、新皮肤收录、新宠物收录。创意工坊随后增加了第四类资产——社区 agent 预设（发布源 `packages/dsh-preset-center/presets/`，进 dsh-market.com manifest）——但门禁仍会自动关闭外部贡献者的预设 PR，模板中也没有任何章节告诉贡献者预设投稿需要包含什么。

@@ -418,7 +418,7 @@ describe('CliGateway mutation queue (B7)', () => {
     expect(addCalls).toEqual(['conc-a', 'conc-b'])
   })
 })
-/** The family aggregate's rows section: dsh-better-sidebar mounts through a row, not the bundles layer. */
+/** An aggregate that mounts an external plugin through a patch row, not the bundles layer. */
 const AGGREGATE_PATCH = [
   '- insert:',
   '    - id: web-ui-task-board',
@@ -431,7 +431,7 @@ const AGGREGATE_PATCH = [
 
 describe('CliGateway duplicate-mount safeguard (B9)', () => {
   it('strips a reconciliation-added bundles entry for an already row-mounted package', async () => {
-    // The aggregate mounts dsh-better-sidebar via a patch row while the
+    // The aggregate mounts the external plugin via a patch row while the
     // package also sits in dependencies (not in bundles); any CLI mutation
     // re-adds it to bundles and the next boot double-mounts.
     const { facts, dir } = makeProfile({
@@ -568,6 +568,106 @@ describe('CliGateway update verification', () => {
     expect(job.phase).toBe('error')
     expect(job.error).toContain('更新未生效')
     expect(calls[0]).toEqual(['plugin', '--profile', 'web', 'add', 'dsh-memoir@1.1.0'])
+  })
+})
+
+describe('CliGateway update on an application-owned profile', () => {
+  /** A profile fact set the packaged Desktop launcher produces. */
+  function desktopFacts(facts: ProfileFacts): ProfileFacts {
+    return { ...facts, profileName: 'desktop', desktop: true }
+  }
+
+  /** A gateway whose official in-process manager is scripted. */
+  function nativeGatewayFor(
+    facts: ProfileFacts,
+    behavior: () => void,
+    calls: string[][],
+  ): CliGateway {
+    return new CliGateway(facts, {} as NodeJS.ProcessEnv, {
+      spawnImpl: (() => { throw new Error('the CLI must not run for an application-owned profile') }) as never,
+      findBinary: () => '/fake/dsh',
+      nativeManager: () => ({ installBundle: async (spec) => { calls.push([spec]); behavior() } }),
+    })
+  }
+
+  it('operator: updates through the official in-process manager instead of the refused CLI', async () => {
+    // Given an application-owned desktop profile with an outdated package
+    const { facts, dir } = makeProfile({ 'dsh-memoir': { version: '1.0.0' } })
+    tempDirs.push(dir)
+    const calls: string[][] = []
+    const gateway = nativeGatewayFor(desktopFacts(facts), () => {
+      installPackage(facts.profileDir, 'dsh-memoir', { version: '1.1.0' })
+    }, calls)
+
+    // When the update runs
+    const { jobId } = gateway.update('dsh-memoir', '1.1.0')
+    const job = await settle(gateway, jobId)
+
+    // Then the official manager performed it, the CLI was never spawned, and
+    // the resulting row is verified from the profile the host reads
+    expect(calls).toEqual([['dsh-memoir@1.1.0']])
+    expect(job.phase).toBe('done')
+    expect(job.plugin).toMatchObject({ id: 'dsh-memoir', version: '1.1.0' })
+  })
+
+  it('operator: sees a failed manager run reported as an error job', async () => {
+    // Given the official manager refuses the spec
+    const { facts, dir } = makeProfile({ 'dsh-memoir': { version: '1.0.0' } })
+    tempDirs.push(dir)
+    const gateway = new CliGateway(desktopFacts(facts), {} as NodeJS.ProcessEnv, {
+      spawnImpl: (() => { throw new Error('the CLI must not run') }) as never,
+      findBinary: () => '/fake/dsh',
+      nativeManager: () => ({ installBundle: async () => { throw new Error('registry unreachable') } }),
+    })
+
+    // When the update runs
+    const { jobId } = gateway.update('dsh-memoir', '1.1.0')
+    const job = await settle(gateway, jobId)
+
+    // Then the failure is reported with the manager's own message
+    expect(job.phase).toBe('error')
+    expect(job.error).toContain('registry unreachable')
+  })
+
+  it('operator: sees a green manager run rejected when the version did not move', async () => {
+    // Given the manager resolves without moving anything
+    const { facts, dir } = makeProfile({ 'dsh-memoir': { version: '1.0.0' } })
+    tempDirs.push(dir)
+    const calls: string[][] = []
+    const gateway = nativeGatewayFor(desktopFacts(facts), () => {}, calls)
+
+    // When the update runs
+    const { jobId } = gateway.update('dsh-memoir', '1.1.0')
+    const job = await settle(gateway, jobId)
+
+    // Then a no-op is still a failure, exactly like the CLI path
+    expect(job.phase).toBe('error')
+    expect(job.error).toContain('更新未生效')
+  })
+
+  it('operator: keeps the CLI as the writer on a non-desktop profile', async () => {
+    // Given an ordinary CLI-booted profile with an official manager mounted
+    const { facts, dir } = makeProfile({ 'dsh-memoir': { version: '1.0.0' } })
+    tempDirs.push(dir)
+    const nativeCalls: string[][] = []
+    const cliCalls: string[][] = []
+    const gateway = new CliGateway(facts, {} as NodeJS.ProcessEnv, {
+      spawnImpl: fakeSpawn((args) => {
+        if (args[0] === 'plugin' && args[3] === 'add') installPackage(facts.profileDir, 'dsh-memoir', { version: '1.1.0' })
+        return { code: 0 }
+      }, cliCalls) as never,
+      findBinary: () => '/fake/dsh',
+      nativeManager: () => ({ installBundle: async (spec) => { nativeCalls.push([spec]) } }),
+    })
+
+    // When the update runs
+    const { jobId } = gateway.update('dsh-memoir', '1.1.0')
+    const job = await settle(gateway, jobId)
+
+    // Then the CLI stayed the single writer and the manager was untouched
+    expect(job.phase).toBe('done')
+    expect(nativeCalls).toEqual([])
+    expect(cliCalls[0]).toEqual(['plugin', '--profile', 'web', 'add', 'dsh-memoir@1.1.0'])
   })
 })
 describe('CliGateway finished-job retention', () => {

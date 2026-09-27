@@ -49,20 +49,18 @@ const ALLOW_MARKER = 'i18n-allow:'
  * the gate follows the code instead of a hand-maintained copy.
  */
 const PACKAGES = [
-  { pkg: 'dsh-doctor', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
   { pkg: 'dsh-git-graph', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
+  { pkg: 'dsh-liangshen', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
   { pkg: 'dsh-market', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
   { pkg: 'dsh-model-capabilities', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
-  { pkg: 'dsh-pet', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
   { pkg: 'dsh-plugin-manager', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
-  { pkg: 'dsh-preset-center', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
   { pkg: 'dsh-remote-web-ui', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
   { pkg: 'dsh-session-id', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
   { pkg: 'dsh-session-archive', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
   { pkg: 'dsh-skill-explorer', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
   { pkg: 'dsh-ssh', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
   { pkg: 'dsh-task-board', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
-  { pkg: 'dsh-tool-describe-image', files: [{ file: 'src/client/locales.ts', shape: 'dictionaries' }] },
+  { pkg: 'dsh-update', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
   { pkg: 'dsh-usage', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
   { pkg: 'dsh-web-settings', files: [{ file: 'src/client/locales.ts', shape: 'zh-en' }] },
 ]

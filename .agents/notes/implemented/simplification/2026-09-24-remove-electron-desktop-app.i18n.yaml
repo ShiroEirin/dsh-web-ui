@@ -1,0 +1,5 @@
+# Bilingual-pair consistency record (docs/i18n.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with git hash-object.
+2026-09-24-remove-electron-desktop-app.md: ec0fa1e0cb6e291511a84ce7bc4b026ae2422b70
+2026-09-24-remove-electron-desktop-app.zh.md: 4c71a3d2cd4afb70570b0e3b162f91ba064cefb0

@@ -12,7 +12,7 @@ The product is positioned as the aggregate plugin ecosystem for DSH Web, and the
 
 - Root README pair: the skins chapter demotes from a peer chapter to the last subsection of feature plugins; tagline, intro, capability table, package table, and troubleshooting prose now describe skins as pure asset packs of the skins plugin, distributed through the Workshop. The Chinese surface name is 皮肤 and the English one is skins — "皮肤中心 / Skin Center" no longer appears as a display name in the root README pair.
 - GitHub About description and homepage (dsh-market.com) match this positioning; AGENTS.md and docs/development.md opening lines state the same hierarchy.
-- Identifiers stay frozen: the npm package @linxin666/dsh-client-ui-skin-center, the packages/skins/skin-center directory, the web-ui-skin-center bundle id, and the skin-center/wallpapers path keep their technical names; only display prose changed.
+- Identifiers stay frozen: the npm package @linxin666/dsh-client-ui-skin-center, the web-ui-skin-center bundle id, and the skin-center/wallpapers path keep their technical names; only display prose changed. The directory itself later moved to the dsh-skins repository — see [Family satellite repositories](2026-09-23-family-satellite-repositories.md).
 - The Workshop storefront keeps its skins / pets / plugins merchandise taxonomy — those are goods categories in a store, not product pillars.
 - Cross-link: [product rename](2026-08-24-product-rename-dsh-web.md) covers the dsh-web-ui to dsh-web naming this positioning rides on.
 

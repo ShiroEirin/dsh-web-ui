@@ -49,12 +49,9 @@ function mockFetch(issue: MockIssue | MockIssue[]) {
   const issues = Array.isArray(issue) ? [...issue] : [issue]
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
-    if (url === '/api/update/status') {
-      return new Response(JSON.stringify({ mode: 'npm', packages: [], outdated: false }), { status: 200, headers: { 'content-type': 'application/json' } })
-    }
     const current = issues.length > 1 ? issues.shift()! : issues[0]
-    const status = init?.method === 'POST' && url === '/api/pair/issue' && !current.ok ? (current.status ?? 409) : 200
-    const body = url === '/api/pair/issue' && current.ok
+    const status = init?.method === 'POST' && url === 'api/pair/issue' && !current.ok ? (current.status ?? 409) : 200
+    const body = url === 'api/pair/issue' && current.ok
       ? {
           ok: true,
           url: current.url,
@@ -63,7 +60,7 @@ function mockFetch(issue: MockIssue | MockIssue[]) {
           lanAddresses: current.lanAddresses ?? ['192.168.1.5'],
           ...(current.publicBaseUrl !== undefined ? { publicBaseUrl: current.publicBaseUrl } : {}),
         }
-      : url === '/api/pair/issue'
+      : url === 'api/pair/issue'
         ? { ok: false, code: current.code }
         : { ok: true }
     return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -102,7 +99,7 @@ describe('RemoteEntry', () => {
     const { fetch } = mount()
     const trigger = screen.getByRole('button', { name: 'Remote access' })
     fireEvent.click(trigger)
-    expect(fetch).toHaveBeenCalledWith('/api/pair/issue', expect.objectContaining({ method: 'POST' }))
+    expect(fetch).toHaveBeenCalledWith('api/pair/issue', expect.objectContaining({ method: 'POST' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Remote access' })).toBeTruthy())
     expect(trigger.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByText('Pair a phone or another computer to share the same Web GUI (official UI + mobile adaptation)')).toBeTruthy()
@@ -121,7 +118,7 @@ describe('RemoteEntry', () => {
     expect(screen.queryByText('Computer pairing link')).toBeNull()
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeTruthy()
     // The issue payload no longer carries a workspace deep-link target.
-    const init = fetch.mock.calls.find(call => call[0] === '/api/pair/issue')?.[1] as RequestInit
+    const init = fetch.mock.calls.find(call => call[0] === 'api/pair/issue')?.[1] as RequestInit
     expect(JSON.parse(String(init.body))).toEqual({})
   })
 
@@ -129,13 +126,20 @@ describe('RemoteEntry', () => {
     mount({ ok: false, code: 'lan-required' })
     fireEvent.click(screen.getByRole('button', { name: 'Remote access' }))
     await waitFor(() => expect(screen.getByText('This feature needs a LAN bind or a public address')).toBeTruthy())
+    // The hint must name the surface the toggle actually lives on: the panel
+    // itself carries no settings card (#1517). Both deployment shapes are
+    // named, because the family section only exists when dsh-web-settings is
+    // installed; a standalone install finds the same card on the plugin row
+    // of the official Plugins page (#1700).
+    expect(screen.getByText(/Settings → Web Plugins → Remote access/)).toBeTruthy()
+    expect(screen.getByText(/Settings → Plugins/).textContent).toContain('Settings → Plugins')
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
     expect(document.querySelector('[data-testid="remote-qr"]')).toBeNull()
     // The status stream stays open on the lan-required banner: the
     // auto-tunnel may still be starting, and its running frame drives the
     // re-issue below.
     expect(FakeEventSource.instances).toHaveLength(1)
-    expect(FakeEventSource.instances[0]?.url).toBe('/api/pair/events')
+    expect(FakeEventSource.instances[0]?.url).toBe('api/pair/events')
   })
 
   it('re-issues once the auto-tunnel reaches running and renders the ready QR', async () => {
@@ -153,11 +157,11 @@ describe('RemoteEntry', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remote access' }))
     await waitFor(() => expect(screen.getByText('This feature needs a LAN bind or a public address')).toBeTruthy())
     const source = FakeEventSource.instances[0]
-    expect(source?.url).toBe('/api/pair/events')
+    expect(source?.url).toBe('api/pair/events')
     source?.emit({ type: 'state', phase: 'lan-required', lanAvailable: true, deviceCount: 0, onlineCount: 0, tunnel: { state: 'running', url: 'https://tunnel.example' } })
     await waitFor(() => expect(screen.getByText('https://tunnel.example/pair-accept?pair=tok-2')).toBeTruthy())
     expect(document.querySelector('[data-testid="remote-qr"]')).not.toBeNull()
-    expect(fetch.mock.calls.filter(call => call[0] === '/api/pair/issue')).toHaveLength(2)
+    expect(fetch.mock.calls.filter(call => call[0] === 'api/pair/issue')).toHaveLength(2)
   })
 
   it('stays on the lan-required banner while the auto-tunnel is starting', async () => {
@@ -168,7 +172,7 @@ describe('RemoteEntry', () => {
     source?.emit({ type: 'state', phase: 'lan-required', lanAvailable: true, deviceCount: 0, onlineCount: 0, tunnel: { state: 'starting' } })
     // Let a stray re-issue surface before asserting none happened.
     await new Promise(resolve => setTimeout(resolve, 20))
-    expect(fetch.mock.calls.filter(call => call[0] === '/api/pair/issue')).toHaveLength(1)
+    expect(fetch.mock.calls.filter(call => call[0] === 'api/pair/issue')).toHaveLength(1)
     expect(screen.getByText('This feature needs a LAN bind or a public address')).toBeTruthy()
     expect(document.querySelector('[data-testid="remote-qr"]')).toBeNull()
   })
@@ -199,13 +203,7 @@ describe('RemoteEntry', () => {
 
   it('does not leak an EventSource when the panel is closed during the issue fetch', async () => {
     let resolveIssue: ((r: Response) => void) | undefined
-    const fetch = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url === '/api/update/status') {
-        return Promise.resolve(new Response(JSON.stringify({ mode: 'npm', packages: [], outdated: false }), { status: 200, headers: { 'content-type': 'application/json' } }))
-      }
-      return new Promise<Response>((resolve) => { resolveIssue = resolve })
-    })
+    const fetch = vi.fn((_input: RequestInfo | URL) => new Promise<Response>((resolve) => { resolveIssue = resolve }))
     vi.stubGlobal('fetch', fetch)
     vi.stubGlobal('EventSource', FakeEventSource)
     render(
@@ -241,7 +239,7 @@ describe('RemoteEntry', () => {
     // the default selection.
     fireEvent.click(screen.getByLabelText('10.0.0.3'))
     await waitFor(() => {
-      const calls = fetch.mock.calls.filter(call => call[0] === '/api/pair/issue')
+      const calls = fetch.mock.calls.filter(call => call[0] === 'api/pair/issue')
       expect(calls).toHaveLength(2)
       const body = JSON.parse(String((calls[1]?.[1] as RequestInit).body))
       expect(body).toEqual({ address: '10.0.0.3' })
@@ -260,7 +258,7 @@ describe('RemoteEntry', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remote access' }))
     await waitFor(() => expect(screen.getByText('Waiting for a device')).toBeTruthy())
     const source = FakeEventSource.instances[0]
-    expect(source?.url).toBe('/api/pair/events')
+    expect(source?.url).toBe('api/pair/events')
     source?.emit({
       type: 'state',
       phase: 'connected',
@@ -285,14 +283,49 @@ describe('RemoteEntry', () => {
     await waitFor(() => expect(screen.getByText('Paired devices offline')).toBeTruthy())
   })
 
+  it('operator keeps the device row when the server refuses the unpair', async () => {
+    // Given an open panel showing one paired device.
+    mount()
+    const trigger = screen.getByRole('button', { name: 'Remote access' })
+    fireEvent.click(trigger)
+    await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'))
+    FakeEventSource.instances[0]?.emit({
+      type: 'state',
+      phase: 'connected',
+      lanAvailable: true,
+      tokenId: 'tok-1',
+      tokenExpiresAt: Date.now() + 60_000,
+      deviceCount: 1,
+      onlineCount: 1,
+      devices: [{
+        id: 'dev-live',
+        createdAt: Date.now() - 10_000,
+        lastSeenAt: Date.now(),
+        online: true,
+        userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/151.0.0.0 Mobile Safari/537.36',
+      }],
+    })
+    const unpair = await screen.findByRole('button', { name: 'Unpair this device' })
+    // When the operator unpairs it and the server refuses the request.
+    const refused = vi.fn(async () => new Response(JSON.stringify({ ok: false, code: 'forbidden' }), { status: 403, headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('fetch', refused)
+    fireEvent.click(unpair)
+    await waitFor(() => expect(refused).toHaveBeenCalledWith('api/pair/revoke', expect.objectContaining({ method: 'POST' })))
+    // Then the row stays: the session is still live server-side, so the panel
+    // must not claim a revocation that did not happen.
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Unpair this device' }).length).toBe(1))
+    // The roster still holds exactly the one live row.
+    expect(screen.getAllByRole('listitem').length).toBe(1)
+  })
+
   it('stop posts the revocation; refresh mints a new QR; the link copies once', async () => {
     const { fetch } = mount()
     fireEvent.click(screen.getByRole('button', { name: 'Remote access' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
-    expect(fetch).toHaveBeenCalledWith('/api/pair/stop', expect.objectContaining({ method: 'POST' }))
+    expect(fetch).toHaveBeenCalledWith('api/pair/stop', expect.objectContaining({ method: 'POST' }))
     fireEvent.click(screen.getByRole('button', { name: 'Refresh QR' }))
-    expect(fetch.mock.calls.filter(call => call[0] === '/api/pair/issue').length).toBe(2)
+    expect(fetch.mock.calls.filter(call => call[0] === 'api/pair/issue').length).toBe(2)
     // Clipboard: stub navigator.clipboard.
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
@@ -306,20 +339,38 @@ describe('apply registration', () => {
   it('registers the sidebar entry and the plugin settings card', async () => {
     const { apply } = await import('../src/client/index.ts')
     const injected: string[] = []
+    const requested: string[] = []
     const ctx = {
       effect: (fn: () => unknown) => fn(),
       locale: { register: () => () => {}, bind: () => (key: string) => key },
       slots: {
         inject: (key: string) => { injected.push(key); return () => {} },
         register: () => () => {},
+        spec: () => undefined,
       },
-      settingsScope: {
-        bind: () => ({
-          getSnapshot: () => ({ status: 'unavailable' as const, writable: false }),
-          subscribe: () => () => {},
-          set: async () => {},
-          unset: async () => {},
+      // No webUiSettings face: the official per-entry form service carries the
+      // card, addressed by the profile entry id the describe mirror reports for
+      // this package's row. The mirror is what names it — the family namespace
+      // is NOT an entry id, and binding it produced "No configurable plugin
+      // entry \"remote-web-ui\"" on every save.
+      configForms: {
+        describe: () => ({
+          getSnapshot: () => ({
+            status: 'ready' as const,
+            view: { namespaces: [{ ns: 'web-ui-remote-web-ui' }], writable: true, hasDocument: true },
+            error: null,
+          }),
         }),
+        get: (entryId: string) => {
+          requested.push(entryId)
+          return {
+            getSnapshot: () => ({ status: 'unavailable' as const, writable: false }),
+            subscribe: () => () => {},
+            set: async () => true,
+            unset: async () => true,
+            mutate: async () => true,
+          }
+        },
       },
       get: (name: string) => {
         if (name === 'connection') return { isLoopback: true }
@@ -327,7 +378,11 @@ describe('apply registration', () => {
       },
     }
     apply(ctx as never)
-    expect(injected).toEqual(['sidebar.footer.action', 'web-ui.plugin.item'])
+    // The card registers straight into the seat it resolved (the official
+    // keyed seat here, because this double provides no webUiSettings face);
+    // only the sidebar entry rides a declaration-lifetime injection.
+    expect(injected).toEqual(['sidebar.footer.action'])
+    expect(requested).toEqual(['web-ui-remote-web-ui'])
   })
 
   it('waits for the settings snapshot before mounting the sidebar entry and runtime', async () => {
@@ -350,13 +405,15 @@ describe('apply registration', () => {
           registered.push(entry.name)
           return () => {}
         },
+        spec: () => undefined,
       },
-      settingsScope: {
-        bind: () => ({
+      configForms: {
+        get: () => ({
           getSnapshot: () => snapshot,
           subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn) } },
-          set: async () => {},
-          unset: async () => {},
+          set: async () => true,
+          unset: async () => true,
+          mutate: async () => true,
         }),
       },
       get: (name: string) => {
@@ -365,14 +422,58 @@ describe('apply registration', () => {
       },
     }
     apply(ctx as never)
-    expect(registered).toEqual(['web-ui.plugin.item'])
+    expect(registered).toEqual(['plugins.bundle.config'])
 
     snapshot = { status: 'ready' as const, writable: true, value: { enabled: false } }
     notify()
-    expect(registered).toEqual(['web-ui.plugin.item'])
+    expect(registered).toEqual(['plugins.bundle.config'])
 
     snapshot = { status: 'ready' as const, writable: true, value: { enabled: true } }
     notify()
-    expect(registered).toEqual(['web-ui.plugin.item', 'sidebar.footer.action'])
+    expect(registered).toEqual(['plugins.bundle.config', 'sidebar.footer.action'])
+  })
+
+  it('registers the card into the family list seat when the settings group is loaded', async () => {
+    const { apply } = await import('../src/client/index.ts')
+    const registered: Array<{ name: string; id?: string; key?: string }> = []
+    const boundNamespaces: string[] = []
+    const ctx = {
+      effect: (fn: () => unknown) => fn(),
+      locale: { register: () => () => {}, bind: () => (key: string) => key },
+      slots: {
+        inject: (_key: string, factory?: () => unknown) => { factory?.(); return () => {} },
+        register: (entry: { name: string; id?: string; key?: string }) => {
+          registered.push(entry)
+          return () => {}
+        },
+        spec: () => ({ kind: 'keyed' }),
+      },
+      get: (name: string) => {
+        if (name === 'connection') return { isLoopback: true }
+        // The family group's binder: it takes the family settings namespace
+        // and hands back the owning entry's shared form.
+        if (name === 'webUiSettings') {
+          return {
+            bind: (spec: { namespace: string }) => {
+              boundNamespaces.push(spec.namespace)
+              return {
+                getSnapshot: () => ({ status: 'ready' as const, writable: true, value: { enabled: false } }),
+                subscribe: () => () => {},
+                set: async () => true,
+                unset: async () => true,
+                mutate: async () => true,
+              }
+            },
+          }
+        }
+        return undefined
+      },
+    }
+    apply(ctx as never)
+    // The group declares the family seat, so the card belongs there even
+    // though the harness host declares the official keyed seat too.
+    expect(registered).toContainEqual(expect.objectContaining({ name: 'web-ui.plugin.item', id: 'remote-web-ui' }))
+    expect(registered.some(entry => entry.name === 'plugins.bundle.config')).toBe(false)
+    expect(boundNamespaces).toEqual(['remote-web-ui'])
   })
 })

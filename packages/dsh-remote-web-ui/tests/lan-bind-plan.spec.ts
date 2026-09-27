@@ -1,6 +1,33 @@
 /** Pure lan-bind decision helpers: flags-win precedence, pendingRestart, firewall gate. */
 import { describe, expect, it } from 'vitest'
-import { desiredBindHost, desiredBindPort, firewallActionNeeded, pendingRestartOf } from '../src/lan-bind-plan.ts'
+import { desiredBindHost, desiredBindPort, firewallActionNeeded, pendingRestartOf, resolveManagedProfile } from '../src/lan-bind-plan.ts'
+
+describe('resolveManagedProfile', () => {
+  it('operator: an explicit config wins over the launched profile and the environment', () => {
+    // Given an explicit profile config beside a launched profile and an
+    // environment value
+    // When the managed profile resolves
+    // Then the explicit config wins
+    expect(resolveManagedProfile('qa', 'desktop', 'web')).toBe('qa')
+  })
+
+  it('operator: the launched profile wins over the environment (the Desktop client)', () => {
+    // Given the Desktop client, which boots "desktop" without exporting
+    // DSH_PROFILE (an environment-only resolution edited profiles/web there)
+    // When no explicit config is set
+    // Then the launched profile is the managed one, environment or not
+    expect(resolveManagedProfile(undefined, 'desktop', undefined)).toBe('desktop')
+    expect(resolveManagedProfile(undefined, 'desktop', 'web')).toBe('desktop')
+  })
+
+  it('operator: resolution falls back to the environment, then to web', () => {
+    // Given neither an explicit config nor a launched profile
+    // When the environment names a profile, or names nothing
+    // Then the environment wins, and the default managed profile is web
+    expect(resolveManagedProfile(undefined, undefined, 'web')).toBe('web')
+    expect(resolveManagedProfile(undefined, undefined, undefined)).toBe('web')
+  })
+})
 
 describe('desiredBindHost', () => {
   it('lets an explicit CLI host win over the toggle', () => {

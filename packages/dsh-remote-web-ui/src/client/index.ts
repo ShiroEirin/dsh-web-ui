@@ -10,12 +10,12 @@
 import { createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type { SettingsScope, SettingsScopeSpec } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm, ConfigForms } from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale) and the
 // ui-sidebar SlotMap merge (the 'sidebar.footer.action' hole).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the settings-surface SlotMap merge (the 'settings.section'
-// entry) and the ctx.settingsScope Context merge.
+// entry) and the ctx.configForms Context merge.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls the ctx.slots merge (the renderer owns the slot registry since 0.1.2).
@@ -27,18 +27,21 @@ import { PairFailedNotice } from './PairFailedNotice.tsx'
 import { RemoteSettingsCard, RemoteSettingsCardController, type RemoteSettings } from './RemoteSettingsCard.tsx'
 import { en, zh, type RemoteKey } from './locales.ts'
 import { PAIR_FAILED_MARKER, runPairBootFlow } from './deep-link.ts'
-import { readPairGatePolicy, sendHeartbeat } from './pair-api.ts'
+import { readPairGatePolicy, sendHeartbeat, shouldStopHeartbeat } from './pair-api.ts'
 import {
   channelTransition,
   installRemoteChannel,
-  isLoopbackHostname,
+  pageOriginFacts,
   remoteChannelRequired,
   REMOTE_CHANNEL_BOOT_GLOBAL,
   type RemoteChannelBootSeat,
 } from './remote-channel.ts'
+import { isLocalPage } from '../remote-channel-rules.ts'
 import { FenceNotice } from './FenceNotice.tsx'
 import { reportDailyHeartbeat } from './telemetry.ts'
 import { startMobileAdapt, type RemoteAdaptGlobal } from './mobile-adapt.ts'
+import { installPluginCard } from './plugin-card-seat.ts'
+import { createServedEntryForm } from './settings-entry-form.ts'
 
 // Portrait-touch adaptation of the official UI: installed under the plugin
 // lifecycle (apply) so disabling the plugin in cordis patch (disabled: true)
@@ -49,8 +52,6 @@ export type { PanelState, RemotePanelProps } from './RemotePanel.tsx'
 export type { PairFailedNoticeProps } from './PairFailedNotice.tsx'
 export type { RemoteKey } from './locales.ts'
 export type { RemoteSettingsCardFace, RemoteSettingsCardState } from './RemoteSettingsCard.tsx'
-export type { UpdateEntryProps } from './UpdateEntry.tsx'
-export type { UpdatePanelProps, UpdateView } from './UpdatePanel.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -66,9 +67,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     /**
      * The child slot the Web UI plugin group declares; this card registers
-     * into the group instead of the top-level `settings.plugin.item` list.
-     * Spelled here with the same shape so this package can register without
-     * depending on the sibling UI package.
+     * into the group's list seat rather than the official
+     * bundle-configuration seat. Spelled here with the same shape so this
+     * package can register without depending on the sibling UI package.
      */
     'web-ui.plugin.item': { kind: 'list'; scope: 'root'; owner: SettingsPluginItemOwnerProps }
   }
@@ -89,11 +90,18 @@ export interface SettingsPluginItemOwnerProps {
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /**
-     * Optional rc.6 compatibility binder provided by dsh-web-settings;
-     * absent when that group plugin is not installed, so callers fall back to
-     * the official settings scope.
+     * Optional family settings binder provided by dsh-web-settings; absent
+     * when that group plugin is not installed, so callers fall back to the
+     * official `ctx.configForms` service.
+     *
+     * The 0.1.7 client addresses one form per active profile entry id and
+     * carries no package identity, so the family binder resolves a family
+     * settings namespace to the entry that owns it and hands back that entry's
+     * shared form; the official service is addressed by the entry id directly.
      */
-    webUiSettings?: { bind<S>(spec: SettingsScopeSpec<S>): SettingsScope<S> }
+    webUiSettings?: {
+      bind<S>(spec: { namespace: string; decode?: (section: unknown) => S | undefined }): ConfigForm<S>
+    }
   }
 }
 
@@ -101,14 +109,75 @@ declare module '@deepseek-ai/cordis' {
 /** Dictionary namespace owned by this plugin. */
 const NS = 'remote'
 
-/** Settings namespace the remote-control card edits (the Host plugin registers it). */
+/**
+ * Settings namespace the remote-control card edits: the family identity of
+ * this plugin's own settings form, and the row id a standalone bundle install
+ * carries.
+ */
 const REMOTE_WEB_UI_NS = 'remote-web-ui'
+
+/** Profile entry id the family aggregate's generated row carries. */
+const AGGREGATE_ENTRY_ID = 'web-ui-remote-web-ui'
+
+/** Profile entry ids this package's patch rows carry, most specific first. */
+const REMOTE_WEB_UI_ENTRY_IDS: readonly string[] = [AGGREGATE_ENTRY_ID, 'ui-remote-web-ui', REMOTE_WEB_UI_NS]
+
+/**
+ * The profile entry id this package's own row carries, for a page that serves
+ * no family binder.
+ *
+ * The shared describe mirror answers asynchronously, so at plugin activation it
+ * usually holds nothing yet — and an unanswered or empty mirror is not evidence
+ * of absence. Binding the bare namespace there left the card bound to an entry
+ * the Host does not serve, and the form is bound once per session, so the card
+ * never recovered (every save answered `No configurable plugin entry`). The
+ * aggregate row id matches nearly every deployment; only a mirror that answers
+ * with OTHER plugins' rows falls back to the namespace itself (the pre-0.1.7
+ * keying shape), because that answer is the one that actually proves this
+ * package's own row is not served.
+ * @param forms - the shared configuration forms service.
+ * @returns the entry id to bind.
+ */
+export function servedEntryId(forms: ConfigForms): string {
+  let served: readonly string[] | undefined
+  try {
+    served = forms.describe().getSnapshot().view?.namespaces.map(view => view.ns)
+  } catch {
+    // A mirror that refuses the read is unanswered too, not absent.
+    served = undefined
+  }
+  if (served === undefined || served.length === 0) return AGGREGATE_ENTRY_ID
+  return REMOTE_WEB_UI_ENTRY_IDS.find(id => served.includes(id)) ?? REMOTE_WEB_UI_NS
+}
+
+/**
+ * Bind the settings form the remote-control card reads and writes.
+ *
+ * The family binder comes first: it resolves this package's family namespace
+ * onto the profile entry id the Host serves the form under, and keeps the
+ * loopback bridge as its own fallback. A page without that group (or one where
+ * its client half has not applied yet) binds through the shared forms service,
+ * on the entry id the describe mirror justifies and rebound as soon as the
+ * mirror answers — see {@link createServedEntryForm}.
+ * @param ctx - client context carrying the family binder and/or the shared forms service.
+ * @returns the form the card stages and saves through.
+ */
+export function bindSettingsForm(ctx: ClientContext): ConfigForm<RemoteSettings> {
+  const family = ctx.get('webUiSettings')
+  if (family !== undefined && typeof family.bind === 'function') {
+    return family.bind<RemoteSettings>({ namespace: REMOTE_WEB_UI_NS })
+  }
+  return createServedEntryForm<RemoteSettings>({
+    forms: ctx.configForms,
+    entryIds: REMOTE_WEB_UI_ENTRY_IDS,
+  })
+}
 
 /** Heartbeat cadence from a paired phone (presence + revocation liveness). */
 const HEARTBEAT_INTERVAL_MS = 10_000
 
 /** Services required by this plugin. */
-export const inject = ['slots', 'locale', 'connection', 'settingsScope', 'remote']
+export const inject = ['slots', 'locale', 'connection', 'configForms', 'remote']
 
 /**
  * Register the remote-control surface.
@@ -177,10 +246,14 @@ export function apply(ctx: ClientContext): void {
   // before any dictionary existed; the wiring plus the layer's own sync tick
   // re-render them in the active locale.
   if (adapt !== undefined) adapt.translate = t
-  const binder = ctx.get('webUiSettings') ?? ctx.settingsScope
-  const settingsScope = binder.bind<RemoteSettings>({ namespace: REMOTE_WEB_UI_NS })
+  // The settings form this card edits. The family group's binder resolves a
+  // family namespace to the profile entry that owns it and binds that entry's
+  // shared form (natively, or over its loopback bridge); without that group the
+  // namespace IS the owning entry id, so the official service is addressed
+  // directly.
+  const settingsForm: ConfigForm<RemoteSettings> = bindSettingsForm(ctx)
   const enabled = (): boolean => {
-    const snapshot = settingsScope.getSnapshot()
+    const snapshot = settingsForm.getSnapshot()
     return snapshot.status === 'ready'
       ? snapshot.value?.enabled ?? true
       : snapshot.status === 'unavailable'
@@ -195,7 +268,7 @@ export function apply(ctx: ClientContext): void {
   const syncAdaptEnabled = (): void => {
     ;(window as unknown as { __dshRemoteAdapt?: RemoteAdaptGlobal }).__dshRemoteAdapt?.setEnabled?.(enabled())
   }
-  settingsScope.subscribe(syncAdaptEnabled)
+  settingsForm.subscribe(syncAdaptEnabled)
   syncAdaptEnabled()
   // The replay closes a details panel restored before the wiring; the
   // layout face throws while the root entry has not mounted yet (a real
@@ -223,7 +296,7 @@ export function apply(ctx: ClientContext): void {
         disposeEntry = undefined
       }
     }
-    const unsubscribe = settingsScope.subscribe(syncEntry)
+    const unsubscribe = settingsForm.subscribe(syncEntry)
     syncEntry()
     return () => {
       unsubscribe()
@@ -232,25 +305,20 @@ export function apply(ctx: ClientContext): void {
   })
 
   // Plugin configuration card: one staged form over the `remote-web-ui`
-  // settings namespace, contributed to the Web UI plugin group.
-  const remoteSettings = new RemoteSettingsCardController(settingsScope)
-  ctx.slots.inject('web-ui.plugin.item', () => {
-    try {
-      const unregister = ctx.slots.register({
-        name: 'web-ui.plugin.item',
-        id: 'remote-web-ui',
-        order: 90,
-        locale: NS,
-        inject: () => remoteSettings.inject(),
-      }, RemoteSettingsCard)
-      return () => {
-        remoteSettings.dispose()
-        unregister()
-      }
-    } catch {
-      return () => {}
-    }
+  // settings namespace, contributed to whichever plugin-card seat the running
+  // host declares (the family group's list seat, or the official
+  // bundle-configuration seat on the plugin manager page when dsh-web-settings
+  // is not installed).
+  const remoteSettings = new RemoteSettingsCardController(settingsForm)
+  installPluginCard(ctx, {
+    bundle: '@linxin666/dsh-remote-web-ui',
+    id: 'remote-web-ui',
+    order: 90,
+    locale: NS,
+    inject: () => remoteSettings.inject(),
+    component: RemoteSettingsCard,
   })
+  ctx.effect(() => () => { remoteSettings.dispose() }, 'remote-web-ui: settings card')
 
   // Phone-side boot flow + heartbeats. Loopback pages (the desktop) never
   // heartbeat; the server ignores unpaired heartbeats anyway. Both run only
@@ -263,7 +331,14 @@ export function apply(ctx: ClientContext): void {
         const loopback = connection?.isLoopback ?? true
         runPairBootFlow(ctx, window.location.search)
         if (loopback) return () => {}
-        const timer = window.setInterval(() => { void sendHeartbeat().catch(() => {}) }, HEARTBEAT_INTERVAL_MS)
+        const timer = window.setInterval(() => {
+          void sendHeartbeat().then((status) => {
+            // A revoked (401) or fenced-off (403) page can never be accepted
+            // again without re-pairing, so the 10 s wake source stops instead of
+            // polling a refusal for the lifetime of the tab.
+            if (shouldStopHeartbeat(status)) window.clearInterval(timer)
+          }).catch(() => {})
+        }, HEARTBEAT_INTERVAL_MS)
         return () => { window.clearInterval(timer) }
       }, 'remote-web-ui: pair flow + heartbeats')
     } else if (!enabled() && disposeRuntime !== undefined) {
@@ -271,7 +346,7 @@ export function apply(ctx: ClientContext): void {
       disposeRuntime = undefined
     }
   }
-  settingsScope.subscribe(syncRuntime)
+  settingsForm.subscribe(syncRuntime)
   syncRuntime()
 
   // Remote desktop channel: on a non-loopback origin (LAN address or public
@@ -296,15 +371,15 @@ export function apply(ctx: ClientContext): void {
     fenceNotice = undefined
   }
   const handleUnpaired = (): void => {
-    if (settingsScope.getSnapshot().status !== 'ready' && hostPairingPolicy === undefined) {
+    if (settingsForm.getSnapshot().status !== 'ready' && hostPairingPolicy === undefined) {
       unpairedWhilePolicyPending = true
       return
     }
     showFenceNotice()
   }
   const channelActive = (): boolean => remoteChannelRequired(
-    window.location.hostname,
-    settingsScope.getSnapshot(),
+    pageOriginFacts(window),
+    settingsForm.getSnapshot(),
     hostPairingPolicy,
   )
   // The parse-time boot patch (issue #987), when the served index carried
@@ -355,9 +430,10 @@ export function apply(ctx: ClientContext): void {
       bootSeat()?.restore()
     }
   }
-  settingsScope.subscribe(syncChannel)
+  settingsForm.subscribe(syncChannel)
   syncChannel()
-  if (!isLoopbackHostname(window.location.hostname) && settingsScope.getSnapshot().status !== 'ready') {
+  const pageOrigin = pageOriginFacts(window)
+  if (!isLocalPage(pageOrigin.hostname, pageOrigin.protocol, pageOrigin.transportOwnsHost) && settingsForm.getSnapshot().status !== 'ready') {
     void readPairGatePolicy().then((policy) => {
       hostPairingPolicy = policy.requirePairingForLan
       syncChannel()

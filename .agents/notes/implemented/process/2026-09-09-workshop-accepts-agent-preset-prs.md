@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Superseded (2026-09-24, see [The preset center moves to the dsh-presets repository](../architecture/2026-09-24-preset-center-satellite-repository.md)): the gate no longer accepts a preset contribution. Preset pull requests are redirected to dsh-presets like the other three content kinds, so this repository accepts no external contribution directly; the checklist this note introduced lives on in that repository's own template.
+
 ## Problem
 
 The external-contribution gate (`.github/workflows/reject-non-content-pr.yml`, the PR template, CONTRIBUTING.md, `.github/pr-review-routes.json`) recognized exactly three content-contribution kinds: community-plugin index entries, new skins, and new pets. The Workshop then gained a fourth asset kind — community agent presets, published from `packages/dsh-preset-center/presets/` into the dsh-market.com manifest — but the gate still auto-closed preset PRs from external contributors, and no template section told contributors what a preset submission must contain.

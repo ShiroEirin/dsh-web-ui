@@ -5,12 +5,12 @@ Status: implemented
 ## Problem
 
 In `dsh-skill-explorer` (#1215):
-1. The modal header rendered an arbitrary first workspace path (`cwd: /path/to/project1`), which was misleading when opened from other projects or global views.
+1. The panel header rendered an arbitrary first workspace path (`cwd: /path/to/project1`), which was misleading when opened from other projects or global views.
 2. Group hints for project skill directories were hardcoded as "Current project only" (`仅当前项目`), which caused confusion when skills from multiple active project workspaces were scanned and displayed.
 
 ## Decision
 
-1. In `SkillPanel.tsx`, removed `cwd` display from the modal header so it renders a clean, focused title "Skill Center" / "技能中心".
+1. In `SkillPanel.tsx` (since 2026-09-23 the center-column panel shell at `src/client/panel/SkillPanel.tsx`), removed `cwd` display from the header so it renders a clean, focused title "Skill Center" / "技能中心".
 2. In `collect.ts` and `locales.ts`, updated group hints to accurately describe scope:
    - Project skills: located in the project directory, scoped to their workspace.
    - User skills: global skills (`~/.dsh/skills`, `~/.agents/skills`) shared across all projects.

@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-The remote-web-ui auto-update panel showed every registry-managed family component as a long `@linxin666/dsh-*` package-name plus version row. That is technically precise but not useful to a user deciding whether to start an upgrade; the project already publishes GitHub Releases with grouped feature/fix/other notes.
+The dsh-update auto-update panel showed every registry-managed family component as a long `@linxin666/dsh-*` package-name plus version row. That is technically precise but not useful to a user deciding whether to start an upgrade; the project already publishes GitHub Releases with grouped feature/fix/other notes.
 
 ## Decision
 

@@ -8,10 +8,17 @@
  * subpaths the installed aggregate does not export: Node throws
  * ERR_PACKAGE_PATH_NOT_EXPORTED for every row and the plugin tree fails to
  * load (issue #1442).
+ *
+ * The root is private and never published, but it is the manifest a git or
+ * link install of the repository reports, so its own version follows the
+ * release like every family package.
  */
 
 /** The aggregate dependency the root alias resolves every row's modules from. */
 export const ROOT_AGGREGATE_DEPENDENCY = '@linxin666/dsh-web-all'
+
+/** Narrow an untrusted manifest value to a plain record. */
+const record = (value) => value !== null && typeof value === 'object' ? value : undefined
 
 /**
  * Check the root alias dependency against the release tag.
@@ -21,9 +28,24 @@ export const ROOT_AGGREGATE_DEPENDENCY = '@linxin666/dsh-web-all'
  *   root pins exactly the tag version.
  */
 export function rootAggregatePinMismatch(rootManifest, version) {
-  const record = (value) => value !== null && typeof value === 'object' ? value : undefined
   const dependencies = record(rootManifest)?.dependencies
   const spec = record(dependencies)?.[ROOT_AGGREGATE_DEPENDENCY]
   if (spec === version) return undefined
   return `root dependency ${ROOT_AGGREGATE_DEPENDENCY} ${typeof spec === 'string' ? spec : '(missing)'} does not match tag v${version}`
+}
+
+/**
+ * Check the root alias's own version against the release tag. The root package
+ * is private and never published, but a git or link install of the repository
+ * reports this version — the plugin manager reads the installed manifest — so
+ * it follows the release like every family package.
+ * @param {unknown} rootManifest - parsed repository root package.json.
+ * @param {string} version - release tag version, without the leading v.
+ * @returns {string | undefined} the mismatch message, or undefined when the
+ *   root carries the tag version.
+ */
+export function rootVersionMismatch(rootManifest, version) {
+  const declared = record(rootManifest)?.version
+  if (declared === version) return undefined
+  return `root version ${typeof declared === 'string' ? declared : '(missing)'} does not match tag v${version}`
 }

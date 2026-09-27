@@ -1,8 +1,8 @@
 /**
  * Analyze one or more DSH session JSONL exports and report the LiangShen
- * trajectory markers: first-turn surface, promotion boundary, reasoning-block
- * word markers (`we` / `let me` / `let's` / `I`), the first reasoning line,
- * and per-step drift points.
+ * trajectory markers: first-turn surface, request-header catalog changes,
+ * reasoning-block word markers (`we` / `let me` / `let's` / `I`), the first
+ * reasoning line, and per-step drift points.
  *
  * Usage:
  *   node tools/analyze-session.mjs <session.jsonl> [more.jsonl ...]
@@ -11,13 +11,33 @@
 import { createReadStream } from 'node:fs'
 import readline from 'node:readline'
 
-import { classifyReasoning, countWord } from '../presets/liangshen/tool-bootstrap.mjs'
-
 const WORD = {
   we: /\bwe\b/gi,
   letMe: /\blet me\b/gi,
   lets: /\blet's\b/gi,
   i: /\bi\b/gi,
+}
+
+/** Count non-overlapping matches of one marker regex. */
+export function countWord(text, regex) {
+  return [...String(text ?? '').matchAll(regex)].length
+}
+
+/**
+ * Anchor classifier for trajectory reporting. A reasoning block counts as
+ * minimal-like when it contains `we` and no `let me`; a block with any
+ * `let me` is standard-like; everything else is ambiguous. The preset no
+ * longer gates anything on this label — it is the measurement this analyzer
+ * reports, so the anchored surface can be compared across runs.
+ */
+export function classifyReasoning(text) {
+  const trimmed = String(text ?? '').trim()
+  const we = countWord(trimmed, WORD.we)
+  const letMe = countWord(trimmed, WORD.letMe)
+  const metrics = { we, letMe }
+  if (we > 0 && letMe === 0) return { label: 'minimal-like', score: 4, metrics }
+  if (letMe > 0) return { label: 'standard-like', score: -4, metrics }
+  return { label: 'ambiguous', score: 0, metrics }
 }
 
 export function countMarkers(text) {
@@ -35,6 +55,13 @@ export function countMarkers(text) {
  * reasoning text: only the first session/header event, one-line header
  * summaries, per-step counters/first lines, marker totals, and the first
  * reasoning line plus its classification are kept.
+ *
+ * The durable session log does not always carry reasoning TEXT: a provider can
+ * persist a signed reasoning block with its signature and an empty string, and
+ * whether it does varies by provider and by response. A report therefore states
+ * which of the two it measured (`reasoningText`: `present`, `absent`, or
+ * `none` for a session with no reasoning block) instead of showing a counter of
+ * zero that reads like a measured zero.
  */
 function createSessionAccumulator() {
   return {
@@ -51,6 +78,7 @@ function createSessionAccumulator() {
     steps: new Map(),
     current: null,
     reasoningBlocks: 0,
+    reasoningTextBlocks: 0,
     markers: zeroMarkers(),
     hasFirstReasoning: false,
     firstReasoningLine: null,
@@ -101,6 +129,7 @@ function accumulateSessionEvent(acc, event) {
         const text = String(block.text ?? '')
         const markers = countMarkers(text)
         acc.reasoningBlocks += 1
+        if (text.trim().length > 0) acc.reasoningTextBlocks += 1
         for (const key of markerKeys()) acc.markers[key] += markers[key]
         if (!acc.hasFirstReasoning) {
           acc.hasFirstReasoning = true
@@ -158,6 +187,11 @@ function finalizeSessionReport(acc, droppedLines) {
     },
     headers: acc.headers,
     reasoningBlocks: acc.reasoningBlocks,
+    // `absent` means the provider persisted signed blocks without their text, so
+    // every marker below is a floor of zero rather than a measured zero.
+    reasoningText: acc.reasoningBlocks === 0
+      ? 'none'
+      : acc.reasoningTextBlocks > 0 ? 'present' : 'absent',
     markers,
     ratio: totalMarkers === 0 ? null : markers.we / totalMarkers,
     firstReasoningLine: acc.firstReasoningLine,
@@ -230,6 +264,11 @@ export function renderSessionReport(report) {
   }
   lines.push(`  reasoning blocks=${report.reasoningBlocks} we=${report.markers.we} let_me=${report.markers.letMe} let's=${report.markers.lets} I=${report.markers.i}`)
   lines.push(`  we/(we+let_me)=${report.ratio === null ? 'n/a' : report.ratio.toFixed(2)} visible replies=${report.visibleReplies}`)
+  if (report.reasoningText === 'absent') {
+    lines.push('  reasoning text: absent - the log persisted signed reasoning blocks without their text, so every marker above counts zero because there was nothing to count')
+  } else if (report.reasoningText === 'none') {
+    lines.push('  reasoning text: none - this session produced no reasoning block')
+  }
   if (report.firstReasoningLine !== null) {
     lines.push(`  first reasoning: ${report.firstReasoningLine}`)
     lines.push(`  first block label: ${report.firstClassification?.label ?? 'n/a'} (score ${report.firstClassification?.score ?? '-'})`)

@@ -6,8 +6,8 @@
  * verify per-namespace coverage against every package's zh keys.
  * @module @linxin666/dsh-i18n/client/ru
  */
-import { ru as doctor } from './doctor.ts'
 import { ru as gitGraph } from './git-graph.ts'
+import { ru as liangshen } from './liangshen.ts'
 import { ru as market } from './market.ts'
 import { ru as modelCapabilities } from './model-capabilities.ts'
 import { ru as pet } from './pet.ts'
@@ -19,14 +19,14 @@ import { ru as sessionArchive } from './session-archive.ts'
 import { ru as skillExplorer } from './skill-explorer.ts'
 import { ru as ssh } from './ssh.ts'
 import { ru as taskBoard } from './task-board.ts'
-import { ru as describeImage } from './tool-describe-image.ts'
+import { ru as update } from './update.ts'
 import { ru as usage } from './usage.ts'
 import { ru as webSettings } from './web-settings.ts'
 
 /** ru dictionaries keyed by the locale namespace each source package registers. */
 export const ruDictionaries: Record<string, Record<string, string>> = {
-  'doctor': doctor,
   'git-graph': gitGraph,
+  'liangshen': liangshen,
   'dsh-web-ui-market': market,
   'model-caps': modelCapabilities,
   'pet': pet,
@@ -38,7 +38,7 @@ export const ruDictionaries: Record<string, Record<string, string>> = {
   'dsh-skill-explorer': skillExplorer,
   'dsh-ssh': ssh,
   'task-board': taskBoard,
-  'describe-image': describeImage,
+  'update': update,
   'dsh-web-ui-usage': usage,
   'web-ui-plugins': webSettings,
 }

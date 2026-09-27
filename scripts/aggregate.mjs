@@ -22,7 +22,7 @@
  *     - ../skins/skin-center
  *     - ../skins/xp
  *   rows:
- *     - {"id": "better-sidebar", "name": "dsh-better-sidebar"}
+ *     - {"id": "external-id", "name": "some-external-plugin"}
  *
  *   - patchFrom entries contribute their child's cordis.patch.yml insert rows
  *     to the aggregate patch (nested aggregates expand recursively, in
@@ -49,6 +49,15 @@
  *     settings entries stay off the page via the rows-route gating); users
  *     opt in per row in the plugin manager, whose enable writes a user-layer
  *     "disabled: false" override that wins over the bundle default.
+ *   - retire entries (plain row-id strings) mark FOREIGN rows this aggregate
+ *     supersedes: each renders a trailing bare "disabled: true" override
+ *     naming the id verbatim (no namespace), so a row another bundle inserted
+ *     earlier in the profile stops mounting while this aggregate's own row
+ *     takes its place. Use it when the native implementation owns the entry a
+ *     family plugin supersedes, and the composition must not show two
+ *     near-identical first-level entries. A row listed here must NOT be one of
+ *     this aggregate's own rows (that is what inactive is for); a user-layer
+ *     "disabled: false" override still wins.
  *
  * Idempotent: safe to rerun at any time. Writes only inside the aggregate
  * packages it owns; never touches other packages or git state.
@@ -143,11 +152,12 @@ function collectShellSubpaths(blocks, tombstones = []) {
 
 /**
  * Source packages exempted from shell wrapping (relative patchFrom spellings).
- * The compat shim (self) and the i18n language pack stay direct: the self row
- * IS the shell package's own plugin, and dsh-i18n's host half is an empty
- * function that cannot fail meaningfully — wrapping would only obscure it.
+ * - self: compat shim IS the shell package's own plugin;
+ * - dsh-i18n: host half is a no-op;
+ * - skins/skin-center: carries the Config schema for background/custom-theme/wallpaper,
+ *   which the DSH 0.1.7+ SettingsForms loader must inspect directly to permit volatile writes.
  */
-const SHELL_EXEMPT = new Set(['../dsh-i18n'])
+const SHELL_EXEMPT = new Set(['../dsh-i18n', '../skins/skin-center'])
 
 /** Directories directly under a path (non-recursive, sorted). */
 function listSubdirs(dir) {
@@ -163,14 +173,11 @@ function listSubdirs(dir) {
     .sort()
 }
 
-/** Find every aggregate package: packages/* and packages/skins/* with an aggregate.yml. */
+/** Find every aggregate package: packages/* with an aggregate.yml. */
 function findAggregates() {
   const candidates = []
   for (const name of listSubdirs(join(REPO_ROOT, 'packages'))) {
     candidates.push(join(REPO_ROOT, 'packages', name))
-  }
-  for (const name of listSubdirs(join(REPO_ROOT, 'packages', 'skins'))) {
-    candidates.push(join(REPO_ROOT, 'packages', 'skins', name))
   }
   return candidates
     .filter((dir) => existsSync(join(dir, 'aggregate.yml')))
@@ -185,7 +192,7 @@ function findAggregates() {
  * while the generator can JSON.parse each entry).
  */
 function parseManifest(ymlPath, errors) {
-  const manifest = { patchFrom: [], deps: [], self: null, rows: [], patches: [], inactive: [], tombstones: [] }
+  const manifest = { patchFrom: [], deps: [], self: null, rows: [], patches: [], inactive: [], retire: [], tombstones: [] }
   let section = null
   for (const raw of readFileSync(ymlPath, 'utf8').split(/\r?\n/)) {
     const line = raw.trim()
@@ -208,6 +215,7 @@ function parseManifest(ymlPath, errors) {
     else if (section === 'deps') manifest.deps.push(entry)
     else if (section === 'tombstones') manifest.tombstones.push(entry)
     else if (section === 'inactive') manifest.inactive.push(entry)
+    else if (section === 'retire') manifest.retire.push(entry)
     else if (section === 'rows') {
       let parsed
       try {
@@ -422,23 +430,23 @@ function expandExternalRow(row, aggregateDir, errors, rel) {
 }
 
 /**
- * Render one insert row's shell config block: the real plugin name plus its
- * original config nested one level deeper. The child's own config lines carry
- * 6-space indentation (id/name level) in the source patch; nesting them under
- * `config:` keeps that relative shape with a 2-space shift (8 spaces under the
- * shell row's own `config:`).
+ * Render one insert row's shell config block: the real plugin name plus, at
+ * the same level, the config the child's own patch row declared. A family
+ * plugin's fields are its OWN Config fields, and the Host settings surface
+ * edits an entry's Config schema — so the fields sit where a standalone
+ * install of that package keeps them (the row config root), which is what
+ * makes a shelled aggregate row configurable at all. The child's config lines
+ * carry 6-space indentation (id/name level) in the source patch; they need no
+ * shift to line up under the shell row's own `config:` key.
  */
 function pushShellConfig(lines, row) {
   lines.push('      config:')
   lines.push(`        plugin: '${row.name}'`)
-  if (row.configLines?.length) {
-    lines.push('        config:')
-    for (const configLine of row.configLines) lines.push('  ' + configLine)
-  }
+  for (const configLine of row.configLines ?? []) lines.push('  ' + configLine)
 }
 
 /** Render the aggregate cordis.patch.yml: header + per-source insert blocks, plus verbatim harness-row patches and own-row config overrides. */
-function renderPatch(blocks, externalRows, ownPatches, inactiveRows, errors, rel, aggregateDir) {
+function renderPatch(blocks, externalRows, ownPatches, inactiveRows, retireRows, errors, rel, aggregateDir) {
   const lines = [...PATCH_HEADER]
   const seen = new Set()
   const patchedIds = new Set()
@@ -528,6 +536,33 @@ function renderPatch(blocks, externalRows, ownPatches, inactiveRows, errors, rel
       lines.push(`- id: ${id}`, '  disabled: true')
     }
   }
+  // Foreign rows this aggregate supersedes. The id is written verbatim (it
+  // belongs to another bundle's layer), and the override is emitted last so it
+  // wins over the layer that inserted the row.
+  const retiredTargets = []
+  for (const rawId of retireRows) {
+    if (typeof rawId !== 'string' || !rawId) {
+      errors.push(`${rel}: retire entry must be a non-empty row id string: ${JSON.stringify(rawId)}`)
+      continue
+    }
+    if (seen.has(rawId)) {
+      errors.push(`${rel}: retire entry "${rawId}" names this aggregate's own row; use inactive for own rows`)
+      continue
+    }
+    if (retiredTargets.includes(rawId)) {
+      errors.push(`${rel}: duplicate retire entry for ${rawId}`)
+      continue
+    }
+    retiredTargets.push(rawId)
+  }
+  if (retiredTargets.length > 0) {
+    lines.push('', '# superseded foreign rows: this aggregate replaces these rows from another bundle with',
+      '# its own entry, so the composition does not show two near-identical first-level entries.',
+      '# A user-layer "disabled: false" override still wins.')
+    for (const id of retiredTargets) {
+      lines.push(`- id: ${id}`, '  disabled: true')
+    }
+  }
   // External rows: npm packages outside this repo. Plain plugins mount like
   // any child; external bundles expand their own patch rows here so their
   // importable plugin rows land in the composed tree (bundle-only packages
@@ -607,27 +642,24 @@ function renderPatch(blocks, externalRows, ownPatches, inactiveRows, errors, rel
 }
 
 /**
- * Index every workspace package name to its directory: packages/* plus
- * packages/skins/* (two levels — the same roots findAggregates scans).
- * The shell's folded rows carry the real plugin package name in
- * `config.plugin`, and the client-children emission must resolve those
- * names back to directories to read each package's client face.
+ * Index every workspace package name to its directory: packages/*, the same
+ * root findAggregates scans. The shell's folded rows carry the real plugin
+ * package name in `config.plugin`, and the client-children emission must
+ * resolve those names back to directories to read each package's client face.
  */
 function packageIndex() {
   const index = new Map()
-  for (const group of [join(REPO_ROOT, 'packages'), join(REPO_ROOT, 'packages', 'skins')]) {
-    for (const name of listSubdirs(group)) {
-      const dir = join(group, name)
-      const pkgPath = join(dir, 'package.json')
-      if (!existsSync(pkgPath)) continue
-      try {
-        const manifest = JSON.parse(readFileSync(pkgPath, 'utf8'))
-        if (typeof manifest.name === 'string' && manifest.name !== '' && !index.has(manifest.name)) {
-          index.set(manifest.name, dir)
-        }
-      } catch {
-        // Unreadable package.json: not a client-children candidate.
+  for (const name of listSubdirs(join(REPO_ROOT, 'packages'))) {
+    const dir = join(REPO_ROOT, 'packages', name)
+    const pkgPath = join(dir, 'package.json')
+    if (!existsSync(pkgPath)) continue
+    try {
+      const manifest = JSON.parse(readFileSync(pkgPath, 'utf8'))
+      if (typeof manifest.name === 'string' && manifest.name !== '' && !index.has(manifest.name)) {
+        index.set(manifest.name, dir)
       }
+    } catch {
+      // Unreadable package.json: not a client-children candidate.
     }
   }
   return index
@@ -790,10 +822,11 @@ function resolveEntries(pkgDir, entries, section, errors) {
 
 /**
  * Rebuild the aggregate package.json so every manifest deps entry becomes a
- * "workspace:*" dependency; other fields are preserved, and any leftover
- * peerDependencies field is removed. The loader resolves patch rows from the
- * profile root, and pnpm installs these children as normal dependencies
- * (hoisting them to the top level in the default layout).
+ * "workspace:*" dependency; other fields are preserved. The loader resolves
+ * patch rows from the profile root, and pnpm installs these children as normal
+ * dependencies (hoisting them to the top level in the default layout), so the
+ * only peer the aggregate keeps is the `@deepseek-ai/dsh` host peer: every
+ * other entry is a leftover child-plugin declaration and is dropped.
  *
  * The exports map is generator-owned for the family subpath keys: every
  * shell-wrapped row's `./<sub>` key is added pointing at the shared shell
@@ -810,7 +843,9 @@ function renderPackageJson(pkgPath, resolvedDeps, shellSubpaths) {
   }
   if (Object.keys(next).length) pkg.dependencies = next
   else delete pkg.dependencies
-  delete pkg.peerDependencies
+  const hostPeer = pkg.peerDependencies?.['@deepseek-ai/dsh']
+  if (hostPeer !== undefined) pkg.peerDependencies = { '@deepseek-ai/dsh': hostPeer }
+  else delete pkg.peerDependencies
   if (shellSubpaths.length > 0) {
     const exports = { ...pkg.exports }
     for (const key of Object.keys(exports)) {
@@ -909,7 +944,7 @@ for (const { pkgDir, ymlPath } of aggregates) {
   }
   const shellSubpaths = collectShellSubpaths(blocks, manifest.tombstones)
   if (shellSubpaths.length > 0) validateShellFiles(pkgDir, rel, errors)
-  const patch = renderPatch(blocks, manifest.rows, manifest.patches ?? [], manifest.inactive ?? [], errors, rel, pkgDir)
+  const patch = renderPatch(blocks, manifest.rows, manifest.patches ?? [], manifest.inactive ?? [], manifest.retire ?? [], errors, rel, pkgDir)
   const resolvedDeps = resolveEntries(pkgDir, manifest.deps, 'deps', errors)
   const pkgJson = renderPackageJson(join(pkgDir, 'package.json'), resolvedDeps, shellSubpaths)
   // The shell aggregate additionally emits the client-children mount list:

@@ -34,7 +34,7 @@ declare module '@linxin666/dsh-remote-web-ui/client' {
   export const inject: readonly string[] | undefined
 }
 
-declare module '@linxin666/dsh-pet/client' {
+declare module '@linxin666/dsh-update/client' {
   export const apply: unknown
   export const inject: readonly string[] | undefined
 }
@@ -44,17 +44,12 @@ declare module '@linxin666/dsh-ssh/client' {
   export const inject: readonly string[] | undefined
 }
 
-declare module '@linxin666/dsh-tool-describe-image/client' {
+declare module '@linxin666/dsh-liangshen/client' {
   export const apply: unknown
   export const inject: readonly string[] | undefined
 }
 
 declare module '@linxin666/dsh-client-ui-skill-explorer/client' {
-  export const apply: unknown
-  export const inject: readonly string[] | undefined
-}
-
-declare module '@linxin666/dsh-doctor/client' {
   export const apply: unknown
   export const inject: readonly string[] | undefined
 }
@@ -70,16 +65,6 @@ declare module '@linxin666/dsh-session-archive/client' {
 }
 
 declare module '@linxin666/dsh-client-ui-model-capabilities/client' {
-  export const apply: unknown
-  export const inject: readonly string[] | undefined
-}
-
-declare module '@linxin666/dsh-client-ui-preset-center/client' {
-  export const apply: unknown
-  export const inject: readonly string[] | undefined
-}
-
-declare module '@linxin666/dsh-client-ui-skin-center/client' {
   export const apply: unknown
   export const inject: readonly string[] | undefined
 }

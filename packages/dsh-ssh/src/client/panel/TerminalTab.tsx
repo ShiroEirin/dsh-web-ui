@@ -10,6 +10,7 @@ import { Terminal, type IDisposable } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import type { SshApi, TerminalConnection } from '../api.ts'
 import type { SshHostSummary } from '../../protocol.ts'
+import type { PanelController } from './controller.ts'
 import { XTERM_CSS } from './xterm.css.ts'
 import { errorMessage, resolveTerminalFontFamily, tt, type TerminalFontSource } from './helpers.ts'
 import css from './panel.module.css'
@@ -17,6 +18,10 @@ import css from './panel.module.css'
 /** Terminal tab props. */
 export interface TerminalTabProps {
   api: SshApi
+  /** The panel controller that owns the live host session id across mounts. */
+  controller: PanelController
+  /** Host session to reattach to on mount (survives a panel switch). */
+  sessionId?: string
   /** Alias preselected by a "connect" action from the hosts tab. */
   presetAlias?: string
   /** Monotonic id of the connect request (re-applies presetAlias). */
@@ -63,7 +68,7 @@ const NO_FONT_SOURCE: TerminalFontSource = {
 }
 
 /** The xterm terminal view. */
-export function TerminalTab({ api, presetAlias, requestId, terminalFont }: TerminalTabProps) {
+export function TerminalTab({ api, controller, sessionId, presetAlias, requestId, terminalFont }: TerminalTabProps) {
   const [hosts, setHosts] = useState<SshHostSummary[]>([])
   const [alias, setAlias] = useState(presetAlias ?? '')
   const [status, setStatus] = useState<TerminalStatus>({ kind: 'idle' })
@@ -111,7 +116,12 @@ export function TerminalTab({ api, presetAlias, requestId, terminalFont }: Termi
     if (presetAlias !== undefined) setAlias(presetAlias)
   }, [presetAlias, requestId])
 
-  const teardown = (): void => {
+  /**
+   * Tear the view down.
+   * @param leave - `detach` leaves the host session alive for a reattach
+   *   (panel switch, unmount); `close` ends it (the disconnect control).
+   */
+  const teardown = (leave: 'detach' | 'close'): void => {
     setAuthPrompt(undefined)
     setAuthInputs([])
     const connection = connRef.current
@@ -121,7 +131,8 @@ export function TerminalTab({ api, presetAlias, requestId, terminalFont }: Termi
       connection.onOutput = undefined
       connection.onExit = undefined
       connection.onAuthPrompt = undefined
-      connection.close()
+      if (leave === 'detach') connection.detach()
+      else connection.close()
     }
     // Release the xterm input subscription explicitly and dispose the
     // terminal so no listener (or the terminal Renderer) survives a
@@ -133,8 +144,9 @@ export function TerminalTab({ api, presetAlias, requestId, terminalFont }: Termi
     fitRef.current = null
   }
 
-  // Unmount cleanup (never touches state on an unmounting component).
-  useEffect(() => () => { teardown() }, [])
+  // Unmount cleanup (never touches state on an unmounting component). The
+  // host keeps the shell alive, so returning to this tab reattaches to it.
+  useEffect(() => () => { teardown('detach') }, [])
 
   // Keep the terminal fitted to its container. A window resize is only one
   // trigger: the status banner appearing after connect, panel resizes, and
@@ -170,12 +182,15 @@ export function TerminalTab({ api, presetAlias, requestId, terminalFont }: Termi
     }
   }, [])
 
-  const connect = (): void => {
-    const target = alias
+  /**
+   * Build the xterm view and bind one connection to it.
+   * @param open - opens the transport once the terminal has a size.
+   */
+  const startSession = (open: (cols: number, rows: number) => TerminalConnection): void => {
     const container = containerRef.current
-    if (target === '' || container === null) return
+    if (container === null) return
     if (status.kind === 'connecting' || status.kind === 'connected') return
-    teardown()
+    teardown('detach')
     setStatus({ kind: 'connecting' })
     const term = new Terminal({
       convertEol: false,
@@ -188,20 +203,25 @@ export function TerminalTab({ api, presetAlias, requestId, terminalFont }: Termi
     term.loadAddon(fit)
     term.open(container)
     fit.fit()
-    const connection = api.openTerminal(target, term.cols, term.rows)
+    const connection = open(term.cols, term.rows)
     termRef.current = term
     fitRef.current = fit
     connRef.current = connection
     let settled = false
+    let connectedAlias = ''
     dataSubRef.current = term.onData(data => { connection.send(data) })
     connection.onAuthPrompt = (name, instructions, prompts) => {
       setAuthPrompt({ name, instructions, prompts })
       setAuthInputs(prompts.map(() => ''))
     }
-    connection.onReady = () => {
+    connection.onReady = (id, readyAlias) => {
+      // Remember the host session so a later mount of this tab reattaches to
+      // the same shell instead of opening a second one.
+      connectedAlias = readyAlias
+      controller.setTerminalSession(id)
       setAuthPrompt(undefined)
       setAuthInputs([])
-      setStatus({ kind: 'connected', alias: target })
+      setStatus({ kind: 'connected', alias: readyAlias })
     }
     connection.onOutput = data => { term.write(data) }
     connection.onExit = (_code, error) => {
@@ -213,13 +233,33 @@ export function TerminalTab({ api, presetAlias, requestId, terminalFont }: Termi
       dataSubRef.current = null
       term.options.disableStdin = true
       connRef.current = null
+      // The session is gone: drop the id so the next mount starts fresh.
+      controller.clearTerminalSession()
       // Keep the last output visible; input is now disabled.
-      setStatus({ kind: 'exited', alias: target, detail: error })
+      setStatus({ kind: 'exited', alias: connectedAlias !== '' ? connectedAlias : alias, detail: error })
     }
   }
 
+  const connect = (): void => {
+    const target = alias
+    if (target === '') return
+    startSession((cols, rows) => api.openTerminal(target, cols, rows))
+  }
+
+  // Reattach to a host session that outlived this view (panel switch or a
+  // remount of the page). The host replays its scrollback before ready, so
+  // the terminal comes back with its history instead of a blank screen.
+  const reattachedRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (sessionId === undefined || connRef.current !== null) return
+    if (reattachedRef.current === sessionId) return
+    reattachedRef.current = sessionId
+    startSession((cols, rows) => api.attachTerminal(sessionId, cols, rows))
+  }, [sessionId])
+
   const disconnect = (): void => {
-    teardown()
+    teardown('close')
+    controller.clearTerminalSession()
     setStatus({ kind: 'idle' })
   }
 

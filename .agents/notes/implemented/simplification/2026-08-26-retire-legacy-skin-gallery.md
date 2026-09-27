@@ -13,7 +13,7 @@ The original dsh-web skin gallery — the `gallery/` static site (index page, st
 - Repoint the preview tooling at the market: `scripts/capture-previews` renders `market/dist/preview.html` from `market/dist/manifest.js` (it was already the same simulator and the same skin preview contract); `scripts/skins-montage.mjs` reads the market catalog for the README collage.
 - Remove the gallery 301 maintenance: `scripts/deploy-market` no longer creates or updates the `gallery.dsh-market.com` redirect ruleset (`--skip-redirect` / `--redirect-only` are gone; the script is D1 + worker deploy only).
 - The Cloudflare-side cleanup (Pages project `dsh-market-gallery`, the `gallery.dsh-market.com` DNS record, the zone 301 ruleset) is account-side and no repo code maintains it; the maintainer deletes it in the dashboard.
-- `scripts/pr-review.mjs` drops the gallery page screenshot and the gallery-registry adaptation check; the skin PR check is now `checkSkinPreviews` (new skins must add `preview/{light,dark}.jpg`), and the preview copy path is fixed to `packages/skins/skin-center/skins/<id>/preview/<mode>.jpg` (it pointed at the pre-move path with a stale `.png` extension).
+- `scripts/pr-review.mjs` drops the gallery page screenshot and the gallery-registry adaptation check, and carries no skin-PR check: skins are submitted and gated in dsh-skins, so the reviewer sees only the changes this repository accepts.
 - Skin README pairs and the skin developer skill now instruct `pnpm market:build` + `open market/dist/preview.html?...` instead of gallery commands; `docs:write-pair` re-recorded the touched skins.
 
 ## Alternatives considered

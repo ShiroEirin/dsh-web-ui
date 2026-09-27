@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { detectOfficialChannels, dshSpawnCommand, findDshBinary, unsafeSpecReason, windowsCmdShimArgs } from '../src/host/gateway.ts'
+import { describe, expect, it, vi } from 'vitest'
+import { detectOfficialChannels, dshSpawnCommand, findDshBinary, unsafeSpecReason, windowsCmdShimArgs, withPrependedPath } from '../src/host/gateway.ts'
 import { sourceKindOf } from '../src/host/state.ts'
 
 describe('findDshBinary', () => {
@@ -42,6 +42,24 @@ describe('findDshBinary', () => {
       '/opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js',
     )).toBe('/opt/dsh/node_modules/.bin/dsh')
   })
+  it('finds the packaged desktop runtime CLI with no PATH and no .bin shim (issue #1588)', () => {
+    const hostEntry = 'C:\\Users\\u\\AppData\\Local\\Programs\\DeepSeek Harness\\resources\\runtime\\host\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js'
+    const binJs = 'C:\\Users\\u\\AppData\\Local\\Programs\\DeepSeek Harness\\resources\\runtime\\host\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js'
+    // The staged runtime strips every node_modules/.bin directory, so the
+    // package's own lib/bin.js is the only launchable form there.
+    expect(findDshBinary(
+      { PATH: 'C:\\Windows\\System32;C:\\Windows' },
+      'win32',
+      exists([binJs]),
+      hostEntry,
+    )).toBe(binJs)
+  })
+
+  it('prefers a .bin shim over the sibling package bin.js when both exist', () => {
+    const shim = 'D:\\APP\\DSH\\node_modules\\.bin\\dsh.cmd'
+    const hostEntry = 'D:\\APP\\DSH\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js'
+    expect(findDshBinary({ PATH: 'C:\\Windows' }, 'win32', exists([shim, hostEntry]), hostEntry)).toBe(shim)
+  })
 
   it('falls back to the darwin homebrew location', () => {
     expect(findDshBinary({ PATH: '/nothing' }, 'darwin', exists(['/opt/homebrew/bin/dsh']))).toBe('/opt/homebrew/bin/dsh')
@@ -74,6 +92,13 @@ describe('dshSpawnCommand', () => {
       command: 'C:\\Program Files\\nodejs\\node.exe',
       argsPrefix: ['C:\\Program Files\\nodejs\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js'],
     })
+  })
+
+  it('runs a resolved bin.js through the host interpreter on Windows', () => {
+    const binary = 'C:\\Program Files\\DeepSeek Harness\\resources\\runtime\\host\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js'
+    const resolved = dshSpawnCommand(binary, 'win32', () => false)
+    expect(resolved.argsPrefix).toEqual([binary])
+    expect(resolved.command).toBe(process.execPath)
   })
 
   it('falls back to the .cmd shim when no npm bin.js exists', () => {
@@ -138,5 +163,90 @@ describe('detectOfficialChannels', () => {
   it('treats a failed dump as no official channels', async () => {
     const probe = fakeSpawn('boot failed', 1)
     await expect(detectOfficialChannels('/usr/bin/dsh', 'web', {}, probe as never)).resolves.toBe(false)
+  })
+})
+
+describe('dshSpawnCommand POSIX interpreter resolution', () => {
+  /** A head probe answering one shebang line. */
+  const shebang = (line: string) => () => `${line}\nimport { x } from 'y'\n`
+  const noNodeBeside = () => false
+
+  it('operator: runs an env-node shebang CLI through the node beside it', () => {
+    // Given the homebrew/npm-global layout whose dsh shim is a Node script
+    // When the spawn command is resolved off Windows
+    const resolved = dshSpawnCommand('/opt/homebrew/bin/dsh', 'darwin', () => true, noNodeBeside, shebang('#!/usr/bin/env node'))
+
+    // Then the sibling node runs the script, and the shebang is never consulted
+    expect(resolved).toEqual({ command: '/opt/homebrew/bin/node', argsPrefix: ['/opt/homebrew/bin/dsh'] })
+  })
+
+  it('operator: falls back to the host interpreter when no node sits beside the CLI', () => {
+    // Given a .bin shim whose directory ships no node
+    // When the spawn command is resolved
+    const resolved = dshSpawnCommand('/opt/pkg/node_modules/.bin/dsh', 'darwin', noNodeBeside, noNodeBeside, shebang('#!/usr/bin/env node'))
+
+    // Then the host's own interpreter runs the script (Electron covers its own case)
+    expect(resolved.command).toBe(process.execPath)
+    expect(resolved.argsPrefix).toEqual(['/opt/pkg/node_modules/.bin/dsh'])
+  })
+
+  it('operator: runs a .js bin path through the host interpreter without probing the file', () => {
+    // Given a packaged lib/bin.js path (the desktop runtime strips .bin shims)
+    const readHead = vi.fn(() => undefined)
+
+    // When the spawn command is resolved
+    const resolved = dshSpawnCommand('/opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js', 'darwin', noNodeBeside, noNodeBeside, readHead)
+
+    // Then the extension alone selects the interpreter, with no read of the file
+    expect(resolved).toEqual({ command: process.execPath, argsPrefix: ['/opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js'] })
+    expect(readHead).not.toHaveBeenCalled()
+  })
+
+  it('operator: spawns a native executable and a shell wrapper directly', () => {
+    // Given a native binary and a sh wrapper, neither carrying a node shebang
+    // When each spawn command is resolved
+    // Then neither is routed through an interpreter
+    expect(dshSpawnCommand('/usr/bin/dsh-native', 'darwin', () => true, noNodeBeside, () => '\u007fELF\u0002'))
+      .toEqual({ command: '/usr/bin/dsh-native', argsPrefix: [] })
+    expect(dshSpawnCommand('/usr/local/bin/dsh', 'darwin', () => true, noNodeBeside, shebang('#!/bin/sh')))
+      .toEqual({ command: '/usr/local/bin/dsh', argsPrefix: [] })
+  })
+
+  it('operator: falls back to a direct spawn when the head cannot be read', () => {
+    // Given a path whose head probe fails (a directory, a permission error, an unreadable entry)
+    // When the spawn command is resolved
+    // Then the path is spawned as-is rather than guessed at
+    expect(dshSpawnCommand('/opt/weird/dsh', 'darwin', () => true, noNodeBeside, () => undefined))
+      .toEqual({ command: '/opt/weird/dsh', argsPrefix: [] })
+  })
+})
+
+describe('withPrependedPath', () => {
+  it('operator: sees the CLI directory prepended to a POSIX PATH', () => {
+    // Given a POSIX environment whose PATH already carries the shell defaults
+    // When the CLI directory is prepended
+    const env = withPrependedPath({ PATH: '/usr/bin:/bin', HOME: '/h' }, '/opt/homebrew/bin', 'darwin')
+
+    // Then the CLI directory leads the PATH and unrelated variables survive
+    expect(env).toEqual({ PATH: '/opt/homebrew/bin:/usr/bin:/bin', HOME: '/h' })
+  })
+
+  it('operator: sees Windows case variants collapse into one PATH key', () => {
+    // Given a Windows environment that spells the variable "Path" while the
+    // spawner writes "PATH" (a duplicate key would drop one of them)
+    // When the CLI directory is prepended
+    const env = withPrependedPath({ Path: 'C:\\Windows', HOME: 'H' }, 'C:\\tools', 'win32')
+
+    // Then one canonical PATH carries both, and the stray "Path" key is gone
+    expect(env).toEqual({ HOME: 'H', PATH: 'C:\\tools;C:\\Windows' })
+  })
+
+  it('operator: gets PATH written when the environment carries none', () => {
+    // Given an environment with no PATH at all
+    // When the CLI directory is prepended
+    const env = withPrependedPath({}, '/opt/bin', 'linux')
+
+    // Then PATH is created holding the CLI directory
+    expect(env).toEqual({ PATH: '/opt/bin' })
   })
 })

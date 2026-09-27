@@ -12,6 +12,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TerminalTab } from '../src/client/panel/TerminalTab.tsx'
+import { PanelController } from '../src/client/panel/controller.ts'
 import type { SshApi, TerminalConnection } from '../src/client/api.ts'
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -45,6 +46,7 @@ function fakeApi(): SshApi {
       send: () => undefined,
       resize: () => undefined,
       sendAuthResponse: () => undefined,
+      detach: () => undefined,
       close: () => undefined,
     }) as TerminalConnection),
   } as unknown as SshApi
@@ -55,7 +57,7 @@ describe('TerminalTab L2 semantic attributes (#506)', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<TerminalTab api={fakeApi()} />) })
+    await act(async () => { root.render(<TerminalTab api={fakeApi()} controller={new PanelController()} />) })
     await act(async () => { await Promise.resolve() })
     const terminal = container.querySelector('[data-dsh-part="terminal"]')
     expect(terminal).not.toBeNull()
@@ -72,7 +74,7 @@ describe('TerminalTab dispose and resize cleanup', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<TerminalTab api={fakeApi()} />) })
+    await act(async () => { root.render(<TerminalTab api={fakeApi()} controller={new PanelController()} />) })
     await act(async () => { await Promise.resolve() })
     expect(addResize.mock.calls.some(call => call[0] === 'resize')).toBe(true)
     await act(async () => { root.unmount() })
@@ -115,6 +117,7 @@ describe('TerminalTab dispose and resize cleanup', () => {
           send: vi.fn(),
           resize: vi.fn(),
           sendAuthResponse: vi.fn(),
+          detach: vi.fn(),
           close: vi.fn(),
         }
         capturedConn = conn
@@ -125,7 +128,7 @@ describe('TerminalTab dispose and resize cleanup', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<TerminalTab api={api} presetAlias="jump" />) })
+    await act(async () => { root.render(<TerminalTab api={api} controller={new PanelController()} presetAlias="jump" />) })
     await act(async () => { await Promise.resolve() })
 
     // Click connect

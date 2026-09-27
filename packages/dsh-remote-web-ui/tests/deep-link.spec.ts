@@ -43,7 +43,7 @@ describe('runPairBootFlow', () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
     vi.stubGlobal('fetch', fetch)
     runPairBootFlow({ get: () => undefined } as never, '?pair=tok-1&workspace=ws-7', page)
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/pair/accept', expect.objectContaining({
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('api/pair/accept', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ token: 'tok-1' }),
     })))
@@ -56,7 +56,7 @@ describe('runPairBootFlow', () => {
 
   it('marks the failure instead of reloading when the token is refused', async () => {
     const { page, reload } = fakePage('?pair=tok-1')
-    const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: false, code: 'used' }), { status: 409 }))
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: false, code: 'invalid' }), { status: 404 }))
     vi.stubGlobal('fetch', fetch)
     runPairBootFlow({ get: () => undefined } as never, '?pair=tok-1', page)
     await vi.waitFor(() => expect(sessionStorage.getItem(PAIR_FAILED_MARKER)).toBe('failed'))

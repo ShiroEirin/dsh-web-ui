@@ -12,9 +12,16 @@
  *
  * The cloudflared package's Tunnel is a thin spawn wrapper; this manager
  * owns the lifecycle policy (binary readiness, URL timeout, restart
- * backoff) around it. All seams — the tunnel factory, binary readiness,
- * timers — are injectable so the whole lifecycle is unit-testable without
- * a real binary or network.
+ * backoff, and the public-URL readiness watchdog) around it. All seams — the
+ * tunnel factory, binary readiness, the URL probe, timers — are injectable
+ * so the whole lifecycle is unit-testable without a real binary or network.
+ *
+ * 'running' is not a terminal state: the connector can lose its edge
+ * registration while the process keeps living, which leaves a hostname that
+ * no longer resolves. The watchdog below probes the public URL of a running
+ * tunnel and reuses the crash-restart path when it stops answering, so the
+ * relay is re-registered against a freshly minted URL instead of proxying a
+ * dead one (issue #1723).
  */
 
 import { existsSync } from 'node:fs'
@@ -108,6 +115,45 @@ export interface TunnelHandle {
   stop(): boolean
 }
 
+/**
+ * Probe one public tunnel URL from the host. Resolves true when the URL is
+ * served (any HTTP answer below 500 — a harness without credentials answers
+ * 401/403, which is a healthy round trip), false for a DNS failure, a refused
+ * connection, a timeout, or a Cloudflare 5xx (530 "Origin DNS error" / 1033)
+ * — the shapes a tunnel that lost its edge registration produces.
+ *
+ * The probe must never reject: the watchdog reads a rejection as a dead
+ * tunnel and restarts on it, so a local programming error would otherwise
+ * recycle working tunnels forever.
+ * @param url - the tunnel's public URL.
+ * @param timeoutMs - how long one probe may take.
+ * @returns whether the URL answered as a live origin.
+ */
+export async function probeTunnelUrl(url: string, timeoutMs: number): Promise<boolean> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => { controller.abort() }, timeoutMs)
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      redirect: 'manual',
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+    // Drain so the connection is reusable instead of half-read.
+    await response.body?.cancel().catch(() => undefined)
+    return response.status < 500
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Default probe: the real network round trip. */
+async function defaultProbe(url: string, timeoutMs: number): Promise<boolean> {
+  return await probeTunnelUrl(url, timeoutMs)
+}
+
 /** Injectable seams (defaults are the real cloudflared package + node timers). */
 export interface TunnelManagerOptions {
   /** Spawn one tunnel process for the target (quick or named). */
@@ -122,6 +168,14 @@ export interface TunnelManagerOptions {
   restartMaxMs?: number
   /** Timer source (injected in tests). */
   timer?: { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(t: unknown): void }
+  /** Probe one public URL; false means the tunnel stopped answering. */
+  probe?: (url: string, timeoutMs: number) => Promise<boolean>
+  /** How often to probe the public URL of a running tunnel (0 disables it). */
+  healthCheckIntervalMs?: number
+  /** Consecutive probe failures after which the tunnel is restarted. */
+  healthCheckFailures?: number
+  /** How long one probe may take. */
+  probeTimeoutMs?: number
 }
 
 /** Time box for the `--version` probe that validates a staged binary. */
@@ -164,19 +218,43 @@ export function createBinaryReadiness(executable: string, seams: BinaryReadiness
   const runs = seams.runs ?? binaryRuns
   const installBinary = seams.install ?? install
   const validated = new Set<string>()
+  let installs = 0
+  let lastFailure: Error | undefined
   return async () => {
     if (validated.has(executable)) return
+    // The manager retries forever with backoff, so a permanently unrunnable
+    // binary must not re-download the whole platform archive on every attempt
+    // (a wrong-arch payload would otherwise fetch it once per restart round).
+    // A transient install failure still gets its retries; past the cap the
+    // remembered error is rethrown until the process restarts.
+    if (installs >= MAX_BINARY_INSTALL_ATTEMPTS && lastFailure !== undefined) throw lastFailure
     if (exists(executable) && await runs(executable)) {
       validated.add(executable)
       return
     }
-    await installBinary(executable)
-    if (!(await runs(executable))) {
-      throw new Error(`the cloudflared binary at ${executable} still does not run after the reinstall`)
+    installs += 1
+    try {
+      await installBinary(executable)
+      if (!(await runs(executable))) {
+        throw new Error(`the cloudflared binary at ${executable} still does not run after the reinstall`)
+      }
+    } catch (error) {
+      lastFailure = error instanceof Error ? error : new Error(String(error))
+      throw lastFailure
     }
     validated.add(executable)
   }
 }
+
+/** How many archive downloads one process may attempt before giving up. */
+export const MAX_BINARY_INSTALL_ATTEMPTS = 3
+
+/** How often a running tunnel's public URL is probed (issue #1723). */
+export const DEFAULT_HEALTH_CHECK_INTERVAL_MS = 60_000
+/** Consecutive failed probes before the tunnel is declared dead. */
+export const DEFAULT_HEALTH_CHECK_FAILURES = 2
+/** How long one public-URL probe may take. */
+export const DEFAULT_PROBE_TIMEOUT_MS = 10_000
 
 /** The readiness policy the manager uses by default: the package's real binary path. */
 const defaultBinaryReadiness = createBinaryReadiness(bin)
@@ -204,14 +282,42 @@ export function quickTunnelFlags(originHostHeader?: string): Record<string, stri
 }
 
 /**
- * Command-line arguments for a named tunnel with a persistent Cloudflare token.
- * Note: `--no-autoupdate` and `--protocol` are flags for the `tunnel` command
- * and must appear BEFORE the `run` subcommand. Putting them after `run` causes
- * cloudflared to exit immediately with "flag provided but not defined: -no-autoupdate"
- * (issues #1432, #1433).
+ * Command-line arguments for a named tunnel. The account token is deliberately
+ * NOT part of the argv: `--token <t>` would expose an account credential to any
+ * local user through ps/proc for the whole tunnel lifetime, while the flag's own
+ * environment variable (TUNNEL_TOKEN, see cloudflared's tunnel run flags) is not
+ * readable that way. Note: `--no-autoupdate` and `--protocol` are flags for the
+ * `tunnel` command and must appear BEFORE the `run` subcommand. Putting them
+ * after `run` causes cloudflared to exit immediately with "flag provided but not
+ * defined: -no-autoupdate" (issues #1432, #1433).
  */
-export function namedTunnelArgs(token: string): string[] {
-  return ['tunnel', '--no-autoupdate', '--protocol', 'http2', 'run', '--token', token]
+export function namedTunnelArgs(): string[] {
+  return ['tunnel', '--no-autoupdate', '--protocol', 'http2', 'run']
+}
+
+/**
+ * Run one spawn call with TUNNEL_TOKEN set, restoring the previous value
+ * afterwards. The cloudflared package's Tunnel spawns with the inherited
+ * environment inside its constructor, so the variable only has to exist for
+ * that call; the child keeps its own copy of the environment.
+ * @param token - the named-tunnel token.
+ * @param spawnTunnel - the call that creates the child process.
+ * @returns whatever the spawn call returns.
+ */
+export function withTunnelTokenEnv<T>(token: string, spawnTunnel: () => T): T {
+  const previous = process.env.TUNNEL_TOKEN
+  process.env.TUNNEL_TOKEN = token
+  try {
+    return spawnTunnel()
+  } finally {
+    if (previous === undefined) delete process.env.TUNNEL_TOKEN
+    else process.env.TUNNEL_TOKEN = previous
+  }
+}
+
+/** Spawn one named tunnel without putting its token in the child's argv. */
+function spawnNamedTunnel(token: string): NamedTunnelProcess {
+  return withTunnelTokenEnv(token, () => new Tunnel(namedTunnelArgs()))
 }
 
 /** Default factory: the cloudflared package's quick and named tunnels. */
@@ -227,7 +333,7 @@ function defaultFactory(target: TunnelTarget): TunnelHandle {
   if (target.kind === 'quick') {
     return Tunnel.quick(target.targetUrl, quickTunnelFlags(target.originHostHeader))
   }
-  return namedTunnelHandle(new Tunnel(namedTunnelArgs(target.token)), target.publicUrl)
+  return namedTunnelHandle(spawnNamedTunnel(target.token), target.publicUrl)
 }
 
 /** Node timers. */
@@ -244,6 +350,10 @@ export class TunnelManager {
   private readonly restartBaseMs: number
   private readonly restartMaxMs: number
   private readonly timer: { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(t: unknown): void }
+  private readonly probe: (url: string, timeoutMs: number) => Promise<boolean>
+  private readonly healthCheckIntervalMs: number
+  private readonly healthCheckFailures: number
+  private readonly probeTimeoutMs: number
 
   private phase: TunnelPhase = 'stopped'
   private url: string | undefined
@@ -252,6 +362,8 @@ export class TunnelManager {
   private handle: TunnelHandle | undefined
   private urlTimer: unknown | undefined
   private restartTimer: unknown | undefined
+  private healthTimer: unknown | undefined
+  private healthFailures = 0
   private attempts = 0
   // Generation counter: a stale ensureBinary resolution from an earlier
   // start() must not spawn a second handle after a stop/start cycle.
@@ -270,6 +382,10 @@ export class TunnelManager {
     this.restartBaseMs = options.restartBaseMs ?? 5_000
     this.restartMaxMs = options.restartMaxMs ?? 60_000
     this.timer = options.timer ?? nodeTimer
+    this.probe = options.probe ?? defaultProbe
+    this.healthCheckIntervalMs = options.healthCheckIntervalMs ?? DEFAULT_HEALTH_CHECK_INTERVAL_MS
+    this.healthCheckFailures = options.healthCheckFailures ?? DEFAULT_HEALTH_CHECK_FAILURES
+    this.probeTimeoutMs = options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
   }
 
   /** The current status frame. */
@@ -373,6 +489,9 @@ export class TunnelManager {
     this.error = undefined
     this.attempts = 0
     this.setPhase('running')
+    // The URL is out; from here the connector can still lose its edge
+    // registration without the process exiting, so readiness is supervised.
+    this.startHealthWatch(value)
     for (const listener of this.urlListeners) {
       try {
         listener(value)
@@ -380,6 +499,69 @@ export class TunnelManager {
         // A throwing subscriber must not break the emit loop.
       }
     }
+  }
+
+  /**
+   * Watch the readiness of a running tunnel. cloudflared can keep its process
+   * (and its metrics port) alive while every edge connection is gone, leaving
+   * a minted hostname that no longer resolves: the manager used to report
+   * 'running' forever and the relay kept forwarding to that dead address, so
+   * the phone hit Cloudflare 1016 instead of the relay's offline page
+   * (issue #1723). A bounded number of consecutive probe failures ends the
+   * attempt through the ordinary fail/backoff path, which mints a new URL and
+   * re-announces the relay.
+   */
+  private startHealthWatch(url: string): void {
+    this.stopHealthWatch()
+    // A phase listener may have stopped the tunnel or replaced its target
+    // while this URL was being announced; only a live running phase schedules.
+    if (this.stopping || this.phase !== 'running') return
+    if (this.healthCheckIntervalMs <= 0 || this.healthCheckFailures <= 0) return
+    this.healthFailures = 0
+    const schedule = (): void => {
+      this.healthTimer = this.timer.setTimeout(() => {
+        this.healthTimer = undefined
+        void this.healthCheck(url)
+      }, this.healthCheckIntervalMs)
+    }
+    schedule()
+  }
+
+  /** One probe round of the running tunnel's public URL. */
+  private async healthCheck(url: string): Promise<void> {
+    // The tunnel may have been stopped, failed, or replaced while the probe
+    // was in flight; only a still-running tunnel toward this same URL is
+    // judged by the result.
+    if (this.stopping || this.phase !== 'running' || this.url !== url) return
+    let alive = false
+    try {
+      alive = await this.probe(url, this.probeTimeoutMs)
+    } catch {
+      alive = false
+    }
+    if (this.stopping || this.phase !== 'running' || this.url !== url) return
+    if (alive) {
+      this.healthFailures = 0
+    } else {
+      this.healthFailures += 1
+      if (this.healthFailures >= this.healthCheckFailures) {
+        this.fail('the tunnel stopped answering on its public URL')
+        return
+      }
+    }
+    this.healthTimer = this.timer.setTimeout(() => {
+      this.healthTimer = undefined
+      void this.healthCheck(url)
+    }, this.healthCheckIntervalMs)
+  }
+
+  /** Cancel the readiness watchdog (teardown, restart, stop). */
+  private stopHealthWatch(): void {
+    if (this.healthTimer !== undefined) {
+      this.timer.clearTimeout(this.healthTimer)
+      this.healthTimer = undefined
+    }
+    this.healthFailures = 0
   }
 
   private handleExit(): void {
@@ -401,6 +583,7 @@ export class TunnelManager {
       this.timer.clearTimeout(this.urlTimer)
       this.urlTimer = undefined
     }
+    this.stopHealthWatch()
     this.setPhase('failed')
     this.attempts += 1
     const delay = Math.min(this.restartBaseMs * 2 ** (this.attempts - 1), this.restartMaxMs)
@@ -413,6 +596,7 @@ export class TunnelManager {
   /** Stop the current process and cancel every pending timer (no phase change). */
   private teardown(): void {
     this.stopping = true
+    this.stopHealthWatch()
     if (this.urlTimer !== undefined) {
       this.timer.clearTimeout(this.urlTimer)
       this.urlTimer = undefined

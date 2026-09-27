@@ -12,6 +12,10 @@ import { fileURLToPath } from 'node:url'
 const DIST = fileURLToPath(new URL('../market/dist', import.meta.url))
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
+/** Skin sources live in their own repository; the lockfile pins the commit. */
+const SKINS_SOURCE = path.join(REPO_ROOT, '.market-inputs', 'skins')
+const SKINS_REPO = 'https://github.com/zhu1090093659/dsh-skins/tree/main/skins'
+
 function readJson(rel) {
   return JSON.parse(fs.readFileSync(path.join(DIST, rel), 'utf8'))
 }
@@ -21,7 +25,7 @@ test('market/dist 核心文件齐全', () => {
   for (const f of ['index.html', 'app.js', 'preview.html', 'styles.js', 'manifest.js', '_headers', 'official-facade.js']) {
     assert.ok(exists(f), f + ' missing')
   }
-  for (const f of ['skins.json', 'pets.json', 'plugins.json', 'presets.json']) {
+  for (const f of ['skins.json', 'pets.json', 'plugins.json', 'presets.json', 'editor-picks.json']) {
     assert.ok(exists('manifest/' + f), 'manifest/' + f + ' missing')
   }
 })
@@ -37,11 +41,18 @@ test('skins.json 契约与资产存在性', () => {
     ids.add(item.id)
     assert.ok(exists(item.preview.light), 'preview.light missing: ' + item.preview.light)
     assert.ok(exists(item.preview.dark), 'preview.dark missing: ' + item.preview.dark)
-    const skinJson = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'packages', 'skins', 'skin-center', 'skins', item.id, 'skin.json'), 'utf8'))
-    if (skinJson.sourceUrl) {
-      assert.equal(item.repo, skinJson.sourceUrl, 'skin repo must mirror sourceUrl: ' + item.id)
-    } else {
-      assert.equal(item.repo, `https://github.com/zhu1090093659/dsh-web/tree/dev/packages/skins/skin-center/skins/${item.id}`, 'skin repo must point to catalog source: ' + item.id)
+    // The catalog source lives in the dsh-skins repository. When that content
+    // has been fetched, the manifest must mirror the skin's own declaration.
+    const sourceManifest = path.join(SKINS_SOURCE, item.id, 'skin.json')
+    if (fs.existsSync(sourceManifest)) {
+      const skinJson = JSON.parse(fs.readFileSync(sourceManifest, 'utf8'))
+      const expected = skinJson.sourceUrl ?? `${SKINS_REPO}/${item.id}`
+      assert.equal(item.repo, expected, 'skin repo must mirror the catalog source: ' + item.id)
+      // Only a skin without an upstream sourceUrl of its own points at the
+      // catalog path; one that declares a sourceUrl legitimately points there.
+      if (!skinJson.sourceUrl) {
+        assert.ok(item.repo.startsWith(SKINS_REPO), 'skin repo must point at the catalog repository: ' + item.id)
+      }
     }
     assert.ok(/^https:\/\//.test(item.repo), 'skin repo must be https: ' + item.id)
     const bg = item.contributes && item.contributes.backgroundMedia
@@ -120,6 +131,15 @@ test('预设分区由市场站渲染', () => {
   assert.ok(app.includes("roleplay: '角色扮演'"), 'preset category label missing')
 })
 
+test('编辑推荐分区由市场站渲染固定清单', () => {
+  const app = fs.readFileSync(path.join(DIST, 'app.js'), 'utf8')
+  const html = fs.readFileSync(path.join(DIST, 'index.html'), 'utf8')
+  assert.ok(html.includes('data-kind="picks"'), 'editor-picks tab missing from the site markup')
+  assert.ok(app.includes("picks: '编辑推荐'"), 'editor-picks kind label missing')
+  assert.ok(app.includes("fetchJson('manifest/editor-picks.json')"), 'editor-picks manifest fetch missing')
+  assert.ok(app.includes('function pickEntries()'), 'editor-picks resolver missing')
+})
+
 test('皮肤与插件卡片名称以源码仓库链接渲染', () => {
   const app = fs.readFileSync(path.join(DIST, 'app.js'), 'utf8')
   assert.ok(app.includes("el('a', 'mk-card-name'"), 'card name must be an anchor for repo-backed items')
@@ -131,6 +151,30 @@ test('宠物卡片预览完整居中且不裁切', () => {
   const html = fs.readFileSync(path.join(DIST, 'index.html'), 'utf8')
   assert.ok(app.includes("media.classList.add('mk-card-media-pet')"), 'pet media class missing')
   assert.ok(html.includes('max-height: calc(100% - 16px);'), 'pet contain rule missing')
+})
+
+test('editor-picks.json 固定清单只引用真实存在的皮肤 / 宠物 / 插件', () => {
+  const picks = readJson('manifest/editor-picks.json')
+  assert.ok(Array.isArray(picks.items) && picks.items.length > 0, 'editor picks empty')
+  const catalogs = {
+    skin: new Set(readJson('manifest/skins.json').items.map((i) => i.id)),
+    pet: new Set(readJson('manifest/pets.json').items.map((i) => i.id)),
+    plugin: new Set(readJson('manifest/plugins.json').items.map((i) => i.id)),
+  }
+  const seen = new Set()
+  for (const pick of picks.items) {
+    assert.ok(catalogs[pick.kind], 'editor pick kind must be skin / pet / plugin: ' + pick.kind)
+    assert.ok(catalogs[pick.kind].has(pick.id), 'editor pick target missing: ' + pick.kind + ':' + pick.id)
+    const key = pick.kind + ':' + pick.id
+    assert.ok(!seen.has(key), 'duplicate editor pick: ' + key)
+    seen.add(key)
+  }
+})
+
+test('editor-picks.json 与手写清单顺序一致', () => {
+  const source = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'market', 'editor-picks.json'), 'utf8'))
+  const emitted = readJson('manifest/editor-picks.json')
+  assert.deepEqual(emitted.items, source.items.map(({ kind, id }) => ({ kind, id })))
 })
 
 test('styles.js 为全部皮肤生成 SKIN_STYLES', () => {

@@ -107,7 +107,7 @@ function headingSlugs(file) {
   return slugs
 }
 
-/** All package directories (packages/* and packages/skins/* with a package.json). */
+/** All package directories (packages/* with a package.json). */
 function packageDirs() {
   return walkFamilyPackages(root).map(({ dir }) => dir)
 }

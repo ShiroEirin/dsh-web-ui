@@ -1,6 +1,7 @@
 > 提 PR 前请阅读 [CONTRIBUTING.md](../CONTRIBUTING.md) 与 [AGENTS.md](../AGENTS.md)；
 > 提交信息用 Conventional Commits（`type(scope): subject`），禁止 emoji。
-> 本仓库只接受四类内容贡献：插件申请（社区插件索引登记）、皮肤增加（新皮肤收录）、宠物增加（新宠物收录）、预设增加（agent 预设收录）。新皮肤与新 agent 预设收录进本仓库部署的 dsh-market.com 服务器（Workshop），按需安装，默认安装不带；无背景图、仅简单改色且样式存在问题的低质皮肤 PR 不予接受。其余改动（修复 / 增强 / 全新功能 / 文档 / 测试 / 维护）不接受直接 PR，请先提 Issue 讨论；仓库所有者、机器人与拥有写权限的协作者（维护者）不受此限制，可直接提交任意改动。
+> 本仓库不再接受外部内容贡献：皮肤增加、宠物增加、社区插件索引登记与 agent 预设收录已全部迁至各自的独立仓（[dsh-skins](https://github.com/zhu1090093659/dsh-skins) / [dsh-pet](https://github.com/zhu1090093659/dsh-pet) / [dsh-community-plugins](https://github.com/zhu1090093659/dsh-community-plugins) / [dsh-presets](https://github.com/zhu1090093659/dsh-presets)）；在本仓按这些类别提交的 PR 会被自动关闭并重定向到对应仓库。
+> 其余改动（修复 / 增强 / 全新功能 / 文档 / 测试 / 维护）不接受直接 PR，请先提 Issue 讨论；仓库所有者、机器人与拥有写权限的协作者（维护者）不受此限制，可直接提交任意改动。
 > 仅文档类 PR（标题以 `docs:` 开头或勾选「仅文档」）不接受，会被自动关闭；文档改动请先提 Issue 讨论（仓库所有者、机器人与拥有写权限的协作者不受此限制）。
 ## 摘要（Summary）
 
@@ -15,33 +16,33 @@
 - [ ] 右侧面板 `packages/dsh-aionui-panel`
 - [ ] 远程 Web UI `packages/dsh-remote-web-ui`
 - [ ] SSH 远程运维 `packages/dsh-ssh`
-- [ ] 宠物 `packages/dsh-pet`
-- [ ] 预设中心 `packages/dsh-preset-center`
-- [ ] 皮肤 / 皮肤中心 `packages/dsh-skins` / `packages/skins`
+- [ ] 宠物（[dsh-pet](https://github.com/zhu1090093659/dsh-pet) 仓）
+- [ ] 预设中心（[dsh-presets](https://github.com/zhu1090093659/dsh-presets) 仓）
+- [ ] 皮肤 / 皮肤中心（[dsh-skins](https://github.com/zhu1090093659/dsh-skins) 仓）
 - [ ] 聚合包 / 设置 `packages/dsh-web-all` / `packages/dsh-web-settings`
 - [ ] 其他（请说明）
 
 ## PR 类别（PR Category）
 
-<!-- 必填。勾选本 PR 最贴近的类别（可多选），用于机器人按类别自动分派给协作者。注意：本仓库只接受四类内容贡献——新皮肤收录勾「皮肤 / 皮肤中心」、插件申请勾「社区插件索引」、新宠物收录与新预设收录勾「插件功能」类别（该类别括号内含宠物与预设中心项），并在下方 PR 类型中勾选对应内容类型。只勾选「壁纸 / 渲染器」类别的 PR 不接受，会被自动关闭（Wallpaper Engine / WebGL / 渲染器相关问题请提 Issue）；其余类别（插件功能中的功能改动、维护 / 其他）不在接受范围，会被自动关闭，请改提 Issue；仓库所有者与拥有写权限的协作者（维护者）不受此限制。 -->
+<!-- 必填。勾选本 PR 最贴近的类别（可多选），用于机器人按类别自动分派给协作者。注意：本仓库不再接受外部内容贡献——皮肤 / 皮肤中心、社区插件索引与预设增加都已迁至独立仓（dsh-skins / dsh-community-plugins / dsh-presets），勾选这些类别的 PR 会被自动关闭并重定向；「插件功能」里的功能改动与「维护 / 其他」也不在接受范围，会被自动关闭，请改提 Issue；仓库所有者与拥有写权限的协作者（维护者）不受此限制。 -->
 
-- [ ] 壁纸 / 渲染器（Wallpaper Engine / WebGL / 背景场景）
-- [ ] 皮肤 / 皮肤中心（新皮肤收录、皮肤样式）
-- [ ] 插件功能（任务看板 / Git 图谱 / 右侧面板 / 远程 Web UI / SSH / 宠物 / 预设中心 / 设置 / 聚合包）
-- [ ] 社区插件索引
+- [ ] 皮肤 / 皮肤中心（新皮肤收录、皮肤样式）—— 已迁至 [dsh-skins](https://github.com/zhu1090093659/dsh-skins) 仓，本仓提交会被自动关闭并重定向
+- [ ] 插件功能（任务看板 / Git 图谱 / 右侧面板 / 远程 Web UI / SSH / 设置 / 聚合包）
+- [ ] 社区插件索引 —— 已迁至 [dsh-community-plugins](https://github.com/zhu1090093659/dsh-community-plugins) 仓，本仓提交会被自动关闭并重定向
+- [ ] 预设 / 预设中心 —— 已迁至 [dsh-presets](https://github.com/zhu1090093659/dsh-presets) 仓，本仓提交会被自动关闭并重定向
 - [ ] 维护 / 其他
 
 ## PR 类型（PR Type）
 
-<!-- 勾选所有适用的类别。 -->
+<!-- 勾选所有适用的类型；四类内容贡献（新皮肤收录 / 新宠物收录 / 社区插件索引 / 新预设收录）都已在各自的独立仓提交。 -->
 
 - [ ] 面向用户的功能或行为变更
 - [ ] Bug 修复
 - [ ] 视觉修复（UI / 视觉类问题的修复）
 - [ ] 增强 / 优化（现有功能的改进、性能 / 体验优化）
-- [ ] 新皮肤收录（内容贡献，欢迎直接提交，无需先提 issue）
-- [ ] 新宠物收录（内容贡献，欢迎直接提交，无需先提 issue）
-- [ ] 新预设收录（内容贡献，欢迎直接提交，无需先提 issue）
+- [ ] 新皮肤收录（内容贡献，在 [dsh-skins](https://github.com/zhu1090093659/dsh-skins) 仓提交；本仓提交会被自动关闭并重定向）
+- [ ] 新宠物收录（内容贡献，在 [dsh-pet](https://github.com/zhu1090093659/dsh-pet) 仓提交；本仓提交会被自动关闭并重定向）
+- [ ] 新预设收录（内容贡献，在 [dsh-presets](https://github.com/zhu1090093659/dsh-presets) 仓提交；本仓提交会被自动关闭并重定向）
 - [ ] 维护 / 重构
 
 <!-- 仅文档类 PR 不接受，会被自动关闭；文档改动请先提 Issue 讨论。 -->
@@ -98,55 +99,11 @@
 
 ## 贡献者版权声明（Contributor Copyright）
 
-<!-- 可选。若本 PR 贡献的是插件或皮肤，可在项目 README 末尾「来源与版权」的版权表中追加一行声明你自己的版权（包 / 来源 / 版权三列，格式参考表中现有行）；不声明则维持现有版权归属。 -->
-
-## 新皮肤收录（New Skin）
-
-<!-- 仅当本 PR 新增皮肤时必填；其余改动可跳过本节。新皮肤属于内容贡献，欢迎直接提交（无需先提 issue）；但没有任何背景图、仅简单改色且样式存在明显问题（如暗色缺失、对比度不足、布局错位）的低质皮肤 PR 不予接受。皮肤收录进本仓库部署的 dsh-market.com 服务器（Workshop），用户按需安装到 `$DSH_HOME/skins/<id>/`，默认安装（skin-center npm 包）不带新皮肤。 -->
-
-- [ ] 纯资产目录契约：`packages/skins/skin-center/skins/<name>/` 只含 skin.json + skin.css（+ 可选 patches.css / hooks.mjs / assets/），无 package.json 与构建文件；`node scripts/dsh-skin validate` 通过；纯呈现层约束满足（不注入服务、不发事件、不触及模型请求）。
-- [ ] `skin.json` 符合 v2 清单（contracts/skin-manifest-v2.schema.json：skinManifestVersion / id / name / nameEn / version / author / contributes，另含 tagline / description / tags / accent / preview / order）。
-- [ ] `pnpm skin-center:check` 通过（新皮肤出现在设置 → 皮肤中心）；已重跑 `pnpm market:build` 并提交市场产物（`market/dist`）。
-- [ ] 已用 `node scripts/capture-previews` 重拍并提交 `preview/{light,dark}.png`。
-- [ ] README 中英双语、LICENSE 与贡献者版权声明齐全；PR 描述附市场试穿截图（亮 / 暗）。
-- [ ] 非低质皮肤：亮 / 暗双态样式完整（无暗色缺失、对比度不足、布局错位），不是无背景图、仅简单改色的低质皮肤（此类 PR 不予接受）。
-
-## 新宠物收录（New Pet）
-
-<!-- 仅当本 PR 新增宠物时必填；其余改动可跳过本节。新宠物属于内容贡献，欢迎直接提交（无需先提 issue）；需满足宠物契约，否则条目会被跳过或拒绝。 -->
-
-- [ ] 按宠物契约新增 `packages/dsh-pet/assets/<id>/`：`pet.json` 使用 v2 manifest（petManifestVersion / id 小写 kebab / displayName / license 必填 / renderer / sprite2d{} 或 live2d{} / sequences / remarks；未知顶层键 fail-closed 拒绝），资产路径全部为安全相对路径。
-- [ ] 图集为 8 列 × 9 行（v2 可声明 11 行），行序固定（0 idle / 1 running-right / 2 running-left / 3 waving / 4 jumping / 5 failed / 6 waiting / 7 running / 8 review），未用格子全透明；`node scripts/dsh-pet validate <dir>` 通过。
-- [ ] 在 `packages/dsh-pet/src/registry.test.ts` 增加该 manifest 的归一化断言；`pnpm --filter @linxin666/dsh-pet build` / `test` 与 `pnpm typecheck` 通过；提交重建的 `lib/`。
-- [ ] 同步维护 dsh-pet README 中英三件套（`README.md` / `README.zh.md` / `README.i18n.yaml`）并重录配对（`pnpm docs:write-pair dsh-pet`）。
-- [ ] README 动画预览与「许可证 / 版权」说明齐全；PR 描述附宠物实测截图（设置页「宠物」选择器出现新宠物、切换后动画正常）。
+<!-- 可选。若本 PR 贡献的是插件或预设，可在项目 README 末尾「来源与版权」的版权表中追加一行声明你自己的版权（包 / 来源 / 版权三列，格式参考表中现有行）；不声明则维持现有版权归属。 -->
 
 ## 新预设收录（New Agent Preset）
 
-<!-- 仅当本 PR 新增 agent 预设时必填；其余改动可跳过本节。新预设属于内容贡献，欢迎直接提交（无需先提 issue）。预设是代码而不是资产：composition 可以挂载 npm 插件、加载预设目录内的文件、执行 !!js 表达式，启用后运行在 DSH 宿主进程内，评审重点审核 composition 实际加载了什么、为什么。发布格式见 packages/dsh-preset-center/presets/README.md。 -->
-
-- [ ] 按 packages/dsh-preset-center/presets/README.md 复制 `_template/` 为 `packages/dsh-preset-center/presets/<id>/`：目录名即预设 id，匹配 `^[a-z0-9][a-z0-9-]*$`，不与官方内置 id（minimal / ptc / standard / cordis）冲突。
-- [ ] `preset.yml` 展示文案齐全且均为单行标量（name / description 必填，order 可选），与 catalog.json 条目表达同一预设。
-- [ ] `agent.cordis.yml` composition 合规：service 行位于带 isolate realm 的 group 内；不挂载与预设用途无关的插件；使用的 `!!js` 表达式与本地文件加载已在 PR 描述中逐项说明用途。
-- [ ] `presets/catalog.json` 追加该预设条目（id / author / version 必填，可选 nameEn / descriptionEn / tags / rank / repo），version 用于 Workshop 更新提醒。
-- [ ] 已运行 `node scripts/market-build` 并提交重新生成的 `market/dist`；`pnpm market:check` 通过。
-- [ ] 已在本地实测：经 Workshop 安装进 `$DSH_HOME/agent-presets/<id>/`，启用确认后新会话能使用该预设；PR 描述附预设生效的证据（截图 / 会话输出）。
-
-## 社区插件索引登记（Community Plugin Index）
-
-<!-- 仅当本 PR 新增接入一个社区插件时必填；其余改动可跳过本节。新接入的社区插件对下述要求逐项确认。 -->
-
-插件 GitHub 仓库链接：
-
-<!-- 必填。提供插件源码的公开 GitHub 仓库链接，供协作者评审参考。 -->
-
-插件详细说明：
-
-<!-- 必填。提供插件的功能、用途、依赖、已知限制等详细说明，供协作者评审参考。 -->
-
-- [ ] 已按 [docs/plugins.md](../docs/plugins.md) 的登记说明在 `packages/dsh-community-plugins/community.json` 追加条目，并运行 `node scripts/community-index` 重新生成注册表（提交生成的 `packages/dsh-community-plugins/src/client/generated/community.ts`）。
-- [ ] 已确认插件与 dsh-web 插件体系兼容：遵循官方 cordis bundle 独立标准（package.json 声明 `dsh.bundle.patch` 指向 `cordis.patch.yml`、`dsh.client` 浏览器半区），类型仅基于官方 `@deepseek-ai/*` NPM SDK，未修改 DSH 源码；已在本仓库最新代码上验证插件可被 `dsh web` 挂载并正常运行。
-- [ ] 承诺负责后续更新跟进：插件与 DSH / dsh-web 生态保持同步，生态升级导致不兼容时主动跟进修复；条目信息（description / npm 等）变动或插件停更时，及时更新索引登记或提交移除。
+<!-- 预设已迁至 dsh-presets 仓。本仓不再接受预设 PR：提交到本仓会被自动关闭并重定向。投稿清单见该仓的 CONTRIBUTING.md 与 presets/README.md。 -->
 
 ## 本地验证（Local Validation）
 
@@ -170,7 +127,6 @@ pnpm build
 - 功能已启用 / 配置（如适用）
 - 成功使用并展示可见结果
 - 涉及 agent 循环的功能展示后续 / 结果反馈
-皮肤改动需同时展示换肤后的界面效果。
 -->
 
 证据：

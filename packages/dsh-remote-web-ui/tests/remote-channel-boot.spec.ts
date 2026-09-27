@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { renderIndexInjections } from '@deepseek-ai/dsh-host-webserver'
 
 import { BOOT_WATCHDOG_KEY, buildBootWatchdogScript, buildRemoteChannelBootScript, REMOTE_CHANNEL_BOOT_SCRIPT } from '../src/remote-channel-boot.ts'
-import { REMOTE_CHANNEL_BOOT_GLOBAL, type RemoteChannelBootSeat } from '../src/remote-channel-rules.ts'
+import { REMOTE_CHANNEL_BOOT_GLOBAL, REMOTE_HOST_GRANT_GLOBAL, isLocalPage, type RemoteChannelBootSeat } from '../src/remote-channel-rules.ts'
 import { shouldRewriteFetchPath, shouldRewriteWsPath } from '../src/client/remote-channel.ts'
 
 const PATH_MATRIX = [
@@ -31,6 +31,7 @@ const WS_MATRIX = [
   '/api/remote.mux',
   '/sidebar/ws/terminal',
   '/sidebar/ws/agent-terminals',
+  '/sidebar/ws/agent-opens',
   '/api/dsh-ssh/terminal',
   '/api/events.mux',
   '/api/session.list',
@@ -40,7 +41,7 @@ interface FakeWindow {
   fetch: (input: unknown, init?: unknown) => Promise<Response>
   WebSocket: unknown
   EventSource?: unknown
-  location: { origin: string; href: string; hostname: string }
+  location: { origin: string; href: string; hostname: string; protocol: string }
   sessionStorage: { getItem(key: string): string | null }
   [REMOTE_CHANNEL_BOOT_GLOBAL]?: RemoteChannelBootSeat
   calls: string[]
@@ -49,10 +50,10 @@ interface FakeWindow {
   response: () => Response
 }
 
-function makeWindow(hostname = '192.168.1.20', port = '3080'): FakeWindow {
-  const origin = `http://${hostname}:${port}`
+function makeWindow(hostname = '192.168.1.20', port = '3080', protocol = 'http:'): FakeWindow {
+  const origin = `${protocol}//${hostname}:${port}`
   const win: FakeWindow = {
-    location: { origin, href: `${origin}/`, hostname },
+    location: { origin, href: `${origin}/`, hostname, protocol },
     calls: [],
     initSeen: [],
     wsUrls: [],
@@ -121,6 +122,78 @@ describe('remote channel boot patch (issue #987)', () => {
       boot(win)
       expect(win.fetch).toBe(originalFetch)
       expect(win[REMOTE_CHANNEL_BOOT_GLOBAL]).toBeUndefined()
+    }
+  })
+
+  // #1682: the desktop shell serves the GUI from dsh-app://app/, so the
+  // parse-time patch must self-skip there exactly like it does on loopback;
+  // otherwise every early official call is rewritten onto a gated prefix the
+  // desktop can never satisfy.
+  it('operator: the desktop shell delivery origin keeps its plain paths', () => {
+    // Given the page the DSH Desktop shell loads (hostname app, scheme dsh-app).
+    const win = makeWindow('app', '0', 'dsh-app:')
+    const originalFetch = win.fetch
+    // When the parse-time boot patch runs.
+    boot(win)
+    // Then it leaves the page untouched and installs no seat.
+    expect(win.fetch).toBe(originalFetch)
+    expect(win[REMOTE_CHANNEL_BOOT_GLOBAL]).toBeUndefined()
+  })
+
+  it('operator: a scheme-local page the transport declared host-owned keeps its plain paths', () => {
+    // Given a scheme-local authority (the desktop shell's `app`) whose
+    // transport hook already declares the machine the owner.
+    const win = makeWindow('app', '0', 'app:') as FakeWindow & { __DSH_TRANSPORT__?: { ownsHost?: boolean } }
+    win.__DSH_TRANSPORT__ = { ownsHost: true }
+    const originalFetch = win.fetch
+    // When the parse-time boot patch runs.
+    boot(win)
+    // Then the page keeps its plain paths.
+    expect(win.fetch).toBe(originalFetch)
+    expect(win[REMOTE_CHANNEL_BOOT_GLOBAL]).toBeUndefined()
+  })
+
+  // The plugin's own device-gated landing grants the same hook to a paired
+  // LAN/tunnel page; that page must keep riding the gated channel.
+  it('operator: a network page never leaves the gate, host-owned hook or not', async () => {
+    // Given a LAN origin carrying the transport hook.
+    const win = makeWindow('192.168.1.20') as FakeWindow & { __DSH_TRANSPORT__?: { ownsHost?: boolean } }
+    win.__DSH_TRANSPORT__ = { ownsHost: true }
+    // When the parse-time boot patch runs and a fenced call is issued.
+    boot(win)
+    await win.fetch('/api/session.list')
+    // Then the call still rides the gated channel.
+    expect(win.calls[0]).toBe('http://192.168.1.20:3080/remote/api/session.list')
+  })
+
+  // The inline script and the client predicate must decide from one table
+  // (WEB_PAGE_PROTOCOLS): a scheme one side moves without the other following
+  // would strand a shell behind a pairing page again (#1682).
+  describe('page locality agrees with the client predicate', () => {
+    const MATRIX: Array<{ label: string; hostname: string; protocol: string; ownsHost?: boolean }> = [
+      { label: 'a loopback page', hostname: '127.0.0.1', protocol: 'http:' },
+      { label: 'localhost', hostname: 'localhost', protocol: 'http:' },
+      { label: 'the desktop shell delivery scheme', hostname: 'app', protocol: 'dsh-app:' },
+      { label: 'an unknown application scheme', hostname: 'app', protocol: 'future-shell:' },
+      { label: 'a file page', hostname: '', protocol: 'file:' },
+      { label: 'a page with no readable scheme', hostname: 'box.trycloudflare.com', protocol: '' },
+      { label: 'a scheme-local authority carrying the host hook', hostname: 'app', protocol: 'http:', ownsHost: true },
+      { label: 'a LAN origin', hostname: '192.168.1.20', protocol: 'http:' },
+      { label: 'a tunnel origin', hostname: 'box.trycloudflare.com', protocol: 'https:' },
+      { label: 'a blob document a network page minted', hostname: 'box.trycloudflare.com', protocol: 'blob:' },
+      { label: 'a granted LAN page', hostname: '192.168.1.20', protocol: 'http:', ownsHost: true },
+    ]
+    for (const row of MATRIX) {
+      it(`operator: ${row.label} is gated exactly when the predicate says so`, () => {
+        // Given a page with these origin facts.
+        const win = makeWindow(row.hostname, '3080', row.protocol) as FakeWindow & { __DSH_TRANSPORT__?: { ownsHost?: boolean } }
+        if (row.ownsHost === true) win.__DSH_TRANSPORT__ = { ownsHost: true }
+        const expectedLocal = isLocalPage(row.hostname, row.protocol, row.ownsHost === true)
+        // When the parse-time boot patch runs.
+        boot(win)
+        // Then a local page installs no seat and a remote page installs one.
+        expect(win[REMOTE_CHANNEL_BOOT_GLOBAL] === undefined).toBe(expectedLocal)
+      })
     }
   })
 
@@ -204,11 +277,60 @@ describe('remote channel boot patch (issue #987)', () => {
     expect(win.calls).toEqual(['http://192.168.1.20:3080/api/session.list'])
   })
 
-  it('flips the official UI into host mode on non-loopback origins', () => {
-    const win = makeWindow('192.168.1.20') as Record<string, unknown>
-    boot(win as never)
-    const transport = win.__DSH_TRANSPORT__ as { ownsHost?: boolean } | undefined
+  it('publishes the pre-Cordis upload hook onto the patched fetch (issue #1580)', async () => {
+    const win = makeWindow()
+    win.sessionStorage = { getItem: () => 'dev-42' }
+    boot(win)
+    const hook = (win as Record<string, unknown>).__DSH_FILE_UPLOAD__ as
+      | { fetch: (input: URL, init: RequestInit) => Promise<Response> }
+      | undefined
+    expect(hook).toBeDefined()
+    // The runtime hands the hook an absolute same-origin URL (it resolves the
+    // route against location.origin), exactly as customTransport does.
+    const body = new Blob(['bytes'])
+    // Exactly what the runtime's customTransport passes: absolute URL, the
+    // octet-stream content type, and the raw body.
+    await hook!.fetch(new URL('http://192.168.1.20:3080/api/session/uploadFileBinary?sessionId=s1'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/octet-stream' },
+      body,
+    })
+    expect(win.calls[0]).toBe('http://192.168.1.20:3080/remote/api/session/uploadFileBinary?sessionId=s1')
+    const init = win.initSeen[0] as RequestInit & { headers?: Record<string, string> }
+    expect(init.method).toBe('POST')
+    expect(init.body).toBe(body)
+    expect(init.headers?.['content-type']).toBe('application/octet-stream')
+    expect(init.headers?.['x-dsh-remote-device']).toBe('dev-42')
+  })
+
+  it('never republishes a pre-existing upload hook owned by the page', () => {
+    const win = makeWindow() as FakeWindow & Record<string, unknown>
+    const existing = { fetch: () => Promise.resolve(new Response('{}')) }
+    win.__DSH_FILE_UPLOAD__ = existing
+    boot(win)
+    expect(win.__DSH_FILE_UPLOAD__).toBe(existing)
+  })
+
+  it('does not publish the upload hook on loopback origins', () => {
+    const win = makeWindow('127.0.0.1') as FakeWindow & Record<string, unknown>
+    boot(win)
+    expect(win.__DSH_FILE_UPLOAD__).toBeUndefined()
+  })
+
+  it('flips the official UI into host mode only for a server-granted shell', () => {
+    // The device-gated app landing (/pair-app) publishes the grant marker in
+    // its capture script, which runs ahead of this parse-time patch.
+    const granted = makeWindow('192.168.1.20') as Record<string, unknown>
+    granted[REMOTE_HOST_GRANT_GLOBAL] = true
+    boot(granted as never)
+    const transport = granted.__DSH_TRANSPORT__ as { ownsHost?: boolean } | undefined
     expect(transport?.ownsHost).toBe(true)
+    // Without the grant the shell is not the machine owner: host mode is
+    // server-granted, never asserted from the origin, so an unpaired browser
+    // reaching a fence-open deployment keeps the memory-scope presentation.
+    const unpaired = makeWindow('192.168.1.20') as Record<string, unknown>
+    boot(unpaired as never)
+    expect(unpaired.__DSH_TRANSPORT__).toBeUndefined()
   })
 
   it('does not flip host mode on loopback origins', () => {

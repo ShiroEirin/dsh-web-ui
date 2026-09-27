@@ -10,6 +10,9 @@ import type { TaskHandover, TaskHandoverInput } from './handover.ts'
 /** Task lifecycle status, one per kanban column. */
 export type TaskStatus = 'backlog' | 'todo' | 'running' | 'done' | 'failed'
 
+/** Settled outcome of one execution attempt. */
+export type ExecutionOutcome = 'succeeded' | 'failed' | 'cancelled'
+
 /**
  * One real execution attempt: the run's own id, the dsh session that ran it
  * (filled once the session is created), and the settled outcome once the
@@ -25,7 +28,7 @@ export interface ExecutionRecord {
   /** When the run settled; absent while still running. */
   endedAt: number | undefined
   /** Outcome once settled. */
-  result: 'succeeded' | 'failed' | 'cancelled' | undefined
+  result: ExecutionOutcome | undefined
   /** Human failure text when the run failed (prompt rejection or agent error). */
   error: string | undefined
   /**
@@ -38,6 +41,20 @@ export interface ExecutionRecord {
   frozenAt?: number
   /** Freeze source session captured from the card snapshot when the run opened. */
   frozenBy?: string
+  /**
+   * Cascade run group shared by the parent execution and every descendant
+   * execution one run request opened. Absent on a plain single-task run.
+   */
+  runGroupId?: string
+  /**
+   * A cascade parent's own session outcome, recorded as soon as its own turn
+   * settles and held while its subtask executions finish. The execution stays
+   * open (no `endedAt`) until the last child settles; the Host monitor skips
+   * an execution whose own outcome is already recorded.
+   */
+  ownResult?: ExecutionOutcome
+  /** Human failure text that arrived with {@link ownResult}. */
+  ownError?: string
 }
 
 /**
@@ -94,6 +111,105 @@ export interface TaskFreeze extends FreezeSnapshot {
   frozenBy?: string
 }
 
+/**
+ * One task label (issue #1521). The name is the badge and the tag-filter key;
+ * the optional prompt line rides the execution prompt, so a label may be
+ * display-only (no prefix) or carry an instruction (business-line routing,
+ * output directory, house style) that every run of the task inherits.
+ */
+export interface TaskTag {
+  /** Display name; trimmed, non-empty, unique within the task. */
+  name: string
+  /**
+   * Prompt line injected ahead of the execution prompt. Absent (or blank
+   * after trimming) keeps the tag display-only: it never touches the prompt,
+   * so a label with no prefix has zero execution side effects.
+   */
+  promptPrefix?: string
+}
+
+/** Maximum number of tags carried by one task. */
+export const TASK_TAG_LIMIT = 8
+/** Maximum length of a tag name. */
+export const TAG_NAME_MAX_LENGTH = 32
+/** Maximum length of a tag's injected prompt line. */
+export const TAG_PROMPT_MAX_LENGTH = 200
+
+/** Whether an unknown value is a well-formed tag (strict: the wire gate). */
+export function isTaskTag(value: unknown): value is TaskTag {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const tag = value as Record<string, unknown>
+  if (Object.keys(tag).some(key => key !== 'name' && key !== 'promptPrefix')) return false
+  if (typeof tag.name !== 'string') return false
+  const name = tag.name.trim()
+  if (name === '' || name.length > TAG_NAME_MAX_LENGTH) return false
+  if (tag.promptPrefix !== undefined && typeof tag.promptPrefix !== 'string') return false
+  return tag.promptPrefix === undefined || (tag.promptPrefix as string).trim().length <= TAG_PROMPT_MAX_LENGTH
+}
+
+/**
+ * Whether an unknown value is a well-formed tag list (strict: the wire gate).
+ * An empty list is rejected — clearing tags is expressed by omitting the field
+ * (create) or by an explicit null (update), never by an empty array.
+ */
+export function isTaskTagList(value: unknown): value is TaskTag[] {
+  return Array.isArray(value) && value.length > 0 && value.length <= TASK_TAG_LIMIT && value.every(isTaskTag)
+}
+
+/**
+ * Repair a persisted tag list: keep the well-formed entries, trim, drop
+ * blanks and repeats, cap the count, and collapse a blank prompt line to
+ * "display-only". Returns undefined when nothing usable remains, so the caller
+ * clears the field instead of storing an empty array.
+ */
+export function normalizeTags(value: unknown): TaskTag[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const tags: TaskTag[] = []
+  const seen = new Set<string>()
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) continue
+    const row = entry as Record<string, unknown>
+    if (typeof row.name !== 'string') continue
+    const name = row.name.trim()
+    if (name === '' || name.length > TAG_NAME_MAX_LENGTH || seen.has(name)) continue
+    const raw = typeof row.promptPrefix === 'string' ? row.promptPrefix.trim() : ''
+    const promptPrefix = raw === '' ? undefined : raw.slice(0, TAG_PROMPT_MAX_LENGTH)
+    seen.add(name)
+    tags.push(promptPrefix === undefined ? { name } : { name, promptPrefix })
+    if (tags.length >= TASK_TAG_LIMIT) break
+  }
+  return tags.length === 0 ? undefined : tags
+}
+
+/**
+ * Stable palette slot (0..5) for a tag name. The same label always lands on the
+ * same tone, so a badge needs no stored colour and two tasks sharing a label
+ * cannot disagree about it.
+ */
+export function tagTone(name: string): number {
+  let hash = 0
+  for (const char of name) hash = (hash * 31 + (char.codePointAt(0) ?? 0)) >>> 0
+  return hash % 6
+}
+
+/**
+ * Union of the labels already carried by `tasks`, first occurrence wins (the
+ * oldest task's hint is the one offered). Feeds the editor's name datalist and
+ * the board's tag filter, so a label defined once can be reused everywhere.
+ */
+export function collectKnownTags(tasks: readonly TaskRecord[]): TaskTag[] {
+  const known: TaskTag[] = []
+  const seen = new Set<string>()
+  for (const task of tasks) {
+    for (const tag of task.tags ?? []) {
+      if (seen.has(tag.name)) continue
+      seen.add(tag.name)
+      known.push(tag)
+    }
+  }
+  return known
+}
+
 /** One task on the board. */
 export interface TaskRecord {
   /** Stable task id (uuid). */
@@ -104,6 +220,14 @@ export interface TaskRecord {
   description: string
   /** The prompt sent to dsh when this task is executed. */
   prompt: string
+  /**
+   * Parent task id: present only on a subtask. The Host owns the lineage gate
+   * (see `core/subtask.ts`), which refuses a cycle, an archived parent, and
+   * any link that would exceed `maxSubtaskDepth` — so every chain the Host
+   * wrote under the current setting is at most that many links long. Lowering
+   * the limit later neither rewrites nor deletes an already stored link.
+   */
+  parentId?: string
   /** Current column. */
   status: TaskStatus
   /** Creation instant (ms epoch). */
@@ -146,6 +270,15 @@ export interface TaskRecord {
    */
   reuseSession?: boolean
   /**
+   * Run this task's subtree as an Agent Team instead of one Host-launched
+   * session per participant: the root becomes the Team Lead session and the
+   * Host spawns one teammate for each direct subtask inside it. Absent or false
+   * keeps the plain concurrent cascade. A deployment that does not serve the
+   * Agent Teams service refuses a team run instead of silently falling back,
+   * and a subtask's own permission pin cannot be honored in this mode.
+   */
+  teamRun?: boolean
+  /**
    * Frozen context snapshot for a continuation card; absent on plain tasks.
    * Sanitized before it enters the ledger (redaction, slash-command taint,
    * 8 KiB per-field cap) by the protocol gate and re-normalized on load.
@@ -158,6 +291,12 @@ export interface TaskRecord {
    * bundle's triplet overrides the legacy pin fields at execution time.
    */
   handover?: TaskHandover
+  /**
+   * Task labels (issue #1521): optional, additive, and absent on every task
+   * created before the field existed. A tag whose `promptPrefix` is set is
+   * prepended to the execution prompt; a bare name is display and filter only.
+   */
+  tags?: TaskTag[]
   /**
    * Human confirmation stamp for an above-default effective permission
    * (ms epoch). Absent while the binding awaits confirmation; any permission
@@ -197,6 +336,12 @@ export interface NewTaskInput {
   title: string
   description: string
   prompt: string
+  /**
+   * Parent task id, turning this creation into a subtask. Absent keeps a root
+   * task; the create use case validates the link (existence, depth) and
+   * inherits the parent's unset execution targets.
+   */
+  parentId?: string
   /** Workspace the execution must run in; empty/absent = the recent workspace. */
   workspaceId?: string
   /** Agent preset the execution session must be composed from; empty/absent = deployment default. */
@@ -207,6 +352,8 @@ export interface NewTaskInput {
   model?: string
   /** Reuse the previous execution's session for later runs (issue #1419). */
   reuseSession?: boolean
+  /** Run the subtree as an Agent Team (Team Lead session plus one teammate per direct subtask). */
+  teamRun?: boolean
   /**
    * Optional scheduled-run rule requested at creation time (the new-task
    * dialog): an enable flag plus a 5-field cron expression. The create use
@@ -223,6 +370,11 @@ export interface NewTaskInput {
    * sanitized by the protocol gate) attached at creation.
    */
   handover?: TaskHandoverInput
+  /**
+   * Optional task labels. A tag with a non-blank `promptPrefix` is injected
+   * ahead of the execution prompt; a bare name changes nothing at run time.
+   */
+  tags?: TaskTag[]
 }
 
 /** The five kanban columns, in display order. */
@@ -281,11 +433,13 @@ export function freezeOf(
 
 /** Create a task from user input. */
 export function createTask(input: NewTaskInput, now: number, id: string): TaskRecord {
+  const tags = normalizeTags(input.tags)
   return {
     id,
     title: input.title.trim(),
     description: input.description.trim(),
     prompt: input.prompt.trim(),
+    parentId: normalizeTargetId(input.parentId),
     status: 'todo',
     createdAt: now,
     updatedAt: now,
@@ -295,8 +449,10 @@ export function createTask(input: NewTaskInput, now: number, id: string): TaskRe
     permission: isTaskPermission(input.permission) ? input.permission : undefined,
     model: normalizeTargetId(input.model),
     reuseSession: input.reuseSession === true ? true : undefined,
+  teamRun: input.teamRun === true ? true : undefined,
     ...(input.freeze === undefined ? {} : { freeze: freezeOf(input.freeze, now) }),
     ...(input.handover === undefined ? {} : { handover: { ...input.handover, bundledAt: now } }),
+    ...(tags === undefined ? {} : { tags }),
   }
 }
 
@@ -333,12 +489,15 @@ export function withSchedule(
 /**
  * Open a fresh execution on a task: move it to 'running' and append a
  * running execution record. Returns the new task and the new execution.
+ * @param runGroupId - cascade run group, when this run also opened executions
+ *   for the task's subtasks (see `core/subtask.ts`).
  */
 export function startExecution(
   task: TaskRecord,
   now: number,
   executionId: string,
   initiatedBy?: string,
+  runGroupId?: string,
 ): { task: TaskRecord; execution: ExecutionRecord } {
   const execution: ExecutionRecord = {
     id: executionId,
@@ -347,6 +506,7 @@ export function startExecution(
     endedAt: undefined,
     result: undefined,
     error: undefined,
+    ...(runGroupId === undefined || runGroupId === '' ? {} : { runGroupId }),
     ...(initiatedBy === undefined || initiatedBy === '' ? {} : { initiatedBy }),
     // Capture the card's freeze provenance on the execution record so the
     // audit trail stays queryable even if the snapshot is replaced later.
@@ -374,7 +534,7 @@ export function startExecution(
 export function settleExecution(
   task: TaskRecord,
   executionId: string,
-  outcome: 'succeeded' | 'failed' | 'cancelled',
+  outcome: ExecutionOutcome,
   now: number,
   error: string | undefined,
 ): TaskRecord {

@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-remote-web-ui 的自动更新面板会把所有 registry 管理的家族组件显示成一长串 `@linxin666/dsh-*` 包名和版本行。技术上准确，但用户难以判断是否开始升级；项目本身已经发布按功能/修复/其他分组的中英 GitHub Release 说明。
+dsh-update 的自动更新面板会把所有 registry 管理的家族组件显示成一长串 `@linxin666/dsh-*` 包名和版本行。技术上准确，但用户难以判断是否开始升级；项目本身已经发布按功能/修复/其他分组的中英 GitHub Release 说明。
 
 ## Decision
 

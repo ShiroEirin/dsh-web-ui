@@ -2,14 +2,16 @@
  * New-task modal: title + description + the prompt that execution will send.
  * Creates through the Host and closes only after the Host confirms it.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { isValidCron, nextRunAtMs } from '../../core/schedule.ts'
 import { parseFreezeRequest } from '../../core/freeze-snapshot.ts'
-import { TASK_PERMISSIONS, type TaskPermission, type TaskRecord } from '../../core/tasks.ts'
+import { effectiveTaskPermission } from '../../core/subtask.ts'
+import { collectKnownTags, TASK_PERMISSIONS, type TaskPermission, type TaskRecord, type TaskTag } from '../../core/tasks.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import { SCHEDULE_PRESETS } from '../schedule-presets.ts'
-import { ModalShell, TaskContentFields } from './TaskForm.tsx'
+import { ModalShell, TaskContentFields, TaskTagFields, cleanTags } from './TaskForm.tsx'
+import { readParseModelPreference, writeParseModelPreference } from './parse-model-pref.ts'
 import css from '../board.module.css'
 
 export interface NewTaskModalProps {
@@ -17,20 +19,37 @@ export interface NewTaskModalProps {
   onClose: () => void
   /** Optional task template to clone/duplicate from. */
   initialTask?: TaskRecord
+  /**
+   * Workspace the board's project filter has selected (#1536): a task created
+   * while a project is open belongs to that project unless the user changes it.
+   */
+  defaultWorkspaceId?: string
   /** Optional callback after successful duplication (e.g. to archive source). */
   onDuplicateSuccess?: (sourceTaskId: string) => Promise<void>
+  /**
+   * Task the new card becomes a subtask of ("add subtask" from its detail
+   * view). The execution targets start from the parent's and the create action
+   * carries the parent link; unset targets inherit again at run time.
+   */
+  parentTask?: TaskRecord
 }
 
 /** New-task form overlay. */
-export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSuccess }: NewTaskModalProps) {
+export function NewTaskModal({ controller, onClose, initialTask, defaultWorkspaceId, onDuplicateSuccess, parentTask }: NewTaskModalProps) {
   const isDuplicate = initialTask !== undefined
   const [title, setTitle] = useState(initialTask?.title ?? '')
   const [description, setDescription] = useState(initialTask?.description ?? '')
   const [prompt, setPrompt] = useState(initialTask?.prompt ?? '')
-  const [workspaceId, setWorkspaceId] = useState(initialTask?.workspaceId ?? '')
-  const [mode, setMode] = useState(initialTask?.mode ?? '')
+  // A subtask starts from its parent's execution contract (issue: subtask
+  // inheritance); each picker below still overrides it for this card. The
+  // permission stays UNSET by default: leaving it empty is what makes the Host
+  // inherit the parent's binding together with its human confirmation, while
+  // picking a value pins this card's own binding and re-arms the gate.
+  const [workspaceId, setWorkspaceId] = useState(initialTask?.workspaceId ?? parentTask?.workspaceId ?? defaultWorkspaceId ?? '')
+  const [mode, setMode] = useState(initialTask?.mode ?? parentTask?.mode ?? '')
   const [permission, setPermission] = useState(initialTask?.permission ?? '')
-  const [model, setModel] = useState(initialTask?.model ?? '')
+  const [model, setModel] = useState(initialTask?.model ?? parentTask?.model ?? '')
+  const inheritedPermission = parentTask === undefined ? undefined : effectiveTaskPermission(parentTask)
   const [reuseSession, setReuseSession] = useState(initialTask?.reuseSession ?? false)
   const [scheduleEnabled, setScheduleEnabled] = useState(initialTask?.schedule?.enabled ?? false)
   const [scheduleCron, setScheduleCron] = useState(initialTask?.schedule?.cron ?? '')
@@ -40,10 +59,29 @@ export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSucc
   const [handoverText, setHandoverText] = useState(
     initialTask?.handover?.references !== undefined ? initialTask.handover.references.join('\n') : '',
   )
+  const [tags, setTags] = useState<TaskTag[]>(initialTask?.tags ?? [])
   const [archiveOriginal, setArchiveOriginal] = useState(true)
   const [error, setError] = useState<string | undefined>(undefined)
   const [pending, setPending] = useState(false)
   const [options, setOptions] = useState(controller.getSnapshot().executionOptions)
+  // "Parse pasted text" (issue #1540) exists only when the deployment carries a
+  // parse face; the section stays hidden otherwise.
+  const [canParse] = useState(controller.getSnapshot().canParseTask === true)
+  const [parseText, setParseText] = useState('')
+  // Issue #1621: start from the model this browser used last, not from the
+  // roster's first entry; '' is the Host default and stays valid.
+  const [parseModel, setParseModel] = useState(() => readParseModelPreference())
+  const [parsePending, setParsePending] = useState(false)
+  const [parseError, setParseError] = useState<string | undefined>(undefined)
+  const parseAbort = useRef<AbortController | undefined>(undefined)
+  const parseModels = options.models ?? []
+  // A pinned target may have disappeared from the runtime (workspace deleted,
+  // preset removed) — especially when the form starts from a subtask's parent.
+  // Keep it selectable as a stale row, so the field shows what the create
+  // action will actually send instead of silently displaying the default.
+  const workspaceKnown = workspaceId === '' || options.workspaces.some(item => item.workspaceId === workspaceId)
+  const modeKnown = mode === '' || options.presets.some(item => item.id === mode)
+  const modelKnown = model === '' || parseModels.some(item => item.id === model)
 
   // The workspace list and preset roster arrive from the runtime after mount;
   // follow them so the pickers never freeze on an empty snapshot.
@@ -52,7 +90,47 @@ export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSucc
     [controller],
   )
 
-  const submit = async (): Promise<void> => {
+  // The model roster arrives asynchronously. A remembered model the deployment
+  // no longer offers falls back to the Host default; an empty value is the
+  // Host-default choice and is never overwritten by the roster (issue #1621).
+  useEffect(() => {
+    if (parseModel === '' || parseModels.length === 0) return
+    if (parseModels.some(option => option.id === parseModel)) return
+    setParseModel('')
+    writeParseModelPreference('')
+  }, [parseModel, options.models])
+
+  const runParse = async (): Promise<void> => {
+    const text = parseText.trim()
+    if (text === '') {
+      setParseError(t('new.aiParseEmpty'))
+      return
+    }
+    const abort = new AbortController()
+    parseAbort.current = abort
+    setParsePending(true)
+    setParseError(undefined)
+    try {
+      const draft = await controller.parseTaskDraft({ text, ...(parseModel === '' ? {} : { model: parseModel }) }, abort.signal)
+      setTitle(draft.title)
+      setDescription(draft.description)
+      setPrompt(draft.prompt)
+    } catch (parseFailure) {
+      // A cancelled parse reports nothing: the user asked for it to stop.
+      if (!abort.signal.aborted) setParseError(parseFailure instanceof Error ? parseFailure.message : String(parseFailure))
+    } finally {
+      parseAbort.current = undefined
+      setParsePending(false)
+    }
+  }
+
+  /**
+   * Create the task through the Host, then optionally start it.
+   * @param runAfterCreate - true for the "create and run" action: the task is
+   * committed either way, and a refused start opens the task instead of
+   * reporting the creation as failed.
+   */
+  const submit = async (runAfterCreate: boolean): Promise<void> => {
     if (scheduleEnabled) {
       const cron = scheduleCron.trim()
       if (cron === '' || !isValidCron(cron)) {
@@ -81,11 +159,15 @@ export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSucc
       mode: mode === '' ? undefined : mode,
       permission: permission === '' ? undefined : permission as TaskPermission,
     }
+    // Blank rows never reach the wire: the protocol rejects a tag with an
+    // empty name, and an empty list is expressed by omitting the field.
+    const tagList = cleanTags(tags)
     setPending(true)
     const task = await controller.createTaskConfirmed({
       title,
       description,
       prompt,
+      ...(parentTask === undefined ? {} : { parentId: parentTask.id }),
       freeze,
       handover,
       workspaceId: workspaceId === '' ? undefined : workspaceId,
@@ -93,6 +175,7 @@ export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSucc
       permission: permission === '' ? undefined : permission as TaskPermission,
       model: model === '' ? undefined : model,
       ...(reuseSession ? { reuseSession: true } : {}),
+      ...(tagList.length > 0 ? { tags: tagList } : {}),
       schedule: scheduleEnabled ? { enabled: true, cron: scheduleCron.trim() } : undefined,
     })
     if (task === undefined) {
@@ -107,6 +190,14 @@ export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSucc
         await controller.archiveTask(initialTask.id)
       }
     }
+    if (runAfterCreate) {
+      // The task exists from here on, so a refused start (a permission above
+      // the session default, a pinned target that went stale) must not read as
+      // a failed creation: open the task, whose detail view owns the
+      // confirmation step and the refusal message.
+      const started = await controller.runTask(task.id)
+      if (!started) controller.openTask(task.id)
+    }
     onClose()
   }
 
@@ -115,7 +206,9 @@ export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSucc
     ? nextRunAtMs(scheduleCron, Date.now())
     : undefined
 
-  const modalTitle = isDuplicate ? t('new.duplicateTitle') : t('board.new')
+  const modalTitle = parentTask !== undefined
+    ? t('new.subtaskTitle')
+    : isDuplicate ? t('new.duplicateTitle') : t('board.new')
 
   return (
     <ModalShell
@@ -124,9 +217,64 @@ export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSucc
       error={error}
       pending={pending}
       submitLabel={t('new.submit')}
-      onSubmit={() => { void submit() }}
+      onSubmit={() => { void submit(false) }}
       onClose={onClose}
+      secondaryAction={{ label: t('new.createAndRun'), onSubmit: () => { void submit(true) } }}
     >
+      {canParse && (
+        <section className={css.aiParse} data-dsh-part="ai-parse">
+          <span className={css.fieldLabel}>{t('new.aiParse')}</span>
+          <p className={css.fieldHint}>{t('new.aiParseHint')}</p>
+          <textarea
+            className={css.input}
+            rows={3}
+            value={parseText}
+            placeholder={t('new.aiParsePlaceholder')}
+            spellCheck={false}
+            onChange={event => { setParseText(event.target.value); setParseError(undefined) }}
+          />
+          <div className={css.aiParseRow}>
+            <select
+              className={css.select}
+              value={parseModel}
+              aria-label={t('new.aiParseModel')}
+              onChange={event => {
+                setParseModel(event.target.value)
+                writeParseModelPreference(event.target.value)
+              }}
+            >
+              <option value="">{t('exec.model.default')}</option>
+              {parseModels.map(option => (
+                <option key={option.id} value={option.id}>{option.name ?? option.id}</option>
+              ))}
+            </select>
+            {parsePending
+              ? (
+                <button type="button" className={css.ghostButton} onClick={() => { parseAbort.current?.abort() }}>
+                  {t('new.aiParseCancel')}
+                </button>
+                )
+              : (
+                <button
+                  type="button"
+                  className={css.primaryButton}
+                  disabled={parseText.trim() === ''}
+                  onClick={() => { void runParse() }}
+                >
+                  {t('new.aiParseRun')}
+                </button>
+                )}
+          </div>
+          {parseError !== undefined && <p className={css.formError}>{parseError}</p>}
+        </section>
+      )}
+
+      {parentTask !== undefined && (
+        <p className={css.detailText} data-dsh-part="subtask-inherit">
+          {t('detail.parent')}: {parentTask.title} · {t('new.subtaskInherit')}
+        </p>
+      )}
+
       <TaskContentFields
         title={title}
         description={description}
@@ -135,6 +283,8 @@ export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSucc
         onDescriptionChange={setDescription}
         onPromptChange={setPrompt}
       />
+
+      <TaskTagFields tags={tags} knownTags={collectKnownTags(controller.getSnapshot().tasks)} onChange={setTags} />
 
         <label className={css.field}>
           <span className={css.fieldLabel}>{t('new.freeze')}</span>
@@ -169,6 +319,7 @@ export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSucc
             onChange={event => { setWorkspaceId(event.target.value) }}
           >
             <option value="">{t('exec.workspace.recent')}</option>
+            {!workspaceKnown && <option value={workspaceId}>{workspaceId}{t('exec.mode.removed')}</option>}
             {options.workspaces.map(workspace => (
               <option key={workspace.workspaceId} value={workspace.workspaceId}>{workspace.title}</option>
             ))}
@@ -183,6 +334,7 @@ export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSucc
             onChange={event => { setMode(event.target.value) }}
           >
             <option value="">{t('exec.mode.default')}</option>
+            {!modeKnown && <option value={mode}>{mode}{t('exec.mode.removed')}</option>}
             {options.presets.map(preset => (
               <option key={preset.id} value={preset.id} disabled={preset.broken !== undefined}>
                 {preset.name ?? preset.id}
@@ -200,7 +352,9 @@ export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSucc
             value={permission}
             onChange={event => { setPermission(event.target.value) }}
           >
-            <option value="">{t('exec.permission.default')}</option>
+            <option value="">{inheritedPermission === undefined
+              ? t('exec.permission.default')
+              : t('exec.permission.inheritParent', { permission: t(`exec.permission.${inheritedPermission}` as TaskBoardKey) })}</option>
             {TASK_PERMISSIONS.map(id => (
               <option key={id} value={id}>{t(`exec.permission.${id}` as TaskBoardKey)}</option>
             ))}
@@ -215,6 +369,7 @@ export function NewTaskModal({ controller, onClose, initialTask, onDuplicateSucc
             onChange={event => { setModel(event.target.value) }}
           >
             <option value="">{t('exec.model.default')}</option>
+            {!modelKnown && <option value={model}>{model}{t('exec.model.unknown')}</option>}
             {options.models?.map(item => (
               <option key={item.id} value={item.id}>{item.name ?? item.id}</option>
             ))}

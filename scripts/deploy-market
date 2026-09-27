@@ -60,6 +60,11 @@ function sh(cmd, args, env, opts) {
 const [cmdExec, ...cmdArgs] = wranglerCmd.split(' ')
 const wr = (args, env, opts) => sh(cmdExec, [...cmdArgs, ...args], env, opts)
 
+function secretNames() {
+  const list = wr(['secret', 'list'], undefined, { capture: true })
+  return String(list.stdout || '') + String(list.stderr || '')
+}
+
 // Turnstile fail-closed contract: /api/like and /api/install reject every
 // write when the worker has no TURNSTILE_SECRET, so deploying without the
 // secret silently disables likes/installs. Refresh the binding when the
@@ -75,12 +80,26 @@ function ensureTurnstileSecret() {
     console.log('deploy-market: refreshing TURNSTILE_SECRET binding')
     wr(['secret', 'put', 'TURNSTILE_SECRET'], undefined, { input: secret })
   }
-  const list = wr(['secret', 'list'], undefined, { capture: true })
-  const out = String(list.stdout || '') + String(list.stderr || '')
-  if (!out.includes('TURNSTILE_SECRET')) {
+  if (!secretNames().includes('TURNSTILE_SECRET')) {
     fail('worker has no TURNSTILE_SECRET binding — set it (wrangler secret put TURNSTILE_SECRET --config market/worker/wrangler.jsonc) or export TURNSTILE_SECRET before deploying; likes/installs fail closed without it')
   }
   assertTurnstilePairing(secret)
+}
+
+// Attestation fail-closed contract: the lane that verifies the deployed assets
+// calls POST /api/asset-attest, which answers 503 without its secret binding,
+// so a deploy that loses the binding leaves the post-deploy verification unable
+// to measure anything. Refresh it when the deploy environment carries it, then
+// verify the binding is there.
+function ensureAttestSecret() {
+  const secret = (process.env.MARKET_ATTEST_SECRET || '').trim()
+  if (secret) {
+    console.log('deploy-market: refreshing ASSET_ATTEST_SECRET binding')
+    wr(['secret', 'put', 'ASSET_ATTEST_SECRET'], undefined, { input: secret })
+  }
+  if (!secretNames().includes('ASSET_ATTEST_SECRET')) {
+    fail('worker has no ASSET_ATTEST_SECRET binding — set it (wrangler secret put ASSET_ATTEST_SECRET --config market/worker/wrangler.jsonc) or export MARKET_ATTEST_SECRET before deploying; the attestation route fails closed without it')
+  }
 }
 
 // Probe siteverify with the just-put binding value and a dummy response token.
@@ -116,6 +135,9 @@ async function main() {
 
   // 4) Turnstile 绑定核验（worker 缺绑定时点赞/安装全部 fail closed）
   ensureTurnstileSecret()
+
+  // 5) 资产校验密钥绑定核验（缺绑定时部署后校验路由 fail closed，等于没校验）
+  ensureAttestSecret()
 
   console.log('deploy-market: done — https://dsh-market.com')
 }

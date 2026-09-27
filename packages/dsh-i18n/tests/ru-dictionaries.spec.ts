@@ -6,6 +6,10 @@ const CJK_RE = /[\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uff
 
 describe('ru dictionaries internal consistency', () => {
   it('covers sixteen non-empty namespaces with string values', () => {
+    // 16 = one per family package that ships a client locale namespace;
+    // doctor and describe-image left the family on 2026-09-23, and the
+    // self-update surface split out of remote-web-ui into dsh-update
+    // (namespace update) on 2026-09-25.
     const namespaces = Object.keys(ruDictionaries)
     expect(namespaces).toHaveLength(16)
     for (const [ns, dict] of Object.entries(ruDictionaries)) {

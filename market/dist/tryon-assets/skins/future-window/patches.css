@@ -63,22 +63,14 @@ html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="new-se
   transform: translateY(-1px);
 }
 
-html[data-dsh-skin="future-window"] [data-pane="sidebar"] :is(
-  [data-dsh-taskboard-entry],
-  [data-dsh-ssh-entry],
-  [data-dsh-skill-explorer-entry]
-) {
+html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry]) {
   position: relative;
   border: 1px solid transparent;
   border-radius: 10px;
   transition: color 150ms ease, transform 150ms ease;
 }
 
-html[data-dsh-skin="future-window"] [data-pane="sidebar"] :is(
-  [data-dsh-taskboard-entry],
-  [data-dsh-ssh-entry],
-  [data-dsh-skill-explorer-entry]
-)::after {
+html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry])::after {
   position: absolute;
   right: 11px;
   width: 4px;
@@ -90,22 +82,14 @@ html[data-dsh-skin="future-window"] [data-pane="sidebar"] :is(
   transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
 }
 
-html[data-dsh-skin="future-window"] [data-pane="sidebar"] :is(
-  [data-dsh-taskboard-entry],
-  [data-dsh-ssh-entry],
-  [data-dsh-skill-explorer-entry]
-):hover {
+html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry]):hover {
   color: #174f77;
   background: transparent;
   border-color: transparent;
   transform: translateX(2px);
 }
 
-html[data-dsh-skin="future-window"] [data-pane="sidebar"] :is(
-  [data-dsh-taskboard-entry],
-  [data-dsh-ssh-entry],
-  [data-dsh-skill-explorer-entry]
-):hover::after {
+html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry]):hover::after {
   background: var(--fw-sidebar-accent);
   border-color: var(--fw-sidebar-accent);
   box-shadow: 0 0 0 3px #2c86c61f;
@@ -116,7 +100,7 @@ html[data-dsh-skin="future-window"] [data-pane="sidebar"] {
   --fw-launcher-pillow-height: 121px;
 }
 
-html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-taskboard-entry]::before {
+html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry="task-board"])::before {
   position: absolute;
   z-index: 0;
   top: -10px;
@@ -128,40 +112,28 @@ html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-taskboard-en
   background: url("assets/pillow-light.webp") center / 100% 100% no-repeat;
 }
 
-html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-taskboard-entry] > * {
+html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry="task-board"]) > * {
   position: relative;
   z-index: 1;
 }
 
-html[data-dsh-skin="future-window"] [data-pane="sidebar"] :is(
-  [data-dsh-taskboard-entry],
-  [data-dsh-ssh-entry],
-  [data-dsh-skill-explorer-entry]
-) {
+html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry]) {
   z-index: 1;
 }
 
 /* Reserve the cushion's lower seam without styling the Workspace section itself. */
-html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-skill-explorer-entry] {
+html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry="skill-explorer"]) {
   margin-bottom: 8px;
 }
 
-html[data-dsh-skin="future-window"] [data-pane="sidebar"] :is(
-  [data-dsh-taskboard-entry],
-  [data-dsh-ssh-entry],
-  [data-dsh-skill-explorer-entry]
-):not(:hover) {
+html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry]):not(:hover) {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
 }
 
 html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="new-session"]:focus-visible,
-html[data-dsh-skin="future-window"] [data-pane="sidebar"] :is(
-  [data-dsh-taskboard-entry],
-  [data-dsh-ssh-entry],
-  [data-dsh-skill-explorer-entry]
-):focus-visible {
+html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry]):focus-visible {
   outline: 2px solid var(--fw-sidebar-accent);
   outline-offset: 1px;
 }
@@ -197,44 +169,28 @@ html[data-dsh-skin="future-window"] body[data-ds-dark-theme] [data-pane="sidebar
   box-shadow: inset 0 1px #ffffff29, 0 7px 18px #00000047;
 }
 
-html[data-dsh-skin="future-window"] body[data-ds-dark-theme] [data-pane="sidebar"] :is(
-  [data-dsh-taskboard-entry],
-  [data-dsh-ssh-entry],
-  [data-dsh-skill-explorer-entry]
-):hover {
+html[data-dsh-skin="future-window"] body[data-ds-dark-theme] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry]):hover {
   color: #dff4ff;
 }
 
-html[data-dsh-skin="future-window"] body[data-ds-dark-theme] [data-pane="sidebar"] [data-dsh-taskboard-entry]::before {
+html[data-dsh-skin="future-window"] body[data-ds-dark-theme] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry="task-board"])::before {
   background-image: url("assets/pillow-dark.webp");
 }
 
 @media (prefers-reduced-motion: reduce) {
   html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="new-session"],
-  html[data-dsh-skin="future-window"] [data-pane="sidebar"] :is(
-    [data-dsh-taskboard-entry],
-    [data-dsh-ssh-entry],
-    [data-dsh-skill-explorer-entry]
-  ),
-  html[data-dsh-skin="future-window"] [data-pane="sidebar"] :is(
-    [data-dsh-taskboard-entry],
-    [data-dsh-ssh-entry],
-    [data-dsh-skill-explorer-entry]
-  )::after {
+  html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry]),
+  html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry])::after {
     transition: none;
   }
 
   html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="new-session"]:hover,
-  html[data-dsh-skin="future-window"] [data-pane="sidebar"] :is(
-    [data-dsh-taskboard-entry],
-    [data-dsh-ssh-entry],
-    [data-dsh-skill-explorer-entry]
-  ):hover {
+  html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry]):hover {
     transform: none;
   }
 }
 
-html[data-dsh-skin="future-window"] [data-dsh-frame][data-sidebar-collapsed] [data-pane="sidebar"] [data-dsh-taskboard-entry]::before {
+html[data-dsh-skin="future-window"] [data-dsh-frame][data-sidebar-collapsed] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry="task-board"])::before {
   display: none;
 }
 
@@ -243,7 +199,7 @@ html[data-dsh-skin="future-window"] [data-dsh-frame][data-sidebar-collapsed] [da
     --fw-launcher-pillow-height: 129px;
   }
 
-  html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-skill-explorer-entry] {
+  html[data-dsh-skin="future-window"] [data-pane="sidebar"] [data-dsh-part="sidebar-entry"]:has([data-dsh-panel-entry="skill-explorer"]) {
     margin-bottom: 16px;
   }
 }

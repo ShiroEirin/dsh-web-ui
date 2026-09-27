@@ -2,6 +2,8 @@
  * Allowlist parsing and composition: the settings.yaml web_settings_namespaces
  * key (list and map shapes), package-name aliasing, and the registered-set
  * intersection that keeps the bridge from surfacing anything unknown.
+ *
+ * test-standards-allow: allowlist parsing unit tests over synthetic YAML fixtures
  */
 
 import { describe, expect, it } from 'vitest'
@@ -87,7 +89,6 @@ describe('resolveNamespaceEntry', () => {
     expect(resolveNamespaceEntry('skin-custom-theme')).toBe('skin-custom-theme')
     expect(resolveNamespaceEntry('skin-wallpaper')).toBe('skin-wallpaper')
     expect(resolveNamespaceEntry('usage')).toBe('usage')
-    expect(resolveNamespaceEntry('doctor')).toBe('doctor')
     expect(resolveNamespaceEntry('liangshen')).toBe('liangshen')
     expect(resolveNamespaceEntry('session-archive')).toBe('session-archive')
   })
@@ -96,6 +97,51 @@ describe('resolveNamespaceEntry', () => {
     expect(resolveNamespaceEntry('dsh-web')).toBeUndefined()
     expect(resolveNamespaceEntry('dsh-client-ui-web-ui-settings')).toBeUndefined()
     expect(resolveNamespaceEntry('something-else')).toBeUndefined()
+  })
+
+  it('resolves a full npm name through its bare package segment', () => {
+    // The profile row is the only place a package name survives on 0.1.7, and
+    // it spells the package scoped (`@linxin666/dsh-client-ui-x`) or as the
+    // aggregate's subplugin (`@linxin666/dsh-web-all/x`).
+    expect(resolveNamespaceEntry('@linxin666/dsh-client-ui-task-board')).toBe('task-board')
+    expect(resolveNamespaceEntry('@linxin666/dsh-web-all/task-board')).toBe('task-board')
+    expect(resolveNamespaceEntry('@linxin666/dsh-ssh')).toBe('dsh-ssh')
+    expect(resolveNamespaceEntry('@linxin666/dsh-web-all/pet')).toBe('pet')
+    expect(resolveNamespaceEntry('@linxin666/dsh-client-ui-skin-center')).toBe('skin-background')
+  })
+
+  it('operator resolves each extracted satellite from both spellings after the split', () => {
+    // Given the skin center, pet and community index moved to their own
+    // repositories and their aggregate rows now name the real package,
+    const satellites = [
+      { subpath: '@linxin666/dsh-web-all/pet', pkg: '@linxin666/dsh-pet', ns: 'pet' },
+      {
+        subpath: '@linxin666/dsh-web-all/skin-center',
+        pkg: '@linxin666/dsh-client-ui-skin-center',
+        ns: 'skin-background',
+      },
+      {
+        subpath: '@linxin666/dsh-web-all/community-plugins',
+        pkg: '@linxin666/dsh-client-ui-community-plugins',
+        ns: 'community-plugins',
+      },
+    ] as const
+    // When the operator keeps a profile written before the split (old subpath
+    // row name) or installs fresh (new package name),
+    const resolved = satellites.map(satellite => [
+      resolveNamespaceEntry(satellite.subpath),
+      resolveNamespaceEntry(satellite.pkg),
+    ])
+    // Then both spellings land on the same settings namespace and the form
+    // keeps being offered.
+    expect(resolved).toEqual(satellites.map(satellite => [satellite.ns, satellite.ns]))
+  })
+
+  it('still ignores a scoped name that owns no settings namespace', () => {
+    expect(resolveNamespaceEntry('@linxin666/dsh-web-all')).toBeUndefined()
+    expect(resolveNamespaceEntry('@linxin666/dsh-client-ui-web-ui-settings')).toBeUndefined()
+    expect(resolveNamespaceEntry('@linxin666/dsh-web-all/does-not-exist')).toBeUndefined()
+    expect(resolveNamespaceEntry('@linxin666')).toBeUndefined()
   })
 })
 

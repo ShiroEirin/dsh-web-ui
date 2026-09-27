@@ -13,13 +13,25 @@ DSH Web GUI 的**技能中心**插件：侧边栏「技能中心」入口打开�
   路由族（list / set-enabled / create / delete / health），默认 loopback
   围栏，已配对设备 cookie 为额外放行路径（不硬依赖 remote-web-ui）；数据来自
   文件系统扫描（官方根约定）+ `ctx.skills` 注册表合并。
-- client 半区（`src/client/`）注入侧边栏入口（DOM 级，MutationObserver
-  自愈），面板为 React overlay 模态（`SkillPanel.tsx`），不接管中心列。
+- client 半区（`src/client/`）经官方槽位注册**原生中栏面板**：`native-panel.tsx`
+  往 shell 自己的面板列表（`sidebar.panellist`）贡献一行、往布局的 keyed
+  `main` 槽贡献页面（`src/client/panel/`，`SkillPanel.tsx` 壳 + 技能/创建
+  页签，编辑时多出编辑页签），并驱动 `ctx.layout.selectPanel`——与任务看板
+  同一形态，行盒 / 标签 / 高亮 / 折叠轨道归 shell。页签与编辑目标存在
+  `panel/controller.ts`，因为布局只在该面板被选中时挂载页面，组件本地 state
+  会在切面板时丢失；页面只读 controller 快照。占位完全由布局的 keyed `main`
+  槽决定，本包不再参与任何家族互斥协议。
 - 纯逻辑（扫描/分组/frontmatter 解析）在 host 侧单测锁定行为
   （`tests/collect.spec.ts`、`tests/frontmatter.spec.ts`、
   `tests/routes.spec.ts`、`tests/access.spec.ts`）；路由围栏与错误路径必须带测试。
 - 安全语义（loopback 围栏、已配对 cookie 额外放行、写路由只信任扫描路径）
   见 README「安全模型」节，修改安全语义时必须同步更新 README 与测试。
+- 样式纪律（`src/client/panel/panel.module.css`）：面板不持有自己的调色板——
+  颜色 / 表面 / 边框 / 阴影 / 字体一律取自官方主题 token（`--dsw-alias-*`、
+  `--dsw-specific-*`、`--dsw-shadow-*`、`--dsw-font-*`），不写 hex/rgb 字面量、
+  不给 `var()` 写颜色兜底、不写 `[data-ds-dark-theme]` 覆写块。明暗由主题负责；
+  填充主按钮用 `button-primary-fill` + `label-primary-foreground` 配对
+  （官方主题下即亮色黑底白字、暗色白底黑字）。
 
 ## 提交前检查
 

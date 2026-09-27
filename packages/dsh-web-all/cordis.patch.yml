@@ -24,13 +24,6 @@
       config:
         plugin: '@linxin666/dsh-client-ui-plugin-manager'
 
-# from ../dsh-community-plugins
-- insert:
-    - id: web-ui-community-plugins
-      name: '@linxin666/dsh-web-all/community-plugins'
-      config:
-        plugin: '@linxin666/dsh-client-ui-community-plugins'
-
 # from ../dsh-market
 - insert:
     - id: web-ui-market
@@ -59,12 +52,12 @@
       config:
         plugin: '@linxin666/dsh-remote-web-ui'
 
-# from ../dsh-pet
+# from ../dsh-update
 - insert:
-    - id: web-ui-pet
-      name: '@linxin666/dsh-web-all/pet'
+    - id: web-ui-update
+      name: '@linxin666/dsh-web-all/update'
       config:
-        plugin: '@linxin666/dsh-pet'
+        plugin: '@linxin666/dsh-update'
 
 # from ../dsh-ssh
 - insert:
@@ -72,13 +65,6 @@
       name: '@linxin666/dsh-web-all/ssh'
       config:
         plugin: '@linxin666/dsh-ssh'
-
-# from ../dsh-tool-describe-image
-- insert:
-    - id: web-ui-describe-image
-      name: '@linxin666/dsh-web-all/describe-image'
-      config:
-        plugin: '@linxin666/dsh-tool-describe-image'
 
 # from ../dsh-liangshen
 - insert:
@@ -93,13 +79,6 @@
       name: '@linxin666/dsh-web-all/skill-explorer'
       config:
         plugin: '@linxin666/dsh-client-ui-skill-explorer'
-
-# from ../dsh-doctor
-- insert:
-    - id: web-ui-doctor
-      name: '@linxin666/dsh-web-all/doctor'
-      config:
-        plugin: '@linxin666/dsh-doctor'
 
 # from ../dsh-usage
 - insert:
@@ -122,20 +101,6 @@
       config:
         plugin: '@linxin666/dsh-client-ui-model-capabilities'
 
-# from ../dsh-preset-center
-- insert:
-    - id: web-ui-preset-center
-      name: '@linxin666/dsh-web-all/preset-center'
-      config:
-        plugin: '@linxin666/dsh-client-ui-preset-center'
-
-# from ../skins/skin-center
-- insert:
-    - id: web-ui-skin-center
-      name: '@linxin666/dsh-web-all/skin-center'
-      config:
-        plugin: '@linxin666/dsh-client-ui-skin-center'
-
 # from ../dsh-i18n
 - insert:
     - id: web-ui-i18n
@@ -145,18 +110,35 @@
 # plugin manager, whose enable writes a user-layer "disabled: false" override that wins.
 - id: web-ui-ssh
   disabled: true
-- id: web-ui-describe-image
-  disabled: true
 - id: web-ui-liangshen
   disabled: true
 - id: web-ui-skill-explorer
   disabled: true
-- id: web-ui-doctor
-  disabled: true
 
-# external bundle: dsh-better-sidebar
+# external bundle: @linxin666/dsh-client-ui-community-plugins
 
-# from external bundle dsh-better-sidebar (insert row web-ui-better-sidebar)
+# from external bundle @linxin666/dsh-client-ui-community-plugins (insert row web-ui-community-plugins)
 - insert:
-    - id: web-ui-better-sidebar
-      name: 'dsh-better-sidebar'
+    - id: web-ui-community-plugins
+      name: '@linxin666/dsh-client-ui-community-plugins'
+
+# external bundle: @linxin666/dsh-pet
+
+# from external bundle @linxin666/dsh-pet (insert row web-ui-pet)
+- insert:
+    - id: web-ui-pet
+      name: '@linxin666/dsh-pet'
+
+# external bundle: @linxin666/dsh-client-ui-preset-center
+
+# from external bundle @linxin666/dsh-client-ui-preset-center (insert row web-ui-preset-center)
+- insert:
+    - id: web-ui-preset-center
+      name: '@linxin666/dsh-client-ui-preset-center'
+
+# external bundle: @linxin666/dsh-client-ui-skin-center
+
+# from external bundle @linxin666/dsh-client-ui-skin-center (insert row web-ui-skin-center)
+- insert:
+    - id: web-ui-skin-center
+      name: '@linxin666/dsh-client-ui-skin-center'

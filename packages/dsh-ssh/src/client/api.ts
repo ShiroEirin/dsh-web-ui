@@ -78,8 +78,8 @@ function query(params: Record<string, string | number | undefined>): string {
 
 /** One open terminal connection (WebSocket JSON frames). */
 export interface TerminalConnection {
-  /** Fired on the ready frame (shell is up). */
-  onReady: (() => void) | undefined
+  /** Fired on the ready frame (shell is up); carries the host session id and alias. */
+  onReady: ((sessionId: string, alias: string) => void) | undefined
   /** Fired on every output frame. */
   onOutput: ((data: string) => void) | undefined
   /** Fired on the exit frame (or transport error). */
@@ -92,7 +92,13 @@ export interface TerminalConnection {
   resize(cols: number, rows: number): void
   /** Send interactive 2FA response codes to the remote server. */
   sendAuthResponse(responses: string[]): void
-  /** Close the socket and the remote session. */
+  /**
+   * Leave the socket while the host keeps the remote shell alive, so a later
+   * {@link SshApi.attachTerminal} picks the session up where it left off.
+   * This is what a view does on unmount; it is not a disconnect.
+   */
+  detach(): void
+  /** Close the socket and end the remote session. */
   close(): void
 }
 
@@ -344,32 +350,56 @@ export class SshApi {
   }
 
   // ------------------------------------------------------------ terminal
-  /** Open a WebSocket terminal session. */
+  /**
+   * Open a new host terminal session for the alias.
+   * @param alias - the configured host alias.
+   * @param cols - initial PTY width.
+   * @param rows - initial PTY height.
+   * @returns the live connection; its ready callback carries the session id
+   *   {@link attachTerminal} uses after a view detach.
+   */
   openTerminal(alias: string, cols: number, rows: number): TerminalConnection {
+    return this.terminalSocket(query({ alias, cols, rows }))
+  }
+
+  /**
+   * Reattach to a host-side session that outlived its view (a panel switch, a
+   * page navigation). The host replays its scrollback before the ready frame.
+   * @param sessionId - the id the previous connection reported on ready.
+   * @param cols - the view's current width.
+   * @param rows - the view's current height.
+   */
+  attachTerminal(sessionId: string, cols: number, rows: number): TerminalConnection {
+    return this.terminalSocket(query({ session: sessionId, cols, rows }))
+  }
+
+  /** One terminal socket over either an alias (open) or a session id (attach). */
+  private terminalSocket(search: string): TerminalConnection {
     const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const url = scheme + '://' + window.location.host + SSH_API.terminal + query({ alias, cols, rows })
+    const url = scheme + '://' + window.location.host + SSH_API.terminal + search
     const socket = new WebSocket(url)
+    // A deliberate detach/close must not surface as a transport error: the
+    // view tears down silently, and only an UNEXPECTED close reports exit.
+    let leaving = false
+    const sendFrame = (frame: TerminalClientFrame): void => {
+      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
+    }
     const connection: TerminalConnection = {
       onReady: undefined,
       onOutput: undefined,
       onExit: undefined,
       onAuthPrompt: undefined,
-      send: (data) => {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: 'input', data } satisfies TerminalClientFrame))
-        }
-      },
-      resize: (cols, rows) => {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: 'resize', cols, rows } satisfies TerminalClientFrame))
-        }
-      },
-      sendAuthResponse: (responses) => {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: 'auth_response', responses } satisfies TerminalClientFrame))
-        }
+      send: (data) => { sendFrame({ type: 'input', data }) },
+      resize: (cols, rows) => { sendFrame({ type: 'resize', cols, rows }) },
+      sendAuthResponse: (responses) => { sendFrame({ type: 'auth_response', responses }) },
+      detach: () => {
+        leaving = true
+        sendFrame({ type: 'detach' })
+        try { socket.close() } catch { /* already closed */ }
       },
       close: () => {
+        leaving = true
+        sendFrame({ type: 'close' })
         try { socket.close() } catch { /* already closed */ }
       },
     }
@@ -380,13 +410,13 @@ export class SshApi {
       } catch {
         return
       }
-      if (frame.type === 'ready') connection.onReady?.()
+      if (frame.type === 'ready') connection.onReady?.(frame.sessionId, frame.alias)
       else if (frame.type === 'output') connection.onOutput?.(frame.data)
       else if (frame.type === 'exit') connection.onExit?.(frame.code, frame.error)
       else if (frame.type === 'auth_prompt') connection.onAuthPrompt?.(frame.name, frame.instructions, frame.prompts)
     }
-    socket.onclose = () => { connection.onExit?.(null, 'connection closed') }
-    socket.onerror = () => { connection.onExit?.(null, 'connection error') }
+    socket.onclose = () => { if (!leaving) connection.onExit?.(null, 'connection closed') }
+    socket.onerror = () => { if (!leaving) connection.onExit?.(null, 'connection error') }
     return connection
   }
 }

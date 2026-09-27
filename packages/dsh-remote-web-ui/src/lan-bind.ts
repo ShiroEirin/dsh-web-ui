@@ -21,6 +21,7 @@
 
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
+import { parseDocument } from 'yaml'
 import { dshHome } from './dsh-home.ts'
 
 /** Profile names safe to interpolate into the patch path: one path segment, no traversal. */
@@ -34,7 +35,7 @@ export type LanBindHost = '0.0.0.0' | '127.0.0.1'
 
 /**
  * The absolute path of the profile patch file this toggle manages. The value
- * is config-controlled (and the DSH_PROFILE env fallback bypasses schema
+ * is config-controlled (and the runtime/environment fallbacks bypass schema
  * validation entirely), so the path is guarded twice: the profile must be a
  * single safe path segment, and the resolved file must stay under the
  * profiles directory.
@@ -67,6 +68,62 @@ export function stripManagedBlock(content: string): string {
   const end = escapeRegex(LAN_BIND_BLOCK_END)
   const pattern = new RegExp(`\\r?\\n?${begin}[\\s\\S]*?${end}\\r?\\n?`, 'g')
   return content.replace(pattern, '\n')
+}
+
+/**
+ * Render the managed block for one bind state. The values are static: the
+ * user patch layer has no reliable lazy service evaluation, and the plugin
+ * re-asserts the block at every boot so CLI flags (--port, --host) win by
+ * rewriting it before the next start.
+ */
+/**
+ * Whether the base opens a flow collection at the root. That is the shape the
+ * plugin manager's YAML document round-trip leaves behind when it appends rows
+ * to the profile's placeholder `[]`: `[ { id: … }, … ]`. Every other base
+ * (empty, block sequence, comment-only prefix) keeps the historical string
+ * concatenation, so the common paths stay byte-identical.
+ */
+function isFlowRoot(base: string): boolean {
+  return base.trimStart().startsWith('[')
+}
+
+/** Force one parsed collection (and its item collections) into block style. */
+function toBlockStyle(node: unknown): void {
+  if (typeof node !== 'object' || node === null) return
+  const collection = node as { flow?: boolean; items?: unknown[] }
+  if (!Array.isArray(collection.items) && typeof collection.flow !== 'boolean') return
+  collection.flow = false
+  for (const item of collection.items ?? []) toBlockStyle(item)
+}
+
+/** Plain-value view of one parsed node (YAML nodes keep their own accessors). */
+function plainOf(node: unknown): unknown {
+  if (typeof node !== 'object' || node === null) return node
+  const json = (node as { toJSON?: () => unknown }).toJSON
+  return typeof json === 'function' ? json.call(node) : node
+}
+
+/**
+ * Produce the file text for one bind state. A flow-style base is re-emitted as
+ * a block sequence before the managed block is appended, so the file stays
+ * exactly one valid YAML document; concatenating the block onto a non-empty
+ * flow array produced two root documents and the profile failed to parse at
+ * `dsh web` startup (#1675). A base that cannot be parsed is refused with the
+ * file path rather than written half-valid.
+ */
+function mergePatchContent(base: string, block: string, file: string): string {
+  if (base.length === 0) return block
+  if (!isFlowRoot(base)) return `${base}\n\n${block}`
+  const doc = parseDocument(base, { uniqueKeys: false })
+  if (doc.errors.length > 0 || doc.contents === null) {
+    throw new Error(`remote-web-ui: cannot update the lan-bind block in ${file}: ${doc.errors[0]?.message ?? 'the patch file is not a YAML document'}`)
+  }
+  if (!('items' in (doc.contents as { items?: unknown[] }))) {
+    throw new Error(`remote-web-ui: cannot update the lan-bind block in ${file}: the patch file is not a top-level patch list`)
+  }
+  toBlockStyle(doc.contents)
+  const rendered = doc.toString({ lineWidth: 0 }).trimEnd()
+  return `${rendered}\n\n${block}`
 }
 
 /**
@@ -130,6 +187,10 @@ export function lanBindState(profile: string, home: string = dshHome()): { block
  * unterminated block (BEGIN marker without END, which stripManagedBlock
  * cannot match) is truncated at its BEGIN marker first so the rewrite can
  * never stack a second webserver row onto the orphan.
+ *
+ * The written file is always exactly one valid YAML document: a base the
+ * plugin manager left in flow style is re-emitted as a block sequence before
+ * the managed block is appended (see mergePatchContent).
  */
 export function writeLanBind(host: LanBindHost, port: number, profile: string, home: string = dshHome()): void {
   const file = profilePatchFile(profile, home)
@@ -138,7 +199,7 @@ export function writeLanBind(host: LanBindHost, port: number, profile: string, h
   const rawBase = (orphanBegin === -1 ? stripped : stripped.slice(0, orphanBegin)).trimEnd()
   const base = rawBase.replace(/\[\s*\]\s*$/, '').trimEnd()
   const block = managedBlock(host, port)
-  const content = base.length > 0 ? `${base}\n\n${block}` : block
+  const content = mergePatchContent(base, block, file)
   const mode = existsSync(file) ? statSync(file).mode & 0o777 : 0o600
   mkdirSync(dirname(file), { recursive: true })
   const temp = `${file}.remote-web-ui-tmp-${process.pid.toString(36)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`

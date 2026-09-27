@@ -7,14 +7,16 @@
 import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { isValidCron } from '../../core/schedule.ts'
-import { MANUAL_STATUSES, TASK_PERMISSIONS, type ExecutionRecord, type TaskPermission, type TaskRecord } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, TASK_PERMISSIONS, tagTone, type ExecutionRecord, type TaskPermission, type TaskRecord } from '../../core/tasks.ts'
 import { canEditTaskContent } from '../../core/use-cases/task-update.ts'
 import { requiresPermissionConfirmation } from '../../core/handover.ts'
+import { DEFAULT_SUBTASK_DEPTH, directSubtasks, taskDepth } from '../../core/subtask.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import { SCHEDULE_PRESETS } from '../schedule-presets.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
-import { EditTaskModal } from './EditTaskModal.tsx'
+import { EditTaskModal, EditTagsModal } from './EditTaskModal.tsx'
+import { LinkSubtaskModal } from './LinkSubtaskModal.tsx'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { formatHostTimestamp, formatTime } from './TaskCard.tsx'
 import { STATUS_KEY } from './status-key.ts'
@@ -63,8 +65,16 @@ function ExecutionRow({ execution, timeZone, onOpen }: { execution: ExecutionRec
 /** The execution-target editor: workspace / mode / permission pickers. */
 function ExecutionSettingsSection({ controller, task, pending }: { controller: BoardController; task: TaskRecord; pending: boolean }) {
   const [options, setOptions] = useState(controller.getSnapshot().executionOptions)
+  // Whether this deployment serves the Agent Teams service: without it a team
+  // run is refused, so the opt-in is offered read-only with the reason.
+  const teamRunOffered = (): boolean => controller.getSnapshot().host?.teamRunAvailable === true
+  const [teamRunAvailable, setTeamRunAvailable] = useState(teamRunOffered())
   useEffect(
-    () => controller.subscribe(() => setOptions(controller.getSnapshot().executionOptions)),
+    () => controller.subscribe(() => {
+      const snapshot = controller.getSnapshot()
+      setOptions(snapshot.executionOptions)
+      setTeamRunAvailable(snapshot.host?.teamRunAvailable === true)
+    }),
     [controller],
   )
   const workspaceId = task.workspaceId ?? ''
@@ -154,6 +164,16 @@ function ExecutionSettingsSection({ controller, task, pending }: { controller: B
         <span>{t('exec.reuseSession')}</span>
       </label>
       <p className={css.detailText}>{t('exec.reuseSessionHint')}</p>
+      <label className={css.scheduleToggle}>
+        <input
+          type="checkbox"
+          checked={task.teamRun === true}
+          disabled={pending || !teamRunAvailable}
+          onChange={event => { controller.updateTask(task.id, { teamRun: event.target.checked }) }}
+        />
+        <span>{t('exec.teamRun')}</span>
+      </label>
+      <p className={css.detailText}>{teamRunAvailable ? t('exec.teamRunHint') : t('exec.teamRunUnavailable')}</p>
     </section>
   )
 }
@@ -265,10 +285,108 @@ function ScheduleSection({ controller, task, pending }: { controller: BoardContr
   )
 }
 
+/**
+ * The subtask block: the parent link, the direct subtasks with their status,
+ * and the actions that grow or prune the tree. Every gate here mirrors the
+ * Host lineage gate for affordance only; the Host re-checks the action.
+ */
+function SubtaskSection({ controller, task, pending, archived }: {
+  controller: BoardController
+  task: TaskRecord
+  pending: boolean
+  archived: boolean
+}) {
+  const [snapshot, setSnapshot] = useState(controller.getSnapshot())
+  useEffect(
+    () => controller.subscribe(() => setSnapshot(controller.getSnapshot())),
+    [controller],
+  )
+  const [showAdd, setShowAdd] = useState(false)
+  const [showLink, setShowLink] = useState(false)
+  const tasks = snapshot.tasks
+  const parent = task.parentId === undefined ? undefined : tasks.find(candidate => candidate.id === task.parentId)
+  const children = directSubtasks(tasks, task.id)
+  const limit = snapshot.host?.maxSubtaskDepth ?? DEFAULT_SUBTASK_DEPTH
+  // A new subtask is a leaf, so it fits whenever one more level is allowed.
+  const canAddChild = taskDepth(tasks, task.id) + 1 <= limit
+  const editable = !archived && !pending
+  return (
+    <section className={css.detailSection} data-dsh-part="subtasks">
+      <h4>{t('detail.subtasks')}</h4>
+      {parent !== undefined && (
+        <p className={css.detailText}>
+          {t('detail.parent')}:{' '}
+          <button
+            type="button"
+            className={css.linkButton}
+            title={t('detail.parent.open')}
+            onClick={() => { controller.openTask(parent.id) }}
+          >
+            {parent.title}
+          </button>
+        </p>
+      )}
+      {children.length === 0
+        ? <p className={css.detailText}>{t('detail.subtasks.empty')}</p>
+        : (
+          <ul className={css.subtaskList}>
+            {children.map(child => (
+              <li key={child.id} className={css.subtaskRow}>
+                <button
+                  type="button"
+                  className={css.linkButton}
+                  onClick={() => { controller.openTask(child.id) }}
+                >
+                  {child.title}
+                </button>
+                <span className={css.statusBadge} data-status={child.status}>{t(STATUS_KEY[child.status])}</span>
+                {!archived && (
+                  <button
+                    type="button"
+                    className={css.linkButton}
+                    disabled={pending || child.status === 'running'}
+                    title={child.status === 'running' ? t('detail.subtasks.runningLock') : undefined}
+                    onClick={() => { void controller.setParent(child.id, null) }}
+                  >
+                    {t('detail.subtasks.detach')}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      {children.length > 0 && (
+        <p className={css.detailText}>{t('detail.subtasks.runHint', { count: String(children.length) })}</p>
+      )}
+      {!archived && (canAddChild
+        ? (controller.isHostBacked()
+          ? (
+            <div className={css.subtaskAddRow}>
+              <button type="button" className={css.ghostButton} disabled={!editable} onClick={() => { setShowAdd(true) }}>
+                + {t('detail.subtasks.add')}
+              </button>
+              <button type="button" className={css.ghostButton} disabled={!editable} onClick={() => { setShowLink(true) }}>
+                {t('detail.subtasks.link')}
+              </button>
+            </div>
+            )
+          : <p className={css.detailMeta}>{t('detail.subtasks.hostOnly')}</p>)
+        : <p className={css.detailMeta}>{t('detail.subtasks.depthLimit', { depth: String(limit) })}</p>)}
+      {showAdd && (
+        <NewTaskModal controller={controller} parentTask={task} onClose={() => { setShowAdd(false) }} />
+      )}
+      {showLink && (
+        <LinkSubtaskModal controller={controller} parent={task} onClose={() => { setShowLink(false) }} />
+      )}
+    </section>
+  )
+}
+
 /** Task detail overlay. */
 export function TaskDetail({ controller, task }: { controller: BoardController; task: TaskRecord }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
+  const [showEditTags, setShowEditTags] = useState(false)
   const [showDuplicate, setShowDuplicate] = useState(false)
 
   // Keep the overlay in sync if the task record changes underneath.
@@ -277,6 +395,7 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
   // A re-used overlay instance must not carry an edit session across tasks.
   useEffect(() => {
     setShowEdit(false)
+    setShowEditTags(false)
     setShowDuplicate(false)
   }, [task.id])
   const current = latest
@@ -287,6 +406,7 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
   const transportError = snapshot.transportError
   const timeZone = snapshot.host?.scheduler.timeZone
   const permissionPending = requiresPermissionConfirmation(current, snapshot.host?.sessionDefaultPermission)
+  const subtaskChildren = directSubtasks(snapshot.tasks, current.id)
 
   return (
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) controller.closeTask() }}>
@@ -320,6 +440,28 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
             <p className={css.detailText}>{current.description !== '' ? current.description : '—'}</p>
           </section>
 
+          <SubtaskSection controller={controller} task={current} pending={pending} archived={archived} />
+
+          {current.tags !== undefined && current.tags.length > 0 && (
+            <section className={css.detailSection} data-dsh-part="tags">
+              <h4>{t('new.tags')}</h4>
+              <div className={css.cardTags}>
+                {current.tags.map(tag => (
+                  <span
+                    key={tag.name}
+                    className={css.cardTag}
+                    data-tag-tone={tagTone(tag.name)}
+                    data-dsh-part="tag-badge"
+                    data-tag-hint={tag.promptPrefix === undefined ? undefined : tag.promptPrefix}
+                    title={tag.promptPrefix === undefined ? tag.name : tag.promptPrefix}
+                  >
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
+
           {current.freeze !== undefined && (
             <section className={css.detailSection} data-dsh-part="freeze">
               <h4>{t('detail.freeze')}</h4>
@@ -347,8 +489,10 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
               </p>
               <p className={css.detailText}><strong>{t('detail.handover.references')}</strong></p>
               <ul className={css.executionList}>
-                {current.handover.references.map(reference => (
-                  <li key={reference} className={css.executionRow}><code>{reference}</code></li>
+                {current.handover.references.map((reference, index) => (
+                  // References are free text from the freeze block, so the same
+                  // string can appear twice; the index keeps the key unique (#1492).
+                  <li key={`${reference}-${index}`} className={css.executionRow}><code>{reference}</code></li>
                 ))}
               </ul>
               <p className={css.detailMeta}>{t('detail.handover.bundledAt', { time: formatHostTimestamp(current.handover.bundledAt, timeZone) })}</p>
@@ -429,6 +573,16 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
               {t('detail.edit')}
             </button>
           )}
+          {!archived && !canEditTaskContent(current) && current.status !== 'running' && (
+            <button
+              type="button"
+              className={css.ghostButton}
+              disabled={pending}
+              onClick={() => { setShowEditTags(true) }}
+            >
+              {t('detail.editTags')}
+            </button>
+          )}
           {!archived && (
             <button
               type="button"
@@ -445,6 +599,9 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
               type="button"
               className={css.primaryButton}
               disabled={running || pending}
+              title={subtaskChildren.length > 0
+                ? t('detail.subtasks.runHint', { count: String(subtaskChildren.length) })
+                : undefined}
               onClick={() => {
                 void controller.rerunTask(current.id).then(() => {
                   if (controller.getSnapshot().transportError === undefined) controller.closeTask()
@@ -510,6 +667,10 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
 
       {showEdit && !archived && canEditTaskContent(current) && (
         <EditTaskModal controller={controller} task={current} onClose={() => { setShowEdit(false) }} />
+      )}
+
+      {showEditTags && !archived && current.status !== 'running' && (
+        <EditTagsModal controller={controller} task={current} onClose={() => { setShowEditTags(false) }} />
       )}
 
       {showDuplicate && !archived && (

@@ -24,7 +24,9 @@
 ## SDK 与构建约束
 
 - **只基于官方 NPM SDK**：类型来自 `@deepseek-ai/*` devDependencies（node_modules
-  解析）；peerDependencies 声明运行时注入的服务；禁止 tsconfig 指向任何 DSH 源码
+  解析）；peerDependencies 声明运行时注入的服务，其中宿主本体固定声明
+  `"@deepseek-ai/dsh": ">=<cohort>"`，与 `dsh.engines.dsh` 下限同源、随 cohort 同步
+  （门禁 `scripts/family-dsh-engines.test.mjs`）；禁止 tsconfig 指向任何 DSH 源码
   checkout。
 - **共享构建预设**：所有 tsdown 包 import `shared/tsdown.client.ts`，禁止复制到
   包内；tsconfig 分层（solution + host/client 各自 program，参照
@@ -42,7 +44,7 @@
   `--dsw-alias-label-primary-foreground`，明暗两组），不得把
   `--dsw-alias-brand-primary` 当填充色（官方主题下它与前景同值，会出现
   黑底黑字/白底白字），契约见
-  [skins/skin-center/contracts/primary-action-tokens-v1.md](skins/skin-center/contracts/primary-action-tokens-v1.md)。
+  [primary-action-tokens-v1.md](https://github.com/zhu1090093659/dsh-skins/blob/main/contracts/primary-action-tokens-v1.md)（契约随皮肤中心迁至 dsh-skins 仓）。
 
 ## Agent 公告约定（issue #839）
 
@@ -65,15 +67,15 @@
 - 例外：dsh-live-stats（实时令牌估算）已彻底移除——包、测试、门禁与文档引用
   均已清理，不再支持。
 - 例外：dsh-desktop-launcher（桌面启动器）已彻底移除——包、聚合行、设置桥白名单、
-  远程通道本地面、ru 语言包与文档引用均已清理；桌面启动场景由 `desktop/` 的
-  Electron 桌面应用承接。
+  远程通道本地面、ru 语言包与文档引用均已清理；桌面启动场景由官方 DeepSeek
+  Harness 桌面客户端承接。
 
 ## 语义属性约定（L2，issue #506）
 
 - 插件根容器与关键部件必须输出语义属性：根容器打 `data-dsh-plugin="<插件短名>"`，
   部件打裸值 `data-dsh-part`（归属交给 plugin 属性，如 `column` 而非
   `task-board-column`）；枚举、owner 与锚定方式见
-  [skins/skin-center/contracts/semantic-attrs-v1.md](skins/skin-center/contracts/semantic-attrs-v1.md)。
+  [semantic-attrs-v1.md](https://github.com/zhu1090093659/dsh-skins/blob/main/contracts/semantic-attrs-v1.md)（契约随皮肤中心迁至 dsh-skins 仓）。
 - 新增/修改枚举值必须与该契约表同 PR 更新；每个值要有 owner、含义与锚定方式，
   不得只堆字符串。
 - 不输出语义属性的插件只享受 L1 token 基础换肤覆盖，不承诺完整覆盖。

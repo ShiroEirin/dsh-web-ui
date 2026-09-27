@@ -15,8 +15,9 @@ type FakeWorkspace = { id: string }
 // Real 0.1.2-alpha.2 gateway wire contract, encoded from assertExactArguments
 // in @deepseek-ai/dsh-api-gateway/lib/index.js plus the descriptor tables in
 // each package's lib/typert.host.js: session/list carries its request under
-// the '_request' wire key; session create/rename/prompt/page/follow (and the
-// follow stream) carry it under 'request'; agentPresets/list declares no
+// the '_request' wire key; every other session method here (create/rename/
+// prompt/page/follow, the follow stream, selectModel, and the reuse-path
+// projections read) carries it under 'request'; agentPresets/list declares no
 // parameters. The fakes below throw on a wrong shape exactly like the real
 // gateway, so a drifted invoke wrapper cannot pass silently.
 const wireArgsKeys: Record<string, Record<string, readonly string[]>> = {
@@ -29,6 +30,7 @@ const wireArgsKeys: Record<string, Record<string, readonly string[]>> = {
     page: ['request'],
     follow: ['request'],
     selectModel: ['request'],
+    projections: ['request'],
   },
 }
 
@@ -137,6 +139,12 @@ describe('HostExecutionRunner', () => {
           order.push('preset')
           return { presets: [{ id: 'preset-a', isDefault: false }] }
         }
+        // The reuse path asserts the pinned preset by READING the recorded one
+        // (issue #1708); the session was composed from the same preset.
+        if (request.method === 'projections') {
+          order.push('projections')
+          return { asOfSeq: 1, values: { agentPreset: 'preset-a' } }
+        }
         const payload = request.args.request as Record<string, unknown>
         if (request.method === 'prompt') {
           order.push('prompt')
@@ -151,7 +159,7 @@ describe('HostExecutionRunner', () => {
     ).resolves.toBe('session-existing')
     // The pinned permission is re-asserted on the existing session; no
     // create/rename reaches the gateway at all.
-    expect(order).toEqual(['preset', 'permission', 'prompt'])
+    expect(order).toEqual(['preset', 'projections', 'permission', 'prompt'])
     expect(promptPayloads).toEqual([{ sessionId: 'session-existing', requestId: expect.any(String), mode: 'queue', content: [{ type: 'text', text: 'do work' }] }])
   })
 
@@ -335,7 +343,7 @@ describe('HostExecutionRunner', () => {
       const payload = request.args.request as { beforeSeq?: number }
       return payload.beforeSeq === undefined
         ? { records: [sessionEvent('turn/end', 300, 3_000, { reason: { kind: 'error' } })], hasMore: true }
-        : { records: [sessionEvent('turn/end', 100, 1_100, { reason: { kind: 'complete' } }), sessionEvent('session/start', 90, 900, {})], hasMore: false }
+        : { records: [sessionEvent('turn/end', 100, 1_100, { reason: { kind: 'completed' } }), sessionEvent('session/start', 90, 900, {})], hasMore: false }
     })
     const gateway = {
       invoke: fakeInvoke(async (request: GatewayRequest) => request.method === 'list'
@@ -355,7 +363,7 @@ describe('HostExecutionRunner', () => {
   it('carries the session list in listRunning and reuses it in inspect without another list RPC', async () => {
     const items = [{ sessionId: 'session-a', running: false }]
     const list = vi.fn(async () => ({ items }))
-    const page = vi.fn(async () => ({ records: [sessionEvent('turn/end', 10, 1_100, { reason: { kind: 'complete' } })], hasMore: false }))
+    const page = vi.fn(async () => ({ records: [sessionEvent('turn/end', 10, 1_100, { reason: { kind: 'completed' } })], hasMore: false }))
     const gateway = {
       invoke: fakeInvoke(async (request: GatewayRequest) => request.method === 'list' ? list() : page()),
       stream: fakeStream(async () => ({
@@ -433,6 +441,27 @@ describe('HostExecutionRunner', () => {
     }
   })
 
+  // #1672: the running gateway may withdraw the strict definition of
+  // session/list (a cohort change under the plugin). The plugin sends the
+  // documented wire shape and nothing in this repository can restore that
+  // definition, so the roster degrades at once instead of burning the
+  // service-unavailable retry window (five calls with backoff) on a condition
+  // retrying cannot change.
+  it('operator: a withdrawn session/list definition degrades the roster without retrying', async () => {
+    // Given a gateway whose session/list definition was withdrawn.
+    const gateway = {
+      invoke: fakeInvoke(async () => {
+        throw Object.assign(new Error('typert gateway: session/list: its strict definition was withdrawn and SRC fallback is forbidden'), { code: 'gateway/definition-unavailable' })
+      }),
+    }
+    const runner = new HostExecutionRunner(gateway, undefined, undefined, { attempts: 5, backoffMs: 0 })
+    // When the roster is polled and an execution outcome inspected.
+    await expect(runner.listRunning()).resolves.toEqual({ known: false })
+    await expect(runner.inspect('session-a')).resolves.toEqual({ outcome: 'pending' })
+    // Then each path probed exactly once: no retry window was spent.
+    expect(gateway.invoke).toHaveBeenCalledTimes(2)
+  })
+
   it('retries a boot-race service-unavailable roster error until the controller activates', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
@@ -503,7 +532,7 @@ describe('HostExecutionRunner', () => {
     let headSeq = 40
     let found = false
     const page = vi.fn(async (_request: GatewayRequest) => ({
-      records: [found ? sessionEvent('turn/end', headSeq, 4_000, { reason: { kind: 'complete' } }) : sessionEvent('assistant/message', headSeq, 4_000, {})],
+      records: [found ? sessionEvent('turn/end', headSeq, 4_000, { reason: { kind: 'completed' } }) : sessionEvent('assistant/message', headSeq, 4_000, {})],
       hasMore: false,
     }))
     const gateway = {
@@ -523,5 +552,91 @@ describe('HostExecutionRunner', () => {
     gateway.invoke.mockImplementation(async (request: GatewayRequest) => request.method === 'list' ? { items: [] } : page(request))
     await expect(runner.inspect('session-a', 1_000)).resolves.toEqual({ outcome: 'cancelled', error: 'execution session no longer exists' })
     expect(page.mock.calls.length).toBe(callsBefore)
+  })
+
+  it('operator sees a reuse run fail closed when the session records another preset', async () => {
+    // Given a task pinning preset-a and a reusable session composed from preset-b
+    const gateway = {
+      stream: fakeStream(async () => ({ async *[Symbol.asyncIterator]() { yield snapshot([], 0, false) } })),
+      invoke: fakeInvoke(async (request: GatewayRequest) => {
+        if (request.namespace === 'agentPresets') return { presets: [{ id: 'preset-a', isDefault: false }] }
+        if (request.method === 'projections') return { asOfSeq: 1, values: { agentPreset: 'preset-b' } }
+        throw new Error('reuse must not call session/' + request.method)
+      }),
+    }
+
+    // When the runner continues in that session
+    const launch = new HostExecutionRunner(gateway, undefined, workspaceRegistry())
+      .launch(configuredTask(), { reuseSessionId: 'session-existing' })
+
+    // Then it fails closed before any prompt, naming both presets
+    await expect(launch).rejects.toMatchObject({
+      name: 'SessionLaunchError',
+      sessionId: 'session-existing',
+      message: expect.stringContaining('was composed from agent preset "preset-b", but the task pins "preset-a"'),
+    })
+    expect(gateway.invoke).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'prompt' }))
+  })
+
+  it('operator sees an unreadable recorded preset reject the reuse run', async () => {
+    // Given a reusable session whose projections carry no agentPreset value
+    const gateway = {
+      stream: fakeStream(async () => ({ async *[Symbol.asyncIterator]() { yield snapshot([], 0, false) } })),
+      invoke: fakeInvoke(async (request: GatewayRequest) => {
+        if (request.namespace === 'agentPresets') return { presets: [{ id: 'preset-a', isDefault: false }] }
+        if (request.method === 'projections') return { asOfSeq: 1, values: {} }
+        throw new Error('reuse must not call session/' + request.method)
+      }),
+    }
+
+    // When the runner continues in that session
+    const launch = new HostExecutionRunner(gateway, undefined, workspaceRegistry())
+      .launch(configuredTask(), { reuseSessionId: 'session-existing' })
+
+    // Then an unknown composition is not accepted as a match
+    await expect(launch).rejects.toMatchObject({
+      name: 'SessionLaunchError',
+      message: expect.stringContaining('an unreadable value'),
+    })
+  })
+
+  it('operator sees an interrupted turn reported as failed instead of succeeded', async () => {
+    // Given a restart-orphaned session whose tail turn was closed as interrupted
+    const gateway = {
+      invoke: fakeInvoke(async (request: GatewayRequest) => {
+        if (request.method === 'list') return { items: [{ sessionId: 'session-a', running: false }] }
+        if (request.method === 'page') {
+          return { records: [sessionEvent('turn/end', 10, 1_100, { reason: { kind: 'interrupted' } })], hasMore: false }
+        }
+        throw new Error('unexpected gateway call')
+      }),
+      stream: fakeStream(async () => ({ async *[Symbol.asyncIterator]() { yield snapshot([], 10, true) } })),
+    }
+
+    // When the host inspects that execution
+    const result = await new HostExecutionRunner(gateway).inspect('session-a', 1_000)
+
+    // Then the execution is reported failed, not silently succeeded
+    expect(result).toEqual({ outcome: 'failed', error: 'agent turn ended without completing: interrupted' })
+  })
+
+  it('operator sees a malformed turn end reported as failed instead of succeeded', async () => {
+    // Given a turn/end payload whose reason carries no kind
+    const gateway = {
+      invoke: fakeInvoke(async (request: GatewayRequest) => {
+        if (request.method === 'list') return { items: [{ sessionId: 'session-a', running: false }] }
+        if (request.method === 'page') {
+          return { records: [sessionEvent('turn/end', 10, 1_100, { reason: {} })], hasMore: false }
+        }
+        throw new Error('unexpected gateway call')
+      }),
+      stream: fakeStream(async () => ({ async *[Symbol.asyncIterator]() { yield snapshot([], 10, true) } })),
+    }
+
+    // When the host inspects that execution
+    const result = await new HostExecutionRunner(gateway).inspect('session-a', 1_000)
+
+    // Then unreadable evidence is never treated as success
+    expect(result).toEqual({ outcome: 'failed', error: 'agent turn ended without completing: unknown' })
   })
 })

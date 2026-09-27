@@ -18,7 +18,15 @@ export type ApiResult<T> =
 /** Transport failure (fetch threw or the response was not JSON). */
 const TRANSPORT_ERROR: GitError = { code: 'internal', message: 'git route unavailable' }
 
-/** POST one JSON payload and decode the envelope; never throws. */
+/**
+ * POST one JSON payload and decode the envelope; never throws.
+ *
+ * `path` is DOCUMENT-RELATIVE (no leading slash): the harness serves the GUI
+ * with `<base href="./">`, so a sub-path deployment resolves the route
+ * against its entry directory. A root-absolute path escapes that prefix and
+ * never reaches the host route (issue #1707); the official client posts its
+ * own routes the same way.
+ */
 async function post<T>(path: string, payload: Record<string, unknown>): Promise<ApiResult<T>> {
   let response: Response
   try {
@@ -45,47 +53,47 @@ async function post<T>(path: string, payload: Record<string, unknown>): Promise<
 export class GitApi {
   /** The repository snapshot (null: not a git repository / not a workspace). */
   status(path: string): Promise<ApiResult<RepoStatus | null>> {
-    return post('/git/status', { path })
+    return post('git/status', { path })
   }
 
   /** Local branch list with the current branch marked. */
   branches(path: string): Promise<ApiResult<BranchesView | null>> {
-    return post('/git/branches', { path })
+    return post('git/branches', { path })
   }
 
   /** Workspace-level `git switch --no-guess <branch>` (host guards first). */
   switchBranch(path: string, branch: string): Promise<ApiResult<{ branch: string }>> {
-    return post('/git/switch', { path, branch })
+    return post('git/switch', { path, branch })
   }
 
   /** `git switch --no-guess -c <name>` from the current HEAD. */
   createBranch(path: string, name: string): Promise<ApiResult<{ branch: string }>> {
-    return post('/git/create-branch', { path, name })
+    return post('git/create-branch', { path, name })
   }
 
   /** Topo-ordered commit graph across branches/tags/remotes. */
   graph(path: string, limit?: number): Promise<ApiResult<GraphView | null>> {
-    return post('/git/graph', limit === undefined ? { path } : { path, limit })
+    return post('git/graph', limit === undefined ? { path } : { path, limit })
   }
 
   /** All linked worktrees of the workspace's repository. */
   worktrees(path: string): Promise<ApiResult<WorktreeListView | null>> {
-    return post('/git/worktrees', { path })
+    return post('git/worktrees', { path })
   }
 
   /** Create a managed worktree on a new wt/<name> branch (host picks the path). */
   addWorktree(path: string, name: string, baseRef?: string): Promise<ApiResult<{ path: string; branch: string; name: string }>> {
-    return post('/git/worktree-add', baseRef === undefined ? { path, name } : { path, name, baseRef })
+    return post('git/worktree-add', baseRef === undefined ? { path, name } : { path, name, baseRef })
   }
 
   /** Remove a managed worktree (dirty rejects unless force; deleteBranch drops the wt/ branch). */
   removeWorktree(path: string, worktreePath: string, opts?: { force?: boolean; deleteBranch?: boolean }): Promise<ApiResult<{ removed: true }>> {
-    return post('/git/worktree-remove', { path, worktreePath, force: opts?.force === true, deleteBranch: opts?.deleteBranch === true })
+    return post('git/worktree-remove', { path, worktreePath, force: opts?.force === true, deleteBranch: opts?.deleteBranch === true })
   }
 
   /** The live feature config (auto-isolation flags + managed worktree home). */
   config(): Promise<ApiResult<GitFeatureConfig>> {
-    return post('/git/config', {})
+    return post('git/config', {})
   }
 }
 
@@ -101,5 +109,5 @@ export function subscribeChanges(path: string, onChange: () => void): () => void
   // The stream is shared browser-wide through the cross-tab leader relay
   // (issue #383): two tabs of the same workspace must not pin two SSE
   // connections against the per-origin HTTP pool.
-  return subscribeSharedEvents(`/git/events?path=${encodeURIComponent(path)}`, 'change', () => { onChange() })
+  return subscribeSharedEvents(`git/events?path=${encodeURIComponent(path)}`, 'change', () => { onChange() })
 }

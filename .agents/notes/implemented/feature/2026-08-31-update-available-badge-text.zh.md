@@ -4,7 +4,7 @@ Status: implemented
 
 ## 问题
 
-此前 `dsh-remote-web-ui` 插件在侧边栏渲染检查更新与远程控制入口。当后台检测到新版本发布（`updateAvailable === true`）时，仅在下载图标右上角渲染一个红/主题色小圆点（`::after` 徽标），视觉提示较弱且不够直观。
+`dsh-update` 插件在侧边栏渲染检查更新触发器（自更新拆分前属 `dsh-remote-web-ui`，见[拆分记录](../../architecture/2026-09-25-self-update-own-plugin-row.zh.md)）。当后台检测到新版本发布（`updateAvailable === true`）时，仅在下载图标右上角渲染一个红/主题色小圆点（`::after` 徽标），视觉提示较弱且不够直观。
 
 ## 决策
 
@@ -15,7 +15,7 @@ Status: implemented
 - **多语言（i18n）**：
   - 中文（`zh`）：`'update.badge': '有更新'`
   - 英文（`en`）：`'update.badge': 'Update available'`
-  - 俄文（`ru`）：`'update.badge': 'Есть обновление'`（同步 `packages/dsh-i18n/src/client/ru/remote-web-ui.ts`）。
+  - 俄文（`ru`）：`'update.badge': 'Есть обновление'`（同步 `packages/dsh-i18n/src/client/ru/update.ts`）。
 
 ## 备选方案
 

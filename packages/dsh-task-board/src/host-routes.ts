@@ -4,7 +4,14 @@ import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import type { TaskBoardHostService } from './host-service.ts'
 import { writeJson } from './http.ts'
 import { isLoopbackAddress, isLoopbackRequest } from './loopback.ts'
-import { parseActionEnvelope, TASK_BOARD_API_PREFIX } from './protocol.ts'
+import { TaskParseError, TASK_PARSE_MAX_INPUT } from './host-ai.ts'
+import {
+  parseActionEnvelope,
+  parseTaskParseRequest,
+  TASK_BOARD_API_PREFIX,
+  type TaskBoardParseDraft,
+  type TaskBoardParseRequest,
+} from './protocol.ts'
 
 const ACTION_LIMIT = 64 * 1024
 const IMPORT_LIMIT = 2 * 1024 * 1024
@@ -17,6 +24,16 @@ export const TASK_BOARD_PROXY_TOKEN_HEADER = 'x-dsh-task-board-proxy-token'
 export interface TaskBoardRouteAccess {
   trustedProxyHosts?: readonly string[]
   proxyToken?: string
+}
+
+/**
+ * Host faces the routes need beyond the ledger service. The parse face is
+ * resolved lazily by the caller, so a deployment without an llm service still
+ * registers the route and answers with a typed "no model" failure instead of
+ * leaving the panel with an unmounted path (issue #1540).
+ */
+export interface TaskBoardRouteOptions {
+  parseTask?: (request: TaskBoardParseRequest, signal: AbortSignal) => Promise<TaskBoardParseDraft>
 }
 
 interface ResolvedRouteAccess {
@@ -57,14 +74,50 @@ function resolveAccess(access: TaskBoardRouteAccess): ResolvedRouteAccess {
 }
 
 /**
+ * Harness browser-auth cookie prefix (dsh-client-connection): the
+ * authority-bound signed cookie the Host mints in exchange for its launch
+ * token. dsh-web's remote channel redeems that token before re-issuing paired
+ * traffic to 127.0.0.1 (packages/dsh-remote-web-ui/src/inner-auth.ts), and the
+ * official DSH Desktop shell keeps its own copy from the same exchange and
+ * attaches it to every request it forwards for the dsh-app://app/ page. The
+ * two constants describe one fact and move together.
+ */
+const BROWSER_AUTH_COOKIE_PREFIX = 'dsh-auth-'
+
+/**
+ * Whether a Cookie header carries the Host's browser-auth credential. Only an
+ * application on this machine can hold it: the desktop shell never lets it
+ * reach the page's cookie jar, and SameSite=Strict keeps a cross-site page
+ * from attaching it.
+ * @param header - the raw Cookie header value.
+ */
+function carriesBrowserAuthCookie(header: string | undefined): boolean {
+  if (header === undefined) return false
+  return header.split(';').some(segment => segment.trim().startsWith(BROWSER_AUTH_COOKIE_PREFIX))
+}
+
+/**
  * Browser-signal tripwire, NOT an authority check: a bare curl sends neither
  * header and is refused, but a curl with a forged Origin passes this too.
  * The real boundary is the loopback socket + Host + origin-equality checks
  * in isTrustedTaskBoardRequest below; do not rely on this marker alone.
+ *
+ * A first-party client that presents NEITHER header must still pass. The DSH
+ * Desktop shell serves the Web GUI from dsh-app://app/ and forwards that
+ * page's Host requests itself, deleting origin and sec-fetch-site on the
+ * way (dsh-desktop-host's forwardWebRequest), so the panel's own fetch
+ * arrives marker-less and every route behind this guard answered 403 - which
+ * the panel renders as its board.hostError.unauthorized message. The shell
+ * does attach the Host's browser-auth cookie, redeemed from the Host's launch
+ * URL at startup and deliberately withheld from the page. That credential,
+ * not a header the shell strips, is the browser signal of an application on
+ * this machine; a marker-less, credential-less request stays refused.
  */
 function browserSameOriginMarker(req: IncomingMessage): boolean {
   const site = req.headers['sec-fetch-site']
-  return site === 'same-origin' || typeof req.headers.origin === 'string'
+  if (site === 'same-origin') return true
+  if (typeof req.headers.origin === 'string') return true
+  return carriesBrowserAuthCookie(req.headers.cookie)
 }
 
 function sameAuthority(req: IncomingMessage, host: URL): boolean {
@@ -119,7 +172,11 @@ async function readBody(req: IncomingMessage): Promise<{ raw: string; value: unk
   return { raw, value: JSON.parse(raw) }
 }
 
-export function makeTaskBoardRoutes(service: TaskBoardHostService, access: TaskBoardRouteAccess = {}): WebRoute[] {
+export function makeTaskBoardRoutes(
+  service: TaskBoardHostService,
+  access: TaskBoardRouteAccess = {},
+  options: TaskBoardRouteOptions = {},
+): WebRoute[] {
   const resolvedAccess = resolveAccess(access)
   const guard = (req: IncomingMessage, res: ServerResponse): boolean => {
     if (isTrustedTaskBoardRequest(req, resolvedAccess)) return true
@@ -188,5 +245,49 @@ export function makeTaskBoardRoutes(service: TaskBoardHostService, access: TaskB
       push()
     },
   }
-  return [state, action, events]
+  const parse: WebRoute = {
+    kind: 'exact',
+    path: `${TASK_BOARD_API_PREFIX}/parse`,
+    handler: async (req, res): Promise<void> => {
+      if (req.method !== 'POST') return writeJson(res, 405, { ok: false, error: 'method-not-allowed' }, { 'cache-control': 'no-store' })
+      if (!guard(req, res)) return
+      if (!(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) {
+        return writeJson(res, 415, { ok: false, error: 'json-required' }, { 'cache-control': 'no-store' })
+      }
+      let body: { raw: string; value: unknown }
+      try {
+        body = await readBody(req)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return writeJson(res, message === 'body-too-large' ? 413 : 400, { ok: false, error: message }, { 'cache-control': 'no-store' })
+      }
+      const request = parseTaskParseRequest(body.value)
+      if (request === undefined) return writeJson(res, 400, { ok: false, error: 'invalid-parse-request' }, { 'cache-control': 'no-store' })
+      if (Buffer.byteLength(request.text, 'utf8') > TASK_PARSE_MAX_INPUT) {
+        return writeJson(res, 413, { ok: false, error: 'text-too-large' }, { 'cache-control': 'no-store' })
+      }
+      const parseTask = options.parseTask
+      if (parseTask === undefined) {
+        return writeJson(res, 503, { ok: false, code: 'no-model', error: 'task-board parsing is unavailable' }, { 'cache-control': 'no-store' })
+      }
+      // The model call outlives a closed tab: stop it when the response goes
+      // away instead of holding the provider request open for the full timeout.
+      const controller = new AbortController()
+      const onClose = (): void => { controller.abort() }
+      res.once('close', onClose)
+      try {
+        const draft = await parseTask(request, controller.signal)
+        writeJson(res, 200, { ok: true, draft }, { 'cache-control': 'no-store' })
+      } catch (error) {
+        const failure = error instanceof TaskParseError
+          ? error
+          : new TaskParseError('model-error', error instanceof Error ? error.message : String(error))
+        const status = failure.code === 'no-model' ? 503 : failure.code === 'timeout' ? 504 : 502
+        writeJson(res, status, { ok: false, code: failure.code, error: failure.message }, { 'cache-control': 'no-store' })
+      } finally {
+        res.off('close', onClose)
+      }
+    },
+  }
+  return [state, action, events, parse]
 }

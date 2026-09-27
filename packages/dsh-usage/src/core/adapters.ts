@@ -22,6 +22,14 @@ export interface AdapterProbeContext {
   apiKey: string
   /** Provider account id riding a dedicated header, when the credential carries one (Codex). */
   accountId?: string
+  /**
+   * The route's configured base URL (the pi-ai profile's baseURL), when it
+   * declares one. An adapter whose endpoint belongs to one provider origin
+   * uses it to refuse an account that merely shares the route key, so a
+   * differently-hosted model of the same family is never reported with the
+   * other account's number.
+   */
+  baseURL?: string
 }
 
 /** A parsed balance fact. */
@@ -43,6 +51,14 @@ export interface ProviderAdapter {
   /** Fallback display name when the LLM runtime has none. */
   displayName: string
   balance?: {
+    /**
+     * Origin (scheme + host) whose account this balance endpoint reports.
+     * Omitted when the endpoint is per-route by construction (a profile
+     * supplies the host) or when the provider has only one origin. When set,
+     * a route whose configured baseURL resolves elsewhere is not this
+     * origin's account and must not be probed with this adapter.
+     */
+    origin?: string
     build(context: AdapterProbeContext): ProbeSpec
     parse(status: number, body: unknown): BalanceParse | undefined
   }
@@ -65,6 +81,11 @@ function toNum(value: unknown): number | undefined {
 /** Read a string field that must be a non-empty string. */
 function str(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+}
+
+/** Clamp a provider percentage into the renderable 0-100 band. */
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, value))
 }
 
 /** Format a number to a fixed 2-decimal display string. */
@@ -108,10 +129,14 @@ function bearer(apiKey: string): Record<string, string> {
  * adapter registers (sessions and agent-default-model carry it), so both ids
  * must resolve here or the current provider would never be probed.
  */
+/** The official DeepSeek API origin: the only account its balance endpoint reports. */
+export const DEEPSEEK_API_ORIGIN = 'https://api.deepseek.com'
+
 const DEEPSEEK: ProviderAdapter = {
   ids: ['deepseek', 'deepseek-official'],
   displayName: 'DeepSeek',
   balance: {
+    origin: DEEPSEEK_API_ORIGIN,
     build: ({ apiKey }) => ({ url: 'https://api.deepseek.com/user/balance', headers: bearer(apiKey) }),
     parse: (status, body) => {
       if (status !== 200 || typeof body !== 'object' || body === null) return undefined
@@ -190,7 +215,26 @@ const KIMI_CODING: ProviderAdapter = {
   },
 }
 
-/** GLM Coding Plan quota; auth is the RAW key without a Bearer prefix. */
+/**
+ * GLM Coding Plan quota windows, keyed by the provider's own `unit` code
+ * rather than by row position so an added or reordered limit cannot shift a
+ * window's meaning: 3 = the rolling 5-hour window, 6 = the weekly window,
+ * 5 = the monthly one. Two row kinds carry quota — `TOKENS_LIMIT` (token
+ * plans) and `CREDIT_LIMIT` (credit plans, whose exact ratio is
+ * `currentValue` / `usage`) — while `TIME_LIMIT` is the MCP request cap and
+ * is not a plan window at all. Auth is the RAW key without a Bearer prefix.
+ */
+const GLM_UNIT_KEYS: Readonly<Record<number, string>> = { 3: '5h', 5: 'month', 6: 'week' }
+
+/** Percent from a credit row's exact ratio, else the provider's own percentage. */
+function glmCreditPercent(row: Record<string, unknown>): number | undefined {
+  const used = toNum(row.currentValue)
+  const limit = toNum(row.usage)
+  if (used !== undefined && limit !== undefined && limit > 0) return clampPercent((used / limit) * 100)
+  const percentage = toNum(row.percentage)
+  return percentage === undefined ? undefined : clampPercent(percentage)
+}
+
 function glmPlan(host: string, ids: readonly string[]): ProviderAdapter {
   return {
     ids,
@@ -212,11 +256,21 @@ function glmPlan(host: string, ids: readonly string[]): ProviderAdapter {
         for (const entry of limits) {
           if (typeof entry !== 'object' || entry === null) continue
           const row = entry as Record<string, unknown>
-          const unit = toNum(row.unit)
-          const percent = toNum(row.percentage)
+          const kind = str(row.type)
+          // The MCP request cap is a per-minute request budget, not a plan window.
+          if (kind === 'TIME_LIMIT') continue
+          const key = GLM_UNIT_KEYS[toNum(row.unit) ?? Number.NaN]
+          // Unknown units fall through: rendering them would invent a window.
+          if (key === undefined) continue
+          if (kind !== 'TOKENS_LIMIT' && kind !== 'CREDIT_LIMIT') continue
           windows.push({
-            key: unit === 3 ? '5h' : unit === 6 ? 'week' : unit !== undefined ? `unit-${unit}` : 'window',
-            percent: percent === undefined ? undefined : Math.max(0, Math.min(100, percent)),
+            key,
+            percent: kind === 'CREDIT_LIMIT'
+              ? glmCreditPercent(row)
+              : (() => {
+                  const percentage = toNum(row.percentage)
+                  return percentage === undefined ? undefined : clampPercent(percentage)
+                })(),
             resetsAt: toIso(row.nextResetTime),
           })
         }
@@ -409,7 +463,7 @@ export const PROVIDER_ADAPTERS: readonly ProviderAdapter[] = [
   moonshotBalance('api.moonshot.ai', 'USD', ['moonshotai']),
   KIMI_CODING,
   glmPlan('open.bigmodel.cn', ['zai-coding-cn']),
-  glmPlan('api.z.ai', ['zai-coding']),
+  glmPlan('api.z.ai', ['zai', 'zai-coding']),
   OPENCODE_GO,
   minimaxPlan('api.minimaxi.com', ['minimax-cn']),
   minimaxPlan('api.minimax.io', ['minimax']),
@@ -423,6 +477,42 @@ export const PROVIDER_ADAPTERS: readonly ProviderAdapter[] = [
 /** Find the adapter serving a provider route key, if any. */
 export function adapterFor(provider: string): ProviderAdapter | undefined {
   return PROVIDER_ADAPTERS.find((adapter) => adapter.ids.includes(provider))
+}
+
+/** Origin of a configured base URL, or undefined when it cannot be parsed. */
+export function originOf(baseURL: string | undefined): string | undefined {
+  if (baseURL === undefined || baseURL.trim() === '') return undefined
+  try {
+    return new URL(baseURL).origin
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Whether an adapter's balance endpoint reports THIS route's account.
+ *
+ * Some adapter families share one route key across providers that merely
+ * speak the same API: `deepseek` is both the official DeepSeek catalog entry
+ * and a common id for an OpenAI-compatible reseller (Alibaba Bailian, ...)
+ * pointed at another host by the profile's `baseURL`. The balance endpoint is
+ * per ORIGIN, not per route key, so probing the official endpoint for a
+ * reseller profile reports the official account's money under the reseller's
+ * name (issue #1688). An adapter published with a fixed `origin` therefore
+ * only applies to a route whose configured base URL is that origin, or to a
+ * route that pins no base URL at all (the catalog alias of the official
+ * route, which resolves the family's own credential).
+ *
+ * @param adapter - the matched adapter.
+ * @param baseURL - the route's configured base URL (pi-ai profile), if any.
+ * @returns true when the adapter may probe its balance endpoint for the route.
+ */
+export function balanceAppliesToRoute(adapter: ProviderAdapter, baseURL: string | undefined): boolean {
+  const expected = adapter.balance?.origin
+  if (expected === undefined) return true
+  const configured = originOf(baseURL)
+  if (configured === undefined) return true
+  return configured === expected
 }
 
 /**

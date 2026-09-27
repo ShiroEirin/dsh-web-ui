@@ -10,7 +10,8 @@
  * localStorage backend.
  */
 import { isValidCron } from './schedule.ts'
-import { isTaskPermission, isTaskStatus, normalizeTargetId, type ScheduleRule, type TaskFreeze, type TaskRecord, type TaskPermission, type TaskStatus } from './tasks.ts'
+import { isTaskPermission, isTaskStatus, normalizeTags, normalizeTargetId, type ScheduleRule, type TaskFreeze, type TaskRecord, type TaskPermission, type TaskStatus } from './tasks.ts'
+import { isExecutionOutcome } from './subtask.ts'
 import type { TaskHandover } from './handover.ts'
 import { sanitizeFreezeSnapshot } from './freeze-snapshot.ts'
 import { sanitizeHandover } from './handover.ts'
@@ -62,6 +63,7 @@ function isTaskRecordShape(value: unknown): value is Omit<TaskRecord, 'status'> 
   if (typeof record.prompt !== 'string') return false
   if (typeof record.createdAt !== 'number') return false
   if (typeof record.updatedAt !== 'number') return false
+  if (record.parentId !== undefined && typeof record.parentId !== 'string') return false
   if (record.workspaceId !== undefined && typeof record.workspaceId !== 'string') return false
   if (record.mode !== undefined && typeof record.mode !== 'string') return false
   if (record.permission !== undefined && typeof record.permission !== 'string') return false
@@ -179,6 +181,19 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     // clear a malformed persisted rule rather than leave it in the row.
     const task: TaskRecord = { ...row, status: normalizeStatus(row.status) }
     task.schedule = normalizeSchedule(row.schedule)
+    // The lineage link is repaired like every other optional field: a blank or
+    // non-string parent id clears the link instead of dropping the row. Whether
+    // the link is structurally sound (parent exists, no cycle) is decided where
+    // the whole list is known (HostTaskLedger.parseHostTasks).
+    task.parentId = normalizeTargetId(row.parentId)
+    // Cascade bookkeeping on execution records is repaired field by field too,
+    // so a hand-edited ledger degrades a run group instead of the whole task.
+    task.executions = task.executions.map(execution => ({
+      ...execution,
+      runGroupId: normalizeTargetId(execution.runGroupId),
+      ownResult: isExecutionOutcome(execution.ownResult) ? execution.ownResult : undefined,
+      ownError: typeof execution.ownError === 'string' ? execution.ownError : undefined,
+    }))
     // Execution targets are normalized like the schedule: blank strings
     // clear the pin and unknown permission strings from a future version
     // fall back to the session default instead of dropping the row.
@@ -189,6 +204,10 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     task.reuseSession = row.reuseSession === true ? true : undefined
     task.freeze = normalizeFreeze(row.freeze)
     task.handover = normalizeHandover(row.handover)
+    // Tags are repaired field by field like the schedule: a malformed entry is
+    // dropped, and a list that repairs to nothing clears the field instead of
+    // dropping the task row.
+    task.tags = normalizeTags(row.tags)
     task.permissionConfirmedAt = typeof row.permissionConfirmedAt === 'number' && Number.isFinite(row.permissionConfirmedAt) ? row.permissionConfirmedAt : undefined
     tasks.push(task)
   }

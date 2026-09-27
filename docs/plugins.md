@@ -40,20 +40,21 @@ packages/<name>/
 - `patchFrom`：该包的 `cordis.patch.yml` insert 行会被汇总进聚合包 patch；
 - `deps`：解析为包名写入聚合包 `package.json` 的 `dependencies`（`workspace:*`）。
 
-皮肤（新增或改动）不需要进任何 aggregate.yml：皮肤是纯资产目录，仓库内位于 `packages/skins/skin-center/skins/<id>/`（市场构建与预览的共同来源）；npm 包 `files` 白名单只随发默认皮肤 `blue-fantasy`，其余皮肤由市场按需安装到 `$DSH_HOME/skins/<id>/` 后由皮肤中心管理。改完皮肤后运行 `pnpm skin-center:check` 与 `pnpm market:build` 刷新 market/dist。皮肤启用互斥由 `dsh-skin use` 管理（客户端原子切换，不改 cordis.patch.yml）。
+皮肤（新增或改动）不需要进任何 aggregate.yml：皮肤是纯资产目录，位于独立仓 [dsh-skins](https://github.com/zhu1090093659/dsh-skins) 的 `skins/<id>/`（市场构建与预览的共同来源，本仓以 submodule `satellites/dsh-skins` 的 gitlink 固定要读的提交）；npm 包 `files` 白名单只随发默认皮肤 `blue-fantasy`，其余皮肤由市场按需安装到 `$DSH_HOME/skins/<id>/` 后由皮肤中心管理。皮肤仓的 CI 跑 `skin-center:check`，本仓在 `pnpm market:fetch` 之后运行 `pnpm market:build` 刷新 market/dist。皮肤启用互斥由 `dsh-skin use` 管理（客户端原子切换，不改 cordis.patch.yml）。
 
 ### 4. 重新生成聚合包
 
+聚合行 id 自动加 `web-ui-` 前缀，可与独立包共存；规则见 [packages/AGENTS.md](../packages/AGENTS.md)。
+
 ```sh
 node scripts/aggregate.mjs          # 重新生成聚合包 cordis.patch.yml + 依赖
-聚合行 id 自动加 `web-ui-` 前缀，可与独立包共存；规则见 packages/AGENTS.md。
 node scripts/aggregate.mjs --check  # 校验模式：漂移即失败（CI 用）
 ```
 
 ### 5. 构建验证
 
 ```sh
-pnpm install   # workspace 链接（packages/* 与 packages/skins/*）
+pnpm install   # workspace 链接
 pnpm -r build  # 全仓构建
 ```
 
@@ -104,8 +105,8 @@ dsh plugin --profile web add link:<dsh-web>/packages/dsh-web-all
 
 第三方插件作者可把自己的插件登记进创意工坊商店的插件目录（设置 → 创意工坊 → 插件）与 dsh-market.com 创意工坊站：
 
-1. 在 `packages/dsh-community-plugins/community.json` 追加条目：`id` / `name` / `nameEn` / `author` / `repo`（https:// 仓库 URL）必填，`description` / `descriptionEn` / `npm` 可选；`category`（一级分类）与 `subcategory`（二级分类）可选，合法枚举见 `scripts/community-index` 的 `CATEGORIES` 与 `SUBCATEGORIES`，且 `subcategory` 只在 `category` 已填时被接受——分类与二级分类一同驱动创意工坊的两级筛选；
-2. 运行 `node scripts/community-index` 校验数据（CI 门禁同款校验）；
+1. 在 [dsh-community-plugins](https://github.com/zhu1090093659/dsh-community-plugins) 仓根目录的 `community.json` 追加条目：`id` / `name` / `nameEn` / `author` / `repo`（https:// 仓库 URL）必填，`description` / `descriptionEn` / `npm` 可选；`category`（一级分类）与 `subcategory`（二级分类）可选，合法枚举见该仓 `scripts/community-index.cjs` 的 `CATEGORIES` 与 `SUBCATEGORIES`，且 `subcategory` 只在 `category` 已填时被接受——分类与二级分类一同驱动创意工坊的两级筛选；
+2. 在该仓运行 `pnpm community:check` 校验数据（CI 门禁同款校验）；
 3. 运行 `node scripts/market-build` 重新生成 `market/dist` 清单（`manifest/plugins.json` 由 community.json 派生）并提交生成物（`market:check` 校验一致）。
 
 索引只收录链接、不搬代码，条目版权归原作者，由维护者审核合并。
@@ -113,7 +114,8 @@ dsh plugin --profile web add link:<dsh-web>/packages/dsh-web-all
 ## 插件规范要点
 
 - **package.json 的 `dsh.bundle.patch` 声明**：指向包内 `cordis.patch.yml`，这是官方 bundle 清单，`dsh plugin` 依赖它识别与挂载插件。
-- **`dsh.engines.dsh` 最低运行时声明**（issue #754）：每个发布包必须在 `dsh` 对象内声明 `"engines": { "dsh": ">=X.Y.Z[-rc.N]" }`（如 `"dsh": ">=0.1.1-rc.1"`），唯一支持形式为 `>= <semver>`（顶层 `engines.dsh` 是插件管理器兼容读取的备用位，新声明统一用 `dsh.engines.dsh`）。该字段随 npm 清单发布，插件管理器在更新检查与更新前读取并据此提示/拦截；`scripts/family-dsh-engines.test.mjs` 强制每个家族包与插件模板都声明。SDK cohort 升级时必须同步提升所有包的该字段：宿主版本门槛跟随当前适配的 cohort，根 README 徽章与 CI 挂载冒烟道使用同一版本（决策见 [dsh-host-floor-tracks-cohort](../.agents/notes/implemented/architecture/2026-09-01-dsh-host-floor-tracks-cohort.zh.md)）。
+- **`dsh.engines.dsh` 最低运行时声明**（issue #754）：每个发布包必须在 `dsh` 对象内声明 `"engines": { "dsh": ">=X.Y.Z[-rc.N]" }`（如 `"dsh": ">=0.1.1-rc.1"`），唯一支持形式为 `>= <semver>`（顶层 `engines.dsh` 是插件管理器兼容读取的备用位，新声明统一用 `dsh.engines.dsh`）。该字段随 npm 清单发布，插件管理器在更新检查与更新前读取并据此提示/拦截；`scripts/family-dsh-engines.test.mjs` 强制每个家族包（含聚合包 `dsh-web-all`）与插件模板都声明，且声明的下限不得低于插件模板的 cohort 下限。SDK cohort 升级时必须同步提升所有包的该字段：宿主版本门槛跟随当前适配的 cohort，根 README 徽章与 CI 挂载冒烟道使用同一版本（决策见 [dsh-host-floor-tracks-cohort](../.agents/notes/implemented/architecture/2026-09-01-dsh-host-floor-tracks-cohort.zh.md)）。
+- **`@deepseek-ai/dsh` 宿主 peer 声明**：每个发布包还必须在 `peerDependencies` 中声明 `"@deepseek-ai/dsh": ">=X.Y.Z[-rc.N]"`，与 `dsh.engines.dsh` 下限同值（同以插件模板的 cohort 下限为源），唯一支持形式同样是 `>= <semver>`。它让 npm 解析器在安装插件时直接看到宿主版本要求，与插件管理器读取的 `dsh.engines.dsh` 互为补充；`scripts/family-dsh-engines.test.mjs` 强制每个家族包（含聚合包 `dsh-web-all`）与插件模板都声明，且不低于 cohort 下限。宿主是全局安装（profile 树里没有 `@deepseek-ai/dsh`，且 `autoInstallPeers: false`），该 peer 因此只用于声明与告警，不会被自动安装。
 - **cordis.patch.yml insert 行格式**（包名用家族 scope `@linxin666`，与 npm 发布名一致）：
 
 ```yaml
@@ -123,7 +125,7 @@ dsh plugin --profile web add link:<dsh-web>/packages/dsh-web-all
 ```
 
 - **类型来源（只能基于官方 NPM SDK）**：各包把用到的 `@deepseek-ai/*` 包声明为 `devDependencies`
-  （`^0.1.0-rc.7`；cordis 用 `^4.0.1`），TS 从 node_modules 自动解析类型
+  （`^0.1.7-rc.2`；cordis 用 `^4.0.4`），TS 从 node_modules 自动解析类型
   （SDK 包的 `exports["."].types` 统一指向 `lib/types/index.d.ts`，client 半区子路径
   `./client` 同理）。**禁止** tsconfig `extends` / `paths` / `references` 指向任何 DSH 源码
   checkout（历史形态：`../../../test-zhu1090093659` 相对路径、`~/.dsh/source/current` 绝对
@@ -143,9 +145,11 @@ dsh plugin --profile web add link:<dsh-web>/packages/dsh-web-all
   处理 CSS）；client 半区闭包工厂在测试中不可直接 import——用 `vitest.setup.ts` 的最小
   `__ModuleLoader__` stub（`packages/dsh-remote-web-ui/vitest.setup.ts`）或 `vi.mock` 替换
   （`packages/dsh-remote-web-ui/tests/remote-entry.spec.tsx` 的 `createSnapshotStore` mock）。
-- **设置页插件配置（20260811+ 可选能力）**：DSH web 设置的「插件配置」区展示每插件一张卡片（`settings.plugin.item` 槽）。Web 插件组、皮肤中心、社区插件、桌面宠物各注册一级设置分区（`settings.section`，`label` 用 thunk 跟随语言，内容直接展开）；Web 插件组声明 `web-ui.plugin.item` 子槽归组 task-board 等卡片。插件接入只需两步：
-  1. **host 半区**：`installSettingsSection(ctx, settingsNamespace('<ns>'), <z-schema>, <composition entry>, { setSource, onChange })`（`@deepseek-ai/dsh-settings`）注册命名空间；`setSource` 注入动态读取器，`onChange` 让已派生的行为跟随已提交的修改，无需重启。
-  2. **browser 半区**：注入 `settingsScope`（`@deepseek-ai/dsh-client-ui-settings` 提供 `ctx.settingsScope`；`bind()` 还要求注入 `connection` 与 `remote`），`ctx.settingsScope.bind({ namespace })` 读写该命名空间，并注册卡片：归组用 `web-ui.plugin.item`，插件配置页用 `settings.plugin.item`，一级菜单用 `settings.section`（自行 `declare module '@deepseek-ai/dsh-client-ui-slots'` 声明该槽，shape 与官方一致；`order` 用 100+；一级分区卡片加 `alwaysOpen` 直接展开）。样板见 `packages/dsh-remote-web-ui`（自包含 staged 表单，不依赖兄弟 UI 包）。
-- **皮肤类插件**：改用 `scripts/dsh-skin-new` 脚手架（皮肤规范见 skin-center / 各皮肤包 README），不经过本流程第 3-4 步的 `dsh-web-all` 注册。皮肤中心（skin-center）虽是皮肤聚合，其 GUI 是一级设置分区（设置 → 皮肤中心），自带启用开关。## 移植 harness 插件的挂载约束
+- **设置页插件配置（20260811+ 可选能力）**：DSH web 的插件管理页为每个 bundle 的页面提供一片配置区（`plugins.bundle.config` 槽，按 bundle 包名分派）。Web 插件组、皮肤中心、社区插件、桌面宠物各注册一级设置分区（`settings.section`，`label` 用 thunk 跟随语言，内容直接展开）；Web 插件组声明 `web-ui.plugin.item` 子槽归组 task-board 等卡片。插件接入只需两步：
+  1. **host 半区**：插件的 `Config`（schemastery）就是它的设置面——`@deepseek-ai/dsh-settings` 按 profile entry 自身的 schema 生成设置表单，因此注册命名空间、`installSection`、`setSource`、`onChange` 都不再存在。需要可编辑的字段必须标记 `.volatile()`（只有 `@deepseek-ai/schemastery` 提供；未标记 volatile 的 entry 根本不生成表单），并在插件运行时通过宿主交付的引用读取当前值，用 `loader/volatile-update` 事件让已派生的行为跟随已提交的修改，无需重启。
+  2. **browser 半区**：注入 `configForms`（`@deepseek-ai/dsh-client-ui-settings` 提供 `ctx.configForms`），`ctx.configForms.get(entryId)` 读写该 profile entry 自身的配置——设置命名空间即所属 profile entry id，不再由插件自选名称；一次写入返回布尔值，`false` 表示宿主拒绝或跳过，必须当作保存失败上报。然后注册卡片：家族归组用 `web-ui.plugin.item`，官方 bundle 配置页用 `plugins.bundle.config`，一级菜单用 `settings.section`（自行 `declare module '@deepseek-ai/dsh-client-ui-slots'` 声明该槽，shape 与官方一致；`order` 用 100+；一级分区卡片加 `alwaysOpen` 直接展开）。样板见 `packages/dsh-remote-web-ui`（自包含 staged 表单，不依赖兄弟 UI 包）。家族插件用共享的 `installPluginCard`（`shared/client/settings/plugin-card-seat.ts`）选席位：`dsh-web-settings` 已加载（`ctx.get('webUiSettings')` 有值）时进 `web-ui.plugin.item`，否则进官方 keyed 槽 `plugins.bundle.config`（key 用自身 bundle 包名）；**不要**用「官方席位是否已声明」判定——官方插件面属于 harness bundle，其席位在每个 web 构建上都先于外部插件声明，据此判定会让家族分区永远为空。家族插件经 `dsh-web-settings` 的 `webUiSettings` 绑定时按包身份别名表把家族 namespace 解析成所属 entry id，再走原生 `configForms`；解析不到时回落到该包的 loopback HTTP 桥。
+- **皮肤类插件**：皮肤已迁至独立仓 [dsh-skins](https://github.com/zhu1090093659/dsh-skins)，用该仓的 `node scripts/dsh-skin-new.cjs <id>` 脚手架生成纯资产目录（皮肤规范见该仓 README），不经过本流程第 3-4 步的 `dsh-web-all` 注册。皮肤中心（skin-center）虽是皮肤聚合，其 GUI 是一级设置分区（设置 → 皮肤中心），自带启用开关。
 
-聚合包 insert 行不带 `config`，loader 调 `apply` 前会用插件 schema 默认值填充配置；`apply` 若无条件加载时校验会把填充后的空配置当配置而抛错，profile 加载失败。应改为：组合条目配置了关键字段才在加载时校验，否则调用时提示「未配置」（settings section 提交仍严格校验）。参考 `packages/dsh-tool-describe-image`。
+## 移植 harness 插件的挂载约束
+
+聚合包 insert 行不带 `config`，loader 调 `apply` 前会用插件 schema 默认值填充配置；`apply` 若无条件加载时校验会把填充后的空配置当配置而抛错，profile 加载失败。应改为：组合条目配置了关键字段才在加载时校验，否则调用时提示「未配置」（settings section 提交仍严格校验）。

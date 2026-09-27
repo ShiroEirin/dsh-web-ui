@@ -3,7 +3,6 @@ import {
   parseFailuresSnapshot,
   parseInstallStatus,
   parseInstalledPlugin,
-  parsePluginControlSnapshot,
   parsePluginList,
   parseUpdateList,
 } from '../src/core/protocol.ts'
@@ -69,23 +68,6 @@ describe('parseInstalledPlugin', () => {
 
   it('rejects a missing plugin row', () => {
     expect(() => parseInstalledPlugin({})).toThrow(/plugin row/)
-  })
-})
-
-describe('parsePluginControlSnapshot', () => {
-  it('parses valid controls', () => {
-    const controls = parsePluginControlSnapshot({
-      controls: [
-        { id: 'web-ui', name: 'dsh-web', repository: 'https://github.com/zhu1090093659/dsh-web', state: 'enabled' },
-        { id: 'genui', name: 'dsh-genui', repository: 'https://github.com/omdsh-dev/dsh-genui', state: 'mixed' },
-      ],
-    })
-    expect(controls).toHaveLength(2)
-    expect(controls[0].state).toBe('enabled')
-  })
-
-  it('rejects an unknown state', () => {
-    expect(() => parsePluginControlSnapshot({ controls: [{ id: 'a', name: 'a', repository: 'r', state: 'on' }] })).toThrow(/control row 0/)
   })
 })
 

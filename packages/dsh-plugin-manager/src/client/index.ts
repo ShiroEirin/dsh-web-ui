@@ -1,56 +1,59 @@
 /**
- * Plugin-manager browser half: contributes the family plugin-manager tab to
- * the official Plugins settings section (`settings.plugins.tab` slot) and
- * provides the same dual-channel face as the `'pluginManager'` cordis
- * service for sibling client plugins. It is dual-channel: on runtimes with
- * the official installer services (DSHCode, the 1.0.4 checkout web) every
- * operation rides the official `/plugin-installer` and `/plugin-control`
- * loopback RPC channels (the single writer); on the npm-published web runtime
- * those channels do not exist, so the same face falls back to this package's
- * own loopback HTTP gateway, which spawns the official CLI for writes.
- * Neither the tab nor service consumers know which mode the face runs in.
+ * Plugin-manager browser half: contributes the package's one remaining
+ * surface — the check-for-updates block on the official Plugins page — and
+ * provides the dual-channel face as the `'pluginManager'` cordis service for
+ * sibling client plugins.
+ *
+ * It is dual-channel: on runtimes with the official installer services
+ * (DSHCode, the 1.0.4 checkout web) every operation rides the official
+ * `/plugin-installer` and `/plugin-control` loopback RPC channels (the single
+ * writer); on the npm-published web runtime those channels do not exist, so the
+ * same face falls back to this package's own loopback HTTP gateway, which
+ * spawns the official CLI for writes. Neither the patch nor service consumers
+ * know which mode the face runs in.
+ *
+ * The package used to register its own "Plugin manager" tab into the official
+ * Plugins settings section (`settings.plugins.tab`). Installing, uninstalling
+ * and enabling moved to the official page long ago, and the tab's remaining
+ * half was UI no official page renders; the tab is gone and its one genuinely
+ * missing capability — comparing an installed plugin against its registry
+ * source, with the DSH-runtime compatibility gate — now renders inside the
+ * official page through the `plugins.detail.section` seat it declares.
  * @module @linxin666/dsh-client-ui-plugin-manager/client
  */
 
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-// Type-only: pulls the settings surface's slot contracts (settings.plugins.tab).
-import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-// Type-only: pulls the client runtime Context merge (ctx.workspaces, ctx.sessions).
-import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-api-session-controller/client'
-import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
+// Type-only: pulls the renderer plugin's Context merge (ctx.slots, the
+// registry this package registers its contribution into).
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import { PluginManagerTab, type PluginManagerTabInjected } from './PluginManagerTab.tsx'
+import { PluginUpdatePatch, type PluginUpdatePatchInjected } from './PluginUpdatePatch.tsx'
 import { en, zh, type PluginManagerKey } from './locales.ts'
 import {
   parseFailuresSnapshot,
   parseInstallStatus,
   parseInstalledPlugin,
-  parsePluginControlSnapshot,
   parsePluginList,
   parseUpdateList,
   type InstalledPluginItem,
   type InstallProgressItem,
-  type PluginControlItem,
   type PluginFailuresSnapshot,
   type PluginUpdateItem,
 } from '../core/protocol.ts'
 import { PLUGIN_MANAGER_SERVICE, type PluginManagerService } from '../core/service.ts'
-import type { ControlChange } from '../core/conflict.ts'
 import { reportDailyHeartbeat } from './telemetry.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** Copy for the family plugin-manager tab. */
+    /** Copy for the check-for-updates patch. */
     'settings.pluginManager': PluginManagerKey
   }
 }
 
 const NS = 'settings.pluginManager'
 const CHANNEL = '/plugin-installer'
-const CONTROL_CHANNEL = '/plugin-control'
 const LIST_ENDPOINT = 'list'
 const INSTALL_ENDPOINT = 'install'
 const UPDATE_ENDPOINT = 'update'
@@ -59,44 +62,47 @@ const SET_ENABLED_ENDPOINT = 'set-enabled'
 const CHECK_UPDATES_ENDPOINT = 'check-updates'
 const STATUS_ENDPOINT = 'status'
 const FAILURES_ENDPOINT = 'failures'
-const SET_SAFE_MODE_ENDPOINT = 'set-safe-mode'
 
-const GATEWAY_PREFIX = '/api/plugin-manager'
+// DOCUMENT-RELATIVE (issue #1707): the GUI is served with `<base href="./">`,
+// so a sub-path deployment resolves the gateway prefix against its entry
+// directory rather than the origin root.
+const GATEWAY_PREFIX = 'api/plugin-manager'
 /** Gateway job polling cadence. */
 const JOB_POLL_MS = 500
 /** Gateway job wait ceiling (the host add deadline is six minutes). */
 const JOB_WAIT_MS = 7 * 60_000
 
-/** Services required by the slot registration and both channels. */
-export const inject = ['slots', 'locale', 'connection', 'workspaces', 'sessions']
+/** Services required by the patch registration and both channels. */
+export const inject = ['slots', 'locale', 'connection']
 
 /** The gateway job wire shape served by /status. */
 interface GatewayJobWire {
   phase: 'running' | 'done' | 'error'
   plugin?: unknown
-  conflicts?: unknown
   error?: string
 }
 
 /**
- * The face the Plugin manager tab and the `'pluginManager'` cordis service
- * share: the full tab surface plus the cross-plugin service contract.
+ * The face the update patch and the `'pluginManager'` cordis service share:
+ * the patch's wire surface plus the cross-plugin service contract. The gateway
+ * host still records install conflicts and boot failures; no client surface
+ * consumes either since the tab left, so neither is on this face.
  */
-export type PluginManagerFace = PluginManagerTabInjected & PluginManagerService
+export type PluginManagerFace = PluginUpdatePatchInjected & PluginManagerService
 
 /**
  * Build the dual-channel face once: official-channel and gateway-channel
- * implementations, the mode detection that picks between them, the repair
- * handoff, and the change-notification listener set. The returned face is
- * both the tab's injected props and the value provided as the
+ * implementations, the mode detection that picks between them, and the
+ * change-notification listener set. The returned face is both the update
+ * patch's injected props and the value provided as the
  * `'pluginManager'` cordis service.
- * @param ctx - the client context (connection, workspaces, sessions).
+ * @param ctx - the client context (connection).
  * @returns the shared face.
  */
 export function createPluginManagerFace(ctx: ClientContext): PluginManagerFace {
   const connection = ctx.get('connection') as ConnectionHandle
 
-  // ── official channel implementations ──────────────────────────────────────
+  // Official channel implementations.
 
   const call = async (endpoint: string, payload: unknown): Promise<unknown> => {
     const result = await connection.rpc.call(CHANNEL, endpoint, payload)
@@ -115,22 +121,9 @@ export function createPluginManagerFace(ctx: ClientContext): PluginManagerFace {
     checkUpdates: async (): Promise<PluginUpdateItem[]> => parseUpdateList(await call(CHECK_UPDATES_ENDPOINT, {})),
     status: async (): Promise<InstallProgressItem> => parseInstallStatus(await call(STATUS_ENDPOINT, {})),
     failures: async (): Promise<PluginFailuresSnapshot> => parseFailuresSnapshot(await call(FAILURES_ENDPOINT, {})),
-    setSafeMode: async (enabled: boolean): Promise<void> => {
-      await call(SET_SAFE_MODE_ENDPOINT, { enabled })
-    },
-    controlsList: async (): Promise<PluginControlItem[]> =>
-      parsePluginControlSnapshot(await connection.rpc.call(CONTROL_CHANNEL, 'list', {}).then(result => {
-        if (!result.ok) throw new Error(`plugin-control list failed: ${result.error.code}: ${result.error.message}`)
-        return result.value
-      })),
-    controlsSetEnabled: async (pluginId: string, enabled: boolean): Promise<PluginControlItem[]> =>
-      parsePluginControlSnapshot(await connection.rpc.call(CONTROL_CHANNEL, 'set-enabled', { pluginId, enabled }).then(result => {
-        if (!result.ok) throw new Error(`plugin-control set-enabled failed: ${result.error.code}: ${result.error.message}`)
-        return result.value
-      })),
   }
 
-  // ── gateway channel implementations ──────────────────────────────────────
+  // Gateway channel implementations.
 
   const gatewayJson = async (path: string, init?: RequestInit): Promise<unknown> => {
     const response = await fetch(path, {
@@ -161,8 +154,6 @@ export function createPluginManagerFace(ctx: ClientContext): PluginManagerFace {
     }
   }
 
-  /** The conflict ledger of the last settled gateway install. */
-  let lastInstallConflicts: ControlChange[] = []
   /** Whether a gateway install/remove is in flight (drives the progress row). */
   let gatewayInflight = false
 
@@ -178,7 +169,6 @@ export function createPluginManagerFace(ctx: ClientContext): PluginManagerFace {
         }) as { jobId?: string }
         if (started.jobId === undefined) throw new Error('plugin-manager: gateway install returned no job')
         const job = await waitJob(started.jobId)
-        lastInstallConflicts = Array.isArray(job.conflicts) ? job.conflicts as ControlChange[] : []
         return parseInstalledPlugin({ plugin: job.plugin })
       } finally {
         gatewayInflight = false
@@ -193,7 +183,6 @@ export function createPluginManagerFace(ctx: ClientContext): PluginManagerFace {
         }) as { jobId?: string }
         if (started.jobId === undefined) throw new Error('plugin-manager: gateway update returned no job')
         const job = await waitJob(started.jobId)
-        lastInstallConflicts = Array.isArray(job.conflicts) ? job.conflicts as ControlChange[] : []
         return parseInstalledPlugin({ plugin: job.plugin })
       } finally {
         gatewayInflight = false
@@ -224,17 +213,9 @@ export function createPluginManagerFace(ctx: ClientContext): PluginManagerFace {
       gatewayInflight ? { kind: 'install', stage: 'download' } : { kind: 'idle', stage: 'fetch' },
     failures: async (): Promise<PluginFailuresSnapshot> =>
       parseFailuresSnapshot(await gatewayJson(`${GATEWAY_PREFIX}/failures`)),
-    setSafeMode: async (): Promise<void> => {
-      throw new Error('plugin-manager: safe mode is unavailable in this runtime')
-    },
-    controlsList: async (): Promise<PluginControlItem[]> => [],
-    controlsSetEnabled: async (pluginId: string, enabled: boolean): Promise<PluginControlItem[]> => {
-      await gateway.setEnabled(pluginId, enabled)
-      return []
-    },
   }
 
-  // ── mode selection ────────────────────────────────────────────────────────
+  // Mode selection.
 
   let modePromise: Promise<'official' | 'gateway'> | undefined
   const ensureMode = (): Promise<'official' | 'gateway'> => {
@@ -264,27 +245,7 @@ export function createPluginManagerFace(ctx: ClientContext): PluginManagerFace {
     return modePromise
   }
 
-  /**
-   * Start a repair conversation for a failed plugin: resolve a workspace over
-   * the plugin install root (created once, reused after), open a fresh
-   * session there, and seed its first prompt with the failure details. The
-   * session's workspace is the plugin home so the agent's file tools reach
-   * the plugin code without leaving the workspace boundary.
-   * @param pluginRoot - absolute plugin install root.
-   * @param message - the seeded first user message.
-   * @returns resolution after the prompt is accepted and the session opens.
-   */
-  const repairPlugin = async (pluginRoot: string, message: string): Promise<void> => {
-    const workspace = await ctx.workspaces.create({ path: pluginRoot })
-    const sessionId = await ctx.sessions.create({ workspaceId: workspace.workspaceId })
-    const binding = ctx.sessions.binding(sessionId)
-    if (binding === undefined) throw new Error(`plugin-manager: repair session ${sessionId} is unavailable`)
-    const result = await binding.session.prompt([{ type: 'text', text: message }], 'queue')
-    if (!result.ok) throw new Error(`plugin-manager: repair prompt failed: ${result.error.code}: ${result.error.message}`)
-    ctx.sessions.open(sessionId)
-  }
-
-  // ── change notification ───────────────────────────────────────────────────
+  // Change notification.
 
   /** Listeners subscribed through onChange; fired after successful mutations. */
   const listeners = new Set<() => void>()
@@ -299,7 +260,7 @@ export function createPluginManagerFace(ctx: ClientContext): PluginManagerFace {
     }
   }
 
-  // ── the shared face ───────────────────────────────────────────────────────
+  // The shared face.
 
   return {
     isLoopback: connection.isLoopback,
@@ -327,11 +288,6 @@ export function createPluginManagerFace(ctx: ClientContext): PluginManagerFace {
     checkUpdates: async () => (await ensureMode()) === 'official' ? official.checkUpdates() : gateway.checkUpdates(),
     status: async () => (await ensureMode()) === 'official' ? official.status() : gateway.status(),
     failures: async () => (await ensureMode()) === 'official' ? official.failures() : gateway.failures(),
-    setSafeMode: async enabled => (await ensureMode()) === 'official' ? official.setSafeMode(enabled) : gateway.setSafeMode(),
-    repairPlugin,
-    controlsList: async () => (await ensureMode()) === 'official' ? official.controlsList() : gateway.controlsList(),
-    controlsSetEnabled: async (id, enabled) => (await ensureMode()) === 'official' ? official.controlsSetEnabled(id, enabled) : gateway.controlsSetEnabled(id, enabled),
-    lastInstallConflicts: () => lastInstallConflicts,
     onChange: cb => {
       listeners.add(cb)
       return () => { listeners.delete(cb) }
@@ -339,7 +295,7 @@ export function createPluginManagerFace(ctx: ClientContext): PluginManagerFace {
   }
 }
 
-/** Contribute the family plugin-manager tab and provide the shared face. */
+/** Contribute the check-for-updates patch and provide the shared face. */
 export function apply(ctx: ClientContext): void {
   // Anonymous install heartbeat (docs/telemetry.md): one beat per browser per
   // UTC day, package name only, silent failure.
@@ -353,8 +309,8 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'plugin-manager: dictionaries')
 
-  // Built once: the tab and the 'pluginManager' cordis service share one
-  // face, so consumers observe exactly the mutations the tab performs.
+  // Built once: the patch and the 'pluginManager' cordis service share one
+  // face, so consumers observe exactly the mutations the patch performs.
   const face = createPluginManagerFace(ctx)
   try {
     if (!ctx.get(PLUGIN_MANAGER_SERVICE)) {
@@ -364,16 +320,19 @@ export function apply(ctx: ClientContext): void {
     // ignore duplicate provide
   }
 
-  ctx.slots.inject('settings.plugins.tab', () => {
+  // The official Plugins page declares this seat on its main-panel entry and
+  // renders one section per contribution on each bundle / row / plugin page;
+  // `inject` waits for that declaration, exactly like the family plugin cards
+  // that register into `plugins.bundle.config`.
+  ctx.slots.inject('plugins.detail.section', () => {
     try {
       return ctx.slots.register({
-        name: 'settings.plugins.tab',
-        id: 'family-plugins',
-        order: 20,
-        label: () => ctx.locale.bind(NS)('tab'),
+        name: 'plugins.detail.section',
+        id: 'family-update-check',
+        order: 30,
         locale: NS,
         inject: () => face,
-      }, PluginManagerTab)
+      }, PluginUpdatePatch)
     } catch {
       return () => {}
     }

@@ -1,7 +1,8 @@
 /**
  * Tests for release-assets.mjs: the package walk mirrors verify-version.mjs
- * (packages/* + packages/skins/*, non-recursive), and packOne downloads the
- * exact published version from the npm registry into the asset directory.
+ * (packages/*, non-recursive, the repository's single package root), and
+ * packOne downloads the exact published version from the npm registry into the
+ * asset directory.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -10,14 +11,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { packageFiles, packOne, publishablePackages, waitForPublished } from './release-assets.mjs'
 
-test('packageFiles: walks packages/ and packages/skins/ non-recursively', () => {
+test('packageFiles: walks packages/ non-recursively', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-release-assets-'))
   try {
     for (const pkg of [
       'packages/dsh-ssh/package.json',
       'packages/dsh-skins/package.json',
-      'packages/skins/miku/package.json',
-      'packages/skins/skin-center/package.json',
     ]) {
       mkdirSync(join(dir, pkg, '..'), { recursive: true })
       writeFileSync(join(dir, pkg), JSON.stringify({ name: 'x', version: '0.1.15' }))
@@ -29,8 +28,6 @@ test('packageFiles: walks packages/ and packages/skins/ non-recursively', () => 
     assert.deepEqual(files, [
       join(dir, 'packages/dsh-skins/package.json'),
       join(dir, 'packages/dsh-ssh/package.json'),
-      join(dir, 'packages/skins/miku/package.json'),
-      join(dir, 'packages/skins/skin-center/package.json'),
     ])
   } finally {
     rmSync(dir, { recursive: true, force: true })

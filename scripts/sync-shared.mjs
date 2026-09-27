@@ -27,8 +27,13 @@ export const REPO_ROOT = resolve(SCRIPT_DIR, '..')
  * live exactly once under shared/; consumers import the committed copy.
  */
 // Consumers of the settings card trio: one list, three derivations below.
-const SETTINGS_CONSUMERS = ['dsh-pet', 'dsh-task-board', 'dsh-remote-web-ui', 'dsh-tool-describe-image','dsh-doctor', 'dsh-market']
+const SETTINGS_CONSUMERS = ['dsh-task-board', 'dsh-remote-web-ui', 'dsh-market', 'dsh-liangshen']
 const SETTINGS_CARD_CONSUMERS = [...SETTINGS_CONSUMERS]
+// Consumers of the entry-bound form fallback: every package whose card binds a
+// family settings namespace through the shared forms service. It is a superset
+// of the card trio — dsh-usage and dsh-session-archive carry their own cards but
+// bind the same way.
+const SETTINGS_ENTRY_FORM_CONSUMERS = [...SETTINGS_CONSUMERS, 'dsh-usage', 'dsh-session-archive']
 
 const MANIFEST = [
   {
@@ -47,6 +52,30 @@ const MANIFEST = [
     targets: SETTINGS_CARD_CONSUMERS.map(pkg => `packages/${pkg}/src/client/settings-card.module.css`),
   },
   {
+    // Family plugin-card seat: one card component, dispatched into whichever
+    // plugin-card seat the running host declares (the family group's list seat
+    // or the official keyed one), with the refusal logged instead of swallowed
+    // (issue #1589).
+    file: 'plugin-card-seat.ts',
+    source: 'shared/client/settings/plugin-card-seat.ts',
+    targets: [
+      'packages/dsh-remote-web-ui/src/client/plugin-card-seat.ts',
+      'packages/dsh-task-board/src/client/plugin-card-seat.ts',
+      'packages/dsh-liangshen/src/client/plugin-card-seat.ts',
+    ],
+  },
+  {
+    // Fallback settings transport for a page that serves no family binder: the
+    // form is bound to the profile entry id the Host actually serves, and
+    // rebound when the shared describe mirror answers with a different one of
+    // this package's rows. A one-shot guess left the card on an entry the Host
+    // does not serve, so every save was rejected (issue: the LiangShen card
+    // reported "the deployment did not accept these values" for every edit).
+    file: 'settings-entry-form.ts',
+    source: 'shared/client/settings/settings-entry-form.ts',
+    targets: SETTINGS_ENTRY_FORM_CONSUMERS.map(pkg => `packages/${pkg}/src/client/settings-entry-form.ts`),
+  },
+  {
     file: 'poll-guard.ts',
     source: 'shared/host/poll-guard.ts',
     targets: [
@@ -62,15 +91,12 @@ const MANIFEST = [
       'packages/dsh-usage/src/host/run-guarded.ts',
       'packages/dsh-task-board/src/host/run-guarded.ts',
       'packages/dsh-git-graph/src/host/run-guarded.ts',
-      'packages/dsh-pet/src/host/run-guarded.ts',
-      'packages/dsh-preset-center/src/host/run-guarded.ts',
     ],
   },
   {
     file: 'dsh-home.ts',
     source: 'shared/host/dsh-home.ts',
     targets: [
-      'packages/dsh-pet/src/dsh-home.ts',
       'packages/dsh-liangshen/src/dsh-home.ts',
       'packages/dsh-task-board/src/dsh-home.ts',
       'packages/dsh-plugin-manager/src/host/dsh-home.ts',
@@ -81,7 +107,6 @@ const MANIFEST = [
       'packages/dsh-git-graph/src/host/dsh-home.ts',
       'packages/dsh-usage/src/dsh-home.ts',
       'packages/dsh-session-archive/src/dsh-home.ts',
-      'packages/dsh-preset-center/src/dsh-home.ts',
     ],
   },
   {
@@ -94,31 +119,25 @@ const MANIFEST = [
     source: 'shared/host/legacy-migration.ts',
     targets: [
       'packages/dsh-plugin-manager/src/host/legacy-migration.ts',
-      'packages/dsh-doctor/src/agent/legacy-migration.ts',
     ],
   },
   {
     file: 'mount-once.ts',
     source: 'shared/host/mount-once.ts',
     targets: [
-      'packages/dsh-pet/src/mount-once.ts',
       'packages/dsh-ssh/src/mount-once.ts',
       'packages/dsh-remote-web-ui/src/mount-once.ts',
       'packages/dsh-liangshen/src/mount-once.ts',
       'packages/dsh-task-board/src/mount-once.ts',
       'packages/dsh-git-graph/src/mount-once.ts',
-      'packages/dsh-community-plugins/src/mount-once.ts',
       'packages/dsh-plugin-manager/src/mount-once.ts',
       'packages/dsh-web-settings/src/mount-once.ts',
-      'packages/dsh-tool-describe-image/src/mount-once.ts',
       'packages/dsh-skill-explorer/src/mount-once.ts',
-      'packages/dsh-doctor/src/mount-once.ts',
-      'packages/skins/skin-center/src/mount-once.ts',
       'packages/dsh-market/src/mount-once.ts',
       'packages/dsh-usage/src/mount-once.ts',
       'packages/dsh-session-archive/src/mount-once.ts',
       'packages/dsh-model-capabilities/src/mount-once.ts',
-      'packages/dsh-preset-center/src/mount-once.ts',
+      'packages/dsh-update/src/mount-once.ts',
     ],
   },
 
@@ -127,9 +146,6 @@ const MANIFEST = [
     source: 'shared/client/telemetry.ts',
     targets: [
       'packages/dsh-market/src/client/telemetry.ts',
-      'packages/dsh-pet/src/client/telemetry.ts',
-      'packages/skins/skin-center/src/client/telemetry.ts',
-      'packages/dsh-doctor/src/client/telemetry.ts',
       'packages/dsh-git-graph/src/client/telemetry.ts',
       'packages/dsh-plugin-manager/src/client/telemetry.ts',
       'packages/dsh-remote-web-ui/src/client/telemetry.ts',
@@ -137,8 +153,8 @@ const MANIFEST = [
       'packages/dsh-skill-explorer/src/client/telemetry.ts',
       'packages/dsh-ssh/src/client/telemetry.ts',
       'packages/dsh-task-board/src/client/telemetry.ts',
-      'packages/dsh-tool-describe-image/src/client/telemetry.ts',
       'packages/dsh-web-settings/src/client/telemetry.ts',
+      'packages/dsh-update/src/client/telemetry.ts',
     ],
   },
   {
@@ -147,63 +163,81 @@ const MANIFEST = [
     targets: ['packages/dsh-git-graph/src/client/sse-leader.ts'],
   },
   {
+    // Main-view Session derivation: the Client Session Controller dropped its
+    // global `current` selection at 0.1.6-alpha.2 in favour of per-source
+    // ownership counts, so every plugin that needs "the session the main view
+    // shows" shares this one derivation instead of guessing at a replacement.
+    file: 'main-session.ts',
+    source: 'shared/client/main-session.ts',
+    targets: [
+      'packages/dsh-task-board/src/client/main-session.ts',
+      'packages/dsh-session-id/src/client/main-session.ts',
+      'packages/dsh-liangshen/src/client/main-session.ts',
+      'packages/dsh-git-graph/src/client/main-session.ts',
+      'packages/dsh-session-archive/src/client/main-session.ts',
+    ],
+  },
+  {
     file: 'pair-access.ts',
     source: 'shared/host/pair-access.ts',
-    targets: ['packages/dsh-git-graph/src/host/pair-access.ts', 'packages/dsh-pet/src/pair-access.ts', 'packages/dsh-skill-explorer/src/pair-access.ts'],
+    targets: ['packages/dsh-git-graph/src/host/pair-access.ts', 'packages/dsh-skill-explorer/src/pair-access.ts', 'packages/dsh-usage/src/host/pair-access.ts'],
   },
   {
     file: 'loopback.ts',
     source: 'shared/host/loopback.ts',
-    targets: ['packages/dsh-ssh/src/loopback.ts', 'packages/dsh-git-graph/src/host/loopback.ts', 'packages/dsh-remote-web-ui/src/loopback.ts', 'packages/dsh-task-board/src/loopback.ts', 'packages/dsh-skill-explorer/src/loopback.ts', 'packages/dsh-pet/src/loopback.ts', 'packages/dsh-plugin-manager/src/host/loopback.ts', 'packages/dsh-tool-describe-image/src/loopback.ts', 'packages/dsh-doctor/src/host/loopback.ts', 'packages/dsh-market/src/loopback.ts', 'packages/dsh-usage/src/host/loopback.ts', 'packages/dsh-session-archive/src/host/loopback.ts', 'packages/dsh-preset-center/src/loopback.ts'],
+    targets: ['packages/dsh-ssh/src/loopback.ts', 'packages/dsh-git-graph/src/host/loopback.ts', 'packages/dsh-remote-web-ui/src/loopback.ts', 'packages/dsh-task-board/src/loopback.ts', 'packages/dsh-skill-explorer/src/loopback.ts', 'packages/dsh-plugin-manager/src/host/loopback.ts', 'packages/dsh-market/src/loopback.ts', 'packages/dsh-usage/src/host/loopback.ts', 'packages/dsh-session-archive/src/host/loopback.ts', 'packages/dsh-update/src/loopback.ts'],
   },
   {
     file: 'http.ts',
     source: 'shared/host/http.ts',
     targets: [
-      'packages/dsh-pet/src/http.ts',
       'packages/dsh-market/src/http.ts',
       'packages/dsh-skill-explorer/src/http.ts',
       'packages/dsh-web-settings/src/http.ts',
-      'packages/dsh-tool-describe-image/src/http.ts',
-      'packages/dsh-doctor/src/host/http.ts',
       'packages/dsh-git-graph/src/host/http.ts',
       'packages/dsh-ssh/src/http.ts',
       'packages/dsh-plugin-manager/src/host/http.ts',
-      'packages/skins/skin-center/src/http.ts',
       'packages/dsh-remote-web-ui/src/http.ts',
       'packages/dsh-task-board/src/http.ts',
       'packages/dsh-usage/src/host/http.ts',
       'packages/dsh-session-archive/src/host/http.ts',
-      'packages/dsh-preset-center/src/http.ts',
+      'packages/dsh-update/src/http.ts',
     ],
   },
   {
+    // The shared setup carries the browser-module loader and the storage
+    // repair Node 25 needs (see its header); a consumer of the shared vitest
+    // config runs this copy through setupFiles.
     file: 'vitest.setup.ts',
     source: 'shared/vitest.setup.ts',
     targets: [
       'packages/dsh-web-settings/vitest.setup.ts',
-      'packages/dsh-tool-describe-image/vitest.setup.ts',
       'packages/dsh-remote-web-ui/vitest.setup.ts',
+      'packages/dsh-git-graph/vitest.setup.ts',
+      'packages/dsh-task-board/vitest.setup.ts',
+      'packages/dsh-update/vitest.setup.ts',
     ],
   },
   {
-    file: 'sidebar-entry-core.ts',
-    source: 'shared/client/sidebar-entry-core.ts',
+    // Page-wide body mutation hub: exactly one document.body childList
+    // observer shared by every family consumer (sidebar entries, center
+    // panels, the aggregate shell shims), instead of one per plugin.
+    file: 'body-mutations.ts',
+    source: 'shared/client/body-mutations.ts',
     targets: [
-      'packages/dsh-ssh/src/client/sidebar-entry-core.ts',
-      'packages/dsh-task-board/src/client/sidebar-entry-core.ts',
-      'packages/dsh-skill-explorer/src/client/sidebar-entry-core.ts',
+      'packages/dsh-web-all/src/client/body-mutations.ts',
+      'packages/dsh-usage/src/client/body-mutations.ts',
     ],
   },
   {
-    // Center-column takeover lifecycle shared by the two family panels; the
-    // wrappers supply the panel tree, container attribute names, and CSS
-    // class (pinned by each package's CSS and the semantic-attrs contract).
-    file: 'panel-mount-core.ts',
-    source: 'shared/client/panel-mount-core.ts',
+    // Child-process output capture: byte accumulation with a single decode so
+    // a Windows console's code page (CP936/GBK) never becomes replacement
+    // characters, and a character split across two `data` reads is restored.
+    file: 'console-output.ts',
+    source: 'shared/host/console-output.ts',
     targets: [
-      'packages/dsh-ssh/src/client/panel-mount-core.ts',
-      'packages/dsh-task-board/src/client/panel-mount-core.ts',
+      'packages/dsh-plugin-manager/src/host/console-output.ts',
+      'packages/dsh-update/src/console-output.ts',
     ],
   },
 ]

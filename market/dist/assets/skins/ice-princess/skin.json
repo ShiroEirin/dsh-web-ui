@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schemas.linxin666.org/dsh-skin/v2.json",
+  "skinManifestVersion": 2,
+  "id": "ice-princess",
+  "name": "冰晶公主",
+  "nameEn": "Ice Crystal Princess",
+  "version": "1.1.0",
+  "author": "stushansusu",
+  "tagline": "暗色专用 · 冰殿 · 深蓝外袍 · 银灰描框 · 霜棱画框",
+  "description": "按桌面宠物「冰晶公主」的设定色走：主深蓝 #1A4B94 是外袍与蝴蝶结，中宝蓝 #3277D8 是衣饰与宝石，浅天蓝 #63B8F0 是发梢高光与裙摆渐变，亮白 #FFFFFF 是衣身与长袜，银灰 #D6E4F5 走腰带与镶边，瞳色 #589CE6 是那双眼睛。界面就照着这身衣服分：白铺面（衣身）、深蓝压底（外袍）、银灰走所有发丝级的分割线、宝蓝与天蓝只做宝石与高光，不铺面。整套唯一的暖色是肤色 #F9DDD0——只留在首屏霜环的正中心，冰里还亮着一点体温。",
+  "tags": [
+    "anime",
+    "ice",
+    "princess",
+    "sapphire",
+    "silver",
+    "snowflake",
+    "frost",
+    "companion",
+    "css-only",
+    "dual-theme"
+  ],
+  "accent": "#3277D8",
+  "order": 26,
+  "preview": {
+    "light": "preview/light.jpg",
+    "dark": "preview/dark.jpg"
+  },
+  "contributes": {
+    "stylesheet": "skin.css",
+    "patches": "patches.css",
+    "backgroundMedia": {
+      "light": {
+        "type": "image",
+        "src": "assets/bingjing-bg.webp",
+        "scrim": "linear-gradient(180deg, rgba(7,14,30,0.42) 0%, rgba(7,14,30,0.5) 45%, rgba(7,14,30,0.68) 100%)"
+      },
+      "dark": {
+        "type": "image",
+        "src": "assets/bingjing-bg.webp",
+        "scrim": "linear-gradient(180deg, rgba(7,14,30,0.42) 0%, rgba(7,14,30,0.5) 45%, rgba(7,14,30,0.68) 100%)"
+      }
+    }
+  },
+  "license": "Apache-2.0",
+  "attribution": "背景立绘与设定色来自作者本人的桌面宠物「冰晶公主」（jyn / bingjing-gongzhu）。"
+}

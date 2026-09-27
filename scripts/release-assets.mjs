@@ -5,8 +5,8 @@
  * bare `gh release create` leaves only GitHub's auto-generated source
  * archives).
  *
- * Walks the same package set as verify-version.mjs (packages/* and
- * packages/skins/*, non-recursive), reads each package.json name + version,
+ * Walks the same package set as verify-version.mjs (packages/*,
+ * non-recursive), reads each package.json name + version,
  * skips private packages (pnpm -r publish never pushes them, so they would
  * 404 forever — v0.2.4: dsh-chat-recovery), waits for every publishable
  * version to become readable on the npm registry (fresh publishes are

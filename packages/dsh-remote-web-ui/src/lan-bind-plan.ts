@@ -64,6 +64,28 @@ export interface AppliedFirewallState {
   port: number
 }
 
+/** The managed profile when neither the config nor the runtime names one. */
+export const DEFAULT_MANAGED_PROFILE = 'web'
+
+/**
+ * The profile whose `cordis.patch.yml` the LAN bind toggle manages. An
+ * explicit `profile` config wins; otherwise the launched profile the Host
+ * publishes is authoritative, because the DSH Desktop client boots the
+ * `desktop` profile without exporting `DSH_PROFILE` — an environment-only
+ * fallback edited `profiles/web` there, so the toggle looked applied while
+ * the running host never followed the block.
+ * @param configured - the explicit `profile` plugin config, when set.
+ * @param launched - the launched profile name the Host published, when available.
+ * @param env - the DSH_PROFILE environment value, when set.
+ */
+export function resolveManagedProfile(
+  configured: string | undefined,
+  launched: string | undefined,
+  env: string | undefined,
+): string {
+  return configured ?? launched ?? env ?? DEFAULT_MANAGED_PROFILE
+}
+
 /**
  * Whether the firewall rule must be (re)applied: only when the toggle or the
  * bound port moved since the last application. Keeps unrelated settings

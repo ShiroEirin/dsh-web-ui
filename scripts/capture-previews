@@ -7,8 +7,10 @@
  * Opens market/dist/preview.html (the v2 static renderer: the simulator
  * injects the skin's stylesheets into the official-facade snapshot and
  * paints declarative backgroundMedia; skin hooks JS is never executed) in headless Chromium and
- * screenshots each skin × {light, dark} into
- * packages/skins/skin-center/skins/<id>/preview/{light,dark}.png.
+ * screenshots each skin × {light, dark} into the skin source working tree,
+ * satellites/dsh-skins/skins/<id>/preview/{light,dark}.jpg. dsh-skins is a
+ * submodule and the market input pinned by its gitlink (market-inputs.lock.json),
+ * so the previews land in the repository that owns the skins.
  *
  * Requires playwright + its chromium browser:
  *   npm i -D playwright && npx playwright install chromium
@@ -22,7 +24,16 @@
  * Outputs 1440×900 JPEGs (quality 85) at device scale 1; the market cards
  * downscale them, so they stay crisp while the published package stays
  * small (the old 2880×1800 PNGs made dsh-client-ui-skin-center ~78MB).
- * Re-run after any skin change and commit the JPEGs with the skin source.
+ * Re-run after any skin change and commit the JPEGs in dsh-skins together with
+ * the skin source. To see them in the market before that commit is pinned here,
+ * read the submodule working tree:
+ *
+ *   pnpm market:fetch --local --force   # the working tree, not the pinned commit
+ *   pnpm market:build                   # unpinned content: do not commit market/dist
+ *
+ * Once the submodule gitlink on this branch names the new dsh-skins commit, refresh
+ * the committed copy with `pnpm market:fetch && pnpm market:build` and commit
+ * market/dist together with the gitlink.
  */
 
 const { execSync } = require('node:child_process')
@@ -32,6 +43,7 @@ const path = require('node:path')
 
 const ROOT = path.resolve(__dirname, '..')
 const MARKET_DIST = path.join(ROOT, 'market', 'dist')
+const SKINS_REPO = path.join(ROOT, 'satellites', 'dsh-skins')
 
 // --- tiny static server (fallback for environments where file:// screenshots
 // --- misbehave) -------------------------------------------------------------
@@ -97,9 +109,13 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 })
 
   for (const skin of skins) {
+    const skinDir = path.join(SKINS_REPO, 'skins', skin.id)
+    if (!fs.existsSync(skinDir)) {
+      throw new Error(`${skin.id}: ${path.relative(ROOT, skinDir)} not found — the dsh-skins submodule is missing or sits on another commit; run 'git submodule update --init satellites/dsh-skins'`)
+    }
+    const dir = path.join(skinDir, 'preview')
+    fs.mkdirSync(dir, { recursive: true })
     for (const theme of ['light', 'dark']) {
-      const dir = path.join(ROOT, 'packages', 'skins', 'skin-center', 'skins', skin.id, 'preview')
-      fs.mkdirSync(dir, { recursive: true })
       const url = `${base}/preview.html?skin=${skin.id}&theme=${theme}&chrome=0`
       await page.goto(url, { waitUntil: 'networkidle' })
       // 等皮肤样式注入完成：模拟器在 <html> 上写 data-dsh-skin（与真实加载器
@@ -131,13 +147,13 @@ async function main() {
       // 让预览与真实观感一致（需 --serve：模块加载走 http）。
       if (useServer && HOOK_SCENE_SKINS.indexOf(skin.id) !== -1) {
         await page.evaluate(async (id) => {
-          const mod = await import('/packages/skins/skin-center/skins/' + id + '/hooks.mjs?t=' + Date.now())
+          const mod = await import('/assets/skins/' + id + '/hooks.mjs?t=' + Date.now())
           const factory = mod && mod.default
           if (typeof factory !== 'function') return
           const hooks = factory()
           if (!hooks || typeof hooks.apply !== 'function') return
           hooks.apply({
-            assetBase: '/packages/skins/skin-center/skins/' + id,
+            assetBase: '/assets/skins/' + id,
             scopeAttr: id,
             theme: { get: () => (document.body.dataset.dsDarkTheme !== undefined ? 'dark' : 'light') },
             onCleanup: function () {},
@@ -153,7 +169,7 @@ async function main() {
 
   await browser.close()
   if (server) server.close()
-  console.log('done.')
+  console.log(`done. commit the previews in ${path.relative(ROOT, SKINS_REPO)}, then run: pnpm market:fetch --local --force && pnpm market:build`)
 }
 
 main().catch((err) => {

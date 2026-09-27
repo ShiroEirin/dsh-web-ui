@@ -90,14 +90,6 @@ export interface PluginFailuresSnapshot {
   safeMode: boolean
 }
 
-/** One deployment-configured logical product switch. */
-export interface PluginControlItem {
-  id: string
-  name: string
-  repository: string
-  state: 'enabled' | 'disabled' | 'mixed' | 'unavailable' | 'uninstalled'
-}
-
 /** Whether a decoded value is a non-array object. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -168,32 +160,6 @@ export function parseInstalledPlugin(value: unknown): InstalledPluginItem {
     throw new Error('plugin-manager: response must contain a plugin row')
   }
   return parsePlugin(value.plugin, 0)
-}
-
-/**
- * Validate and normalize a plugin-control `list` / `set-enabled` response value.
- * @param value - decoded but untrusted response value.
- * @returns the typed control items.
- */
-export function parsePluginControlSnapshot(value: unknown): PluginControlItem[] {
-  if (!isRecord(value) || !Array.isArray(value.controls)) {
-    throw new Error('plugin-manager: response must contain a controls array')
-  }
-  return value.controls.map((control, index) => {
-    if (!isRecord(control) || !isString(control.id) || !isString(control.name)
-      || !isString(control.repository)
-      || (control.state !== 'enabled' && control.state !== 'disabled'
-        && control.state !== 'mixed' && control.state !== 'unavailable'
-        && control.state !== 'uninstalled')) {
-      throw new Error(`plugin-manager: control row ${String(index)} is invalid`)
-    }
-    return {
-      id: control.id,
-      name: control.name,
-      repository: control.repository,
-      state: control.state,
-    }
-  })
 }
 
 /**

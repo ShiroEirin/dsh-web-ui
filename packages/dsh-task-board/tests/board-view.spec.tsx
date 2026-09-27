@@ -8,7 +8,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
-import { mountBoard } from '../src/client/board-mount.tsx'
+import { TaskBoardPanel } from '../src/client/native-panel.tsx'
 import { TaskBoard } from '../src/client/board/TaskBoard.tsx'
 import type { BoardController, ControllerSnapshot } from '../src/core/controller.ts'
 import type { TaskRecord } from '../src/core/tasks.ts'
@@ -16,11 +16,8 @@ import type { TaskRecord } from '../src/core/tasks.ts'
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const roots: Root[] = []
-let disposeMount: (() => void) | undefined
 
 afterEach(() => {
-  disposeMount?.()
-  disposeMount = undefined
   for (const root of roots.splice(0)) {
     act(() => { root.unmount() })
   }
@@ -224,17 +221,22 @@ describe('TaskBoard card drag-and-drop status changes (#1195)', () => {
   })
 })
 
-describe('mountBoard lifecycle & interaction (#506, #1233)', () => {
-  it('tags the injected board container with data-dsh-plugin', async () => {
-    const column = document.createElement('div')
-    column.setAttribute('data-pane', 'conversation')
-    document.body.appendChild(column)
+describe('TaskBoard panel page lifecycle & interaction (#506, #1233)', () => {
+  it('tags the panel page container with the L2 semantic anchor and plugin id', async () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    roots.push(root)
 
-    await act(async () => { disposeMount = mountBoard(fakeController()) })
+    // The layout mounts this component as the keyed 'main' page; it carries the
+    // container-query context the board's responsive rules read, so the board
+    // lays out against the center column instead of the viewport.
+    await act(async () => { root.render(<TaskBoardPanel controller={fakeController()} />) })
 
-    const view = column.querySelector('[data-dsh-taskboard-view]')
+    const view = container.querySelector('[data-dsh-taskboard-view]')
     expect(view).not.toBeNull()
     expect(view!.getAttribute('data-dsh-plugin')).toBe('task-board')
+    expect(view!.querySelector('[data-dsh-taskboard-board]')).not.toBeNull()
   })
 
   it('clicking the back button calls controller.closeBoard() (#1233)', async () => {
@@ -253,27 +255,5 @@ describe('mountBoard lifecycle & interaction (#506, #1233)', () => {
     expect(backButton).not.toBeNull()
     await act(async () => { backButton.click() })
     expect(closed).toBe(1)
-  })
-
-  it('self-heals and remounts when the conversation column is replaced (#1233)', async () => {
-    let column = document.createElement('div')
-    column.setAttribute('data-pane', 'conversation')
-    document.body.appendChild(column)
-
-    const controller = fakeController({ boardOpen: true })
-    await act(async () => { disposeMount = mountBoard(controller) })
-    expect(column.querySelector('[data-dsh-taskboard-view]')).not.toBeNull()
-
-    // Replace the column element in DOM (e.g. React re-render of AppFrame)
-    column.remove()
-    column = document.createElement('div')
-    column.setAttribute('data-pane', 'conversation')
-    document.body.appendChild(column)
-
-    await act(async () => {
-      // Trigger MutationObserver callback
-      document.body.appendChild(document.createElement('span'))
-    })
-    expect(column.querySelector('[data-dsh-taskboard-view]')).not.toBeNull()
   })
 })

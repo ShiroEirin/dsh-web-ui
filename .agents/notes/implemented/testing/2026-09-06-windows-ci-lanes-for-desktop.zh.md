@@ -2,6 +2,8 @@
 
 Status: implemented
 
+被取代（2026-09-24，见[移除本仓库的 Electron 桌面应用](../simplification/2026-09-24-remove-electron-desktop-app.zh.md)）：`desktop-windows` lane 与 `pnpm test:desktop` 步骤随桌面载荷一并删除。
+
 ## Problem
 
 CI 此前从未在 Windows 上执行过任何东西：主 lane 跑在 ubuntu，桌面发布 job 在 macOS 交叉构建 Windows 安装包，win 载荷只能做存在性检查（脚本原话「it cannot execute on macOS」）。桌面辅助代码编码的 win32 语义（Path/PATH 大小写归一、NTFS junction、Windows 临时目录布局）与载荷的真实启动路径都没有自动化证据，Windows 兼容性靠人工运行兜底。

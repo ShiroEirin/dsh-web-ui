@@ -1,5 +1,5 @@
 import type { TaskUpdatePatch } from './core/use-cases/task-update.ts'
-import { isTaskPermission, isTaskStatus, type NewTaskInput, type TaskPermission, type TaskRecord, type TaskStatus } from './core/tasks.ts'
+import { isTaskPermission, isTaskStatus, isTaskTagList, type NewTaskInput, type TaskPermission, type TaskRecord, type TaskStatus } from './core/tasks.ts'
 import { parseLedger } from './core/store.ts'
 import { sanitizeFreezeSnapshot, type FreezeSnapshot } from './core/freeze-snapshot.ts'
 import { sanitizeHandover, type TaskHandoverInput } from './core/handover.ts'
@@ -40,6 +40,16 @@ export interface TaskBoardSnapshot {
   power: TaskBoardPowerSnapshot
   /** Session-default permission the confirmation gate compares against. */
   sessionDefaultPermission?: TaskPermission
+  /**
+   * Deployment subtask depth limit (1..3). The browser mirrors it to enable or
+   * disable the subtask controls; the Host ledger is the authority.
+   */
+  maxSubtaskDepth?: number
+  /**
+   * Whether this deployment serves the Agent Teams service, so a task may opt
+   * into team execution (Team Lead session plus one teammate per subtask).
+   */
+  teamRunAvailable?: boolean
 }
 
 /** SSE event frame: revision/scheduler/power only, never the task list. */
@@ -47,6 +57,40 @@ export interface TaskBoardEventPayload {
   revision: number
   scheduler: TaskBoardSchedulerSnapshot
   power: TaskBoardPowerSnapshot
+}
+
+/**
+ * Request body of `POST {TASK_BOARD_API_PREFIX}/parse` (issue #1540): the text
+ * the user pasted plus the `provider/model` route that should parse it.
+ */
+export interface TaskBoardParseRequest {
+  text: string
+  /** Qualified route from the model picker; absent when no route was chosen. */
+  model?: string
+}
+
+/** Draft fields a parse returns; the user reviews them before creating the task. */
+export interface TaskBoardParseDraft {
+  title: string
+  description: string
+  prompt: string
+}
+
+/** Strict parse of a `/parse` request body; undefined rejects the request. */
+export function parseTaskParseRequest(value: unknown): TaskBoardParseRequest | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const record = value as { text?: unknown; model?: unknown }
+  if (typeof record.text !== 'string' || record.text.trim() === '') return undefined
+  if (record.model !== undefined && typeof record.model !== 'string') return undefined
+  const model = typeof record.model === 'string' ? record.model.trim() : ''
+  return { text: record.text, ...(model === '' ? {} : { model }) }
+}
+
+/** Whether a decoded reply carries the three draft strings the form accepts. */
+export function isTaskParseDraft(value: unknown): value is TaskBoardParseDraft {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as { title?: unknown; description?: unknown; prompt?: unknown }
+  return typeof record.title === 'string' && typeof record.description === 'string' && typeof record.prompt === 'string'
 }
 
 export type TaskBoardAction =
@@ -61,6 +105,7 @@ export type TaskBoardAction =
   | { kind: 'run'; taskId: string }
   | { kind: 'rerun'; taskId: string }
   | { kind: 'confirm-permission'; taskId: string }
+  | { kind: 'set-parent'; taskId: string; parentId: string | null }
 
 export interface TaskBoardActionEnvelope {
   requestId: string
@@ -101,6 +146,10 @@ function optionalFiniteNumber(value: unknown): boolean {
 }
 
 function validImportedKnownFields(value: Record<string, unknown>): boolean {
+  // Tags are validated (not repaired) on the import path: an imported task
+  // must carry a well-formed list or none at all, so a hand-edited export
+  // cannot smuggle a malformed tag past the gate.
+  if (value.tags !== undefined && !isTaskTagList(value.tags)) return false
   if (value.schedule !== undefined) {
     const schedule = record(value.schedule)
     if (schedule === undefined || typeof schedule.enabled !== 'boolean' || typeof schedule.cron !== 'string') return false
@@ -154,6 +203,9 @@ function importedTask(value: unknown): TaskRecord | undefined {
         lastTriggeredAt: task.schedule.lastTriggeredAt,
       },
     }),
+    // The lineage link rides the import; the Host repairs a link whose parent
+    // is missing from the merged ledger instead of trusting the export.
+    ...(task.parentId === undefined ? {} : { parentId: task.parentId }),
     ...(task.workspaceId === undefined ? {} : { workspaceId: task.workspaceId }),
     ...(task.mode === undefined ? {} : { mode: task.mode }),
     ...(task.permission === undefined ? {} : { permission: task.permission }),
@@ -161,6 +213,7 @@ function importedTask(value: unknown): TaskRecord | undefined {
     ...(task.archivedAt === undefined ? {} : { archivedAt: task.archivedAt }),
     ...(task.freeze === undefined ? {} : { freeze: task.freeze }),
     ...(task.handover === undefined ? {} : { handover: task.handover }),
+    ...(task.tags === undefined ? {} : { tags: task.tags }),
     // 安全门（对抗场景 b）：import 不是人工确认动作，确认戳一律剥除——
     // 高于会话默认权限的绑定经 import 进入后必须重新武装 confirm-permission 门。
   }
@@ -194,11 +247,14 @@ function handoverPayload(value: unknown): TaskHandoverInput | undefined {
 
 function createInput(value: unknown): value is NewTaskInput {
   const input = record(value)
-  if (input === undefined || !exactKeys(input, ['title', 'description', 'prompt', 'workspaceId', 'mode', 'permission', 'schedule', 'freeze', 'handover', 'model', 'reuseSession'])) return false
+  if (input === undefined || !exactKeys(input, ['title', 'description', 'prompt', 'parentId', 'workspaceId', 'mode', 'permission', 'schedule', 'freeze', 'handover', 'model', 'reuseSession', 'teamRun', 'tags'])) return false
+  if (input.parentId !== undefined && (typeof input.parentId !== 'string' || input.parentId.trim() === '')) return false
   if (typeof input.title !== 'string' || typeof input.description !== 'string' || typeof input.prompt !== 'string') return false
   if (!optionalString(input.workspaceId) || !optionalString(input.mode) || !optionalString(input.model)) return false
   if (input.reuseSession !== undefined && typeof input.reuseSession !== 'boolean') return false
+  if (input.teamRun !== undefined && typeof input.teamRun !== 'boolean') return false
   if (input.permission !== undefined && !isTaskPermission(input.permission)) return false
+  if (input.tags !== undefined && !isTaskTagList(input.tags)) return false
   if (input.freeze !== undefined && freezePayload(input.freeze) === undefined) return false
   if (input.handover !== undefined && handoverPayload(input.handover) === undefined) return false
   if (input.schedule !== undefined) {
@@ -211,13 +267,16 @@ function createInput(value: unknown): value is NewTaskInput {
 
 function updatePatch(value: unknown): boolean {
   const patch = record(value)
-  if (patch === undefined || !exactKeys(patch, ['title', 'description', 'prompt', 'workspaceId', 'mode', 'permission', 'freeze', 'handover', 'model', 'reuseSession'])) return false
+  if (patch === undefined || !exactKeys(patch, ['title', 'description', 'prompt', 'workspaceId', 'mode', 'permission', 'freeze', 'handover', 'model', 'reuseSession', 'teamRun', 'tags'])) return false
   // null (or false) clears the reuse opt-in; only a real boolean is accepted.
   if (patch.reuseSession !== undefined && patch.reuseSession !== null && typeof patch.reuseSession !== 'boolean') return false
+  if (patch.teamRun !== undefined && patch.teamRun !== null && typeof patch.teamRun !== 'boolean') return false
   for (const key of ['title', 'description', 'prompt', 'workspaceId', 'mode', 'model'] as const) {
     if (!optionalString(patch[key])) return false
   }
   if (patch.permission !== undefined && !isTaskPermission(patch.permission)) return false
+  // null clears the label set; a present array must be a well-formed list.
+  if (patch.tags !== undefined && patch.tags !== null && !isTaskTagList(patch.tags)) return false
   // null clears the snapshot; an object must pass the freeze gate.
   if (patch.freeze !== undefined && patch.freeze !== null && freezePayload(patch.freeze) === undefined) return false
   // Same convention for the handover bundle.
@@ -283,6 +342,13 @@ function parseEnvelopeAction(value: unknown): TaskBoardActionEnvelope | undefine
         ? { ...patch, ...(freeze === patch.freeze ? {} : { freeze }), ...(handover === patch.handover ? {} : { handover }) }
         : patch
       return { requestId: envelope.requestId, action: { kind: 'update', taskId, patch: sanitized } }
+    }
+    case 'set-parent': {
+      if (!exactKeys(action, ['kind', 'taskId', 'parentId'])) return undefined
+      if (taskId === undefined) return undefined
+      const parentId = action.parentId
+      if (parentId !== null && (typeof parentId !== 'string' || parentId.trim() === '')) return undefined
+      return { requestId: envelope.requestId, action: { kind: 'set-parent', taskId, parentId } }
     }
     case 'set-schedule':
       if (!exactKeys(action, ['kind', 'taskId', 'patch'])) return undefined

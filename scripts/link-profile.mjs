@@ -12,6 +12,15 @@
  * children are transitively resolved, and repair links left over from older
  * manual setups.
  *
+ * The three satellite repositories under satellites/ are linked the same way.
+ * The aggregate mounts them as external rows. The profile-layer link wins for
+ * profile-level rows, but the aggregate's own dependency links (pnpm store
+ * tarballs) would still win for the rows the aggregate's patch contributes, so
+ * those links are repointed at the local checkouts too when a built satellite
+ * satisfies the declared range (see decideAggregateRelink). Their lib/ has to
+ * exist: `pnpm install` inside a satellite builds it through its prepare
+ * script.
+ *
  * Idempotent and safe to rerun: stale links pointing elsewhere are replaced,
  * new packages are added, unrelated entries are left untouched. Real files or
  * directories at a link path are never removed — they are reported and
@@ -59,7 +68,7 @@ function report(msg) {
 /** Family packages publish under this scope; everything else under packages/ is not ours to link. */
 const FAMILY_SCOPE = '@linxin666/'
 
-/** Every family package: packages/* and packages/skins/* that has a package.json with a name. */
+/** Every family package: packages/* that has a package.json with a name. */
 function familyPackages() {
   const found = []
   for (const { dir, pkgPath } of walkFamilyPackages(REPO_ROOT)) {
@@ -72,7 +81,137 @@ function familyPackages() {
   return found
 }
 
-/** External non-family dependencies required by aggregate packages (e.g. dsh-better-sidebar, @mlgbnb/dsh-archive-manager). */
+/**
+ * The satellite packages: satellites/<repo>/ that publish under the family
+ * scope. They are not part of this repository's release —
+ * family-packages.mjs only walks packages/ — but they are rows in the
+ * aggregate, so a built local checkout has to be linked here like the
+ * in-repo family.
+ */
+export function satellitePackages(root = REPO_ROOT) {
+  const base = join(root, 'satellites')
+  if (!existsSync(base)) return []
+  const found = []
+  for (const entry of readdirSync(base).sort()) {
+    const dir = join(base, entry)
+    const pkgPath = join(dir, 'package.json')
+    if (!existsSync(pkgPath)) continue
+    let name
+    try { name = JSON.parse(readFileSync(pkgPath, 'utf8')).name } catch { continue }
+    if (name && name.startsWith(FAMILY_SCOPE)) {
+      found.push({ name: name.slice(FAMILY_SCOPE.length), dir })
+    }
+  }
+  return found
+}
+
+/**
+ * Repair the aggregate's family-scope dependency links that pnpm resolved to
+ * registry tarballs when a built satellite checkout exists locally.
+ *
+ * The aggregate depends on the satellite packages by semver range, so
+ * pnpm install links them into its node_modules from the store. The desktop
+ * host resolves the aggregate's external plugin rows from the aggregate's
+ * own node_modules, which means an edit inside satellites/<repo> never
+ * reaches the running GUI until a version is published. When the local
+ * checkout carries the satellite with a built lib/, repoint the symlink at
+ * it — the same choice the profile-layer links above make. Only existing
+ * pnpm-store symlinks are replaced; a real file or directory is never
+ * touched, and the satellite must satisfy the declared semver range so the
+ * link stays version-consistent.
+ */
+export function decideAggregateRelink(existing, currentTarget, satelliteDir, declaredRange) {
+  if (existing !== 'symlink') return 'skip-report'
+  if (!/node_modules\/\.pnpm\//.test(currentTarget ?? '')) return 'keep'
+  const pkgPath = join(satelliteDir, 'package.json')
+  if (!existsSync(pkgPath) || !existsSync(join(satelliteDir, 'lib', 'index.js'))) return 'skip-report'
+  let version
+  try { version = JSON.parse(readFileSync(pkgPath, 'utf8')).version } catch { return 'skip-report' }
+  if (typeof version !== 'string' || !satifies(version, declaredRange)) return 'skip-report'
+  return 'replace'
+}
+
+/**
+ * Minimal semver caret/tilde/x-range/exact satisfaction for the relink guard.
+ * Covers the range shapes the aggregate declares ('^0.4.2', '||' alternations,
+ * exact pins); prerelease suffixes compare by their release core, which is the
+ * pragmatic choice for a local-checkout link guard.
+ */
+function satifies(version, range) {
+  if (typeof range !== 'string' || range.length === 0) return false
+  const parse = (v) => v.replace(/^v/, '').split('-')[0].split('.').map((n) => parseInt(n, 10))
+  const cmp = (a, b) => {
+    for (let i = 0; i < 3; i++) {
+      if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0) ? -1 : 1
+    }
+    return 0
+  }
+  const gte = (a, b) => cmp(a, b) >= 0
+  const lt = (a, b) => cmp(a, b) < 0
+  const bump = (base, index) => base.map((n, i) => (i === index ? n + 1 : 0))
+  const v = parse(version)
+  if (v.length !== 3 || v.some((n) => Number.isNaN(n))) return false
+  return range.split('||').map((s) => s.trim()).filter(Boolean).some((part) => {
+    if (part.startsWith('^')) {
+      // ^1.2.3 -> [2,0,0); ^0.4.2 -> [0,5,0); ^0.0.3 -> [0,0,4)
+      const base = parse(part.slice(1))
+      const upper = bump(base, base[0] > 0 ? 0 : base[1] > 0 ? 1 : 2)
+      return gte(v, base) && lt(v, upper)
+    }
+    if (part.startsWith('~')) {
+      const base = parse(part.slice(1))
+      return gte(v, base) && lt(v, bump(base, 1))
+    }
+    if (/^[x*X]$/.test(part)) return true
+    const xRange = part.match(/^(\d+|[xX*])(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?$/)
+    if (xRange !== null) {
+      const groups = xRange.slice(1)
+      const base = groups.map((n) => (n === undefined || /[xX*]/.test(n) ? 0 : parseInt(n, 10)))
+      const firstX = groups.findIndex((n) => n === undefined || /[xX*]/.test(n))
+      return gte(v, base) && lt(v, bump(base, firstX === -1 ? 2 : firstX))
+    }
+    return cmp(v, parse(part)) === 0
+  })
+}
+
+/** Replace pnpm-store links in the aggregate's node_modules with local satellites. */
+function relinkAggregateSatellites(DRY) {
+  const aggregateNm = join(REPO_ROOT, 'packages', 'dsh-web-all', 'node_modules', FAMILY_SCOPE)
+  if (!existsSync(aggregateNm)) return 0
+  const satellites = satellitePackages()
+  const pkgJson = JSON.parse(readFileSync(join(REPO_ROOT, 'packages', 'dsh-web-all', 'package.json'), 'utf8'))
+  const deps = pkgJson.dependencies || {}
+  let changed = 0
+  for (const { name, dir } of satellites) {
+    if (deps['@linxin666/' + name] === undefined) continue
+    const linkPath = join(aggregateNm, name)
+    let existing = 'missing'
+    let current = null
+    try {
+      const st = lstatSync(linkPath)
+      existing = st.isSymbolicLink() ? 'symlink' : 'other'
+      if (existing === 'symlink') {
+        try { current = readlinkSync(linkPath) } catch {}
+      }
+    } catch {}
+    const action = decideAggregateRelink(existing, current, dir, deps['@linxin666/' + name])
+    if (action !== 'replace') continue
+    if (DRY) {
+      report(`would relink aggregate ${name} -> ${relative(aggregateNm, dir)}`)
+    } else {
+      unlinkSync(linkPath)
+      symlinkSync(relative(aggregateNm, dir), linkPath)
+      report(`relinked aggregate ${name} -> ${relative(aggregateNm, dir)} (was a pnpm store link)`)
+    }
+    changed++
+  }
+  if (changed > 0) {
+    report(`${changed} aggregate link(s) ${DRY ? 'would be ' : ''}updated`)
+  }
+  return changed
+}
+
+/** External non-family dependencies an aggregate package declares as bundled plugin rows. */
 function externalPackages() {
   const dshWebUiAllDir = join(REPO_ROOT, 'packages', 'dsh-web-all')
   const pkgJsonPath = join(dshWebUiAllDir, 'package.json')
@@ -132,7 +271,10 @@ function main() {
   const LINK_DIR = join(PROFILES_NM, FAMILY_SCOPE)
 
   const packages = familyPackages()
+  const satellites = satellitePackages()
   report(`found ${packages.length} family package(s) under packages/`)
+  if (satellites.length) report(`found ${satellites.length} satellite package(s) under satellites/`)
+  packages.push(...satellites)
   if (DRY) report('--dry-run: no changes will be made')
 
   if (!existsSync(LINK_DIR)) {
@@ -209,7 +351,7 @@ function main() {
 
   report(changed === 0 ? 'nothing to do' : `${changed} link(s) ${DRY ? 'would be ' : ''}updated`)
 
-  // Also link external dependencies required by dsh-web-all (e.g. @mlgbnb/dsh-archive-manager, dsh-better-sidebar)
+  // Also link the external dependencies dsh-web-all declares as bundled plugin rows
   const extPkgs = externalPackages()
   if (extPkgs.length) {
     report(`found ${extPkgs.length} external package(s) from dsh-web-all`)
@@ -256,6 +398,10 @@ function main() {
       report(`${extChanged} external link(s) ${DRY ? 'would be ' : ''}updated`)
     }
   }
+
+  // Keep the aggregate's satellite rows on the local checkouts, so satellite
+  // edits reach the running GUI without a release (see decideAggregateRelink).
+  relinkAggregateSatellites(DRY)
 }
 
 // Run only when invoked as the entry script, so the module can be imported

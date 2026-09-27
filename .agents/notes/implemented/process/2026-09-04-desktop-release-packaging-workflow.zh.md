@@ -2,6 +2,8 @@
 
 状态：已实施
 
+被取代（2026-09-24，见[移除本仓库的 Electron 桌面应用](../simplification/2026-09-24-remove-electron-desktop-app.zh.md)）：`desktop-release.yml` 随桌面应用一并删除。
+
 ## 问题
 
 桌面安装包此前只有本地构建：没有任何机制把它们挂到 GitHub Release，因此 v0.3.14 发布时没有桌面应用——尽管 Electron 骨架和 rc.1 运行时载荷都已就绪。用户要求由 Action 打包桌面产物并挂到这个 release 上。

@@ -9,48 +9,50 @@
 - `dev` 是开发分支（集成分支）：本地开发与远程 PR 统一以 `dev` 为
   目标分支；`dev` 上测试通过后，由维护者合入 `main`。
 - PR 打开后由 `.github/workflows/auto-assign-pr-reviewers.yml` 按 PR 描述中
-  勾选的「PR 类别」自动分派：把对应协作者设为负责人并请求其审查（渲染器 /
-  Wallpaper Engine / WebGL 相关 PR 由 Aa728848 负责并审查），路由规则见
-  [PR_TRIAGE.md](PR_TRIAGE.md)。
+  勾选的「PR 类别」自动分派：把对应协作者设为负责人并请求其审查，未命中任何
+  类别时交给 `defaultRoute` 兜底；Wallpaper Engine / WebGL / 渲染器代码在
+  [dsh-skins](https://github.com/zhu1090093659/dsh-skins) 仓，本仓只保留其
+  Issue 类别。路由规则见 [PR_TRIAGE.md](PR_TRIAGE.md)。
 - 合并门禁：`dev` / `main` 要求 3 个必需检查全绿，**不要求人工审批**；
   具有 write 权限的协作者检查通过后即可自行合并（含自己的 PR），无需等待
   维护者审批。
 - `main` 是稳定分支：只接收从 `dev` 合入且测试通过的代码。
 - 提 PR 一律以 `dev` 为 base，不要以 `main` 为 base。
 
-## PR 范围：只接受四类内容贡献
+## PR 范围：内容贡献全部在独立仓
 
-本仓库对外部贡献者**只接受**以下四类 PR：
+本仓库对外部贡献者**不再接受**任何直接 PR。四类内容贡献都在各自的独立仓提交
+（下表），其余改动请先提 Issue 讨论；插件功能、文档、测试、维护等范围内的 PR 同样
+不接受直接提交。
 
 - **插件申请（社区插件索引登记）**：第三方插件由作者在自己的仓库按官方
-  cordis bundle 标准实现，向本仓库申请登记进社区插件索引——在
-  `packages/dsh-community-plugins/community.json` 追加条目并重新生成
-  注册表，随 PR 提交；
-- **皮肤增加（新皮肤收录）**：新皮肤作为纯资产收录进皮肤中心
-  （`packages/skins/skin-center/skins/<id>/`），收录到我们部署的
-  dsh-market.com 服务器（Workshop 商店）供用户按需安装——**默认安装不带**：
-  skin-center npm 包只随附 `blue-fantasy`，新皮肤由用户经 Workshop
-  按需安装到 `$DSH_HOME/skins/<id>/`。**低质皮肤 PR 不予接受**（没有
+  cordis bundle 标准实现，然后向
+  [dsh-community-plugins](https://github.com/zhu1090093659/dsh-community-plugins)
+  仓提交索引登记——在该仓根目录的 `community.json` 追加条目，运行
+  `pnpm community:check` 校验后随该仓 PR 提交；
+- **皮肤增加（新皮肤收录）**：新皮肤作为纯资产提交到
+  [dsh-skins](https://github.com/zhu1090093659/dsh-skins) 仓的 `skins/<id>/`，
+  收录到我们部署的 dsh-market.com 服务器（Workshop 商店）供用户按需安装——
+  **默认安装不带**：skin-center npm 包只随附 `blue-fantasy`，新皮肤由用户经
+  Workshop 按需安装到 `$DSH_HOME/skins/<id>/`。**低质皮肤 PR 不予接受**（没有
   背景图、仅简单改色且样式存在明显问题，如暗色缺失、对比度不足、布局
   错位），请完善样式并附亮 / 暗试穿截图后再提交；
-- **宠物增加（新宠物收录）**：按宠物契约新增
-  `packages/dsh-pet/assets/<id>/`（`pet.json` manifest + 图集，可选
-  语音包 / 预览 / 装饰），随 PR 收录为内置宠物。
+- **宠物增加（新宠物收录）**：按宠物契约在
+  [dsh-pet](https://github.com/zhu1090093659/dsh-pet) 仓的 `assets/<id>/` 新增
+  （`pet.json` manifest + 图集，可选语音包 / 预览 / 装饰），随该仓 PR 提交。
 - **预设增加（agent 预设收录）**：按
-  [presets README](packages/dsh-preset-center/presets/README.md) 的发布格式新增
-  `packages/dsh-preset-center/presets/<id>/`（`preset.yml` + `agent.cordis.yml`）
-  并登记 `catalog.json`，收录到我们部署的 dsh-market.com 服务器（Workshop）供
-  用户按需安装——**默认安装不带**。预设是代码：composition 可挂载 npm 插件、
-  加载预设目录内文件、执行 `!!js` 表达式，启用后运行在 DSH 宿主进程内，评审
-  重点审核 composition 实际加载内容与用途。
+  [dsh-presets](https://github.com/zhu1090093659/dsh-presets) 仓的
+  [presets README](https://github.com/zhu1090093659/dsh-presets/blob/main/presets/README.md)
+  发布格式新增 `presets/<id>/`（`preset.yml` + `agent.cordis.yml`）并登记
+  `catalog.json`，收录到我们部署的 dsh-market.com 服务器（Workshop）供用户按需
+  安装——**默认安装不带**。预设是代码：composition 可挂载 npm 插件、加载预设
+  目录内文件、执行 `!!js` 表达式，启用后运行在 DSH 宿主进程内，评审重点审核
+  composition 实际加载内容与用途。
 
-除上述四类外的所有改动（bug 修复、功能增强、全新功能、文档、测试、
-维护等）**不接受直接 PR**，请先在
-[Issues](https://github.com/zhu1090093659/dsh-web/issues) 提 issue
-讨论，确认后由维护者处理。非四类范围的 PR 会被
-`.github/workflows/reject-non-content-pr.yml` 自动关闭（仅文档类 PR 由
-`reject-docs-pr.yml` 处理）；仓库所有者、机器人与拥有写权限的协作者
-（维护者）的 PR 不受此限制。
+按上述类别向本仓提交的 PR 会被
+`.github/workflows/reject-non-content-pr.yml` 关闭并重定向到对应独立仓；其余
+范围外的 PR 同样被自动关闭（仅文档类 PR 由 `reject-docs-pr.yml` 处理）；仓库
+所有者、机器人与拥有写权限的协作者（维护者）的 PR 不受此限制。
 
 ## 开发前置
 
@@ -72,6 +74,31 @@ pnpm -r build
 pnpm typecheck && pnpm test && pnpm docs:check   # 提交前必过
 ```
 
+三个卫星仓（`dsh-skins` / `dsh-pet` / `dsh-community-plugins`）以 git submodule 挂在 `satellites/`，市场构建按各自的 gitlink 固定提交拉取内容。默认不需要检出：要就地改卫星仓内容时才 `git submodule update --init satellites/<仓名>`。该命令把工作树停在 gitlink 固定的提交上（detached HEAD），要提交改动先切到该仓的默认分支：`git -C satellites/<仓名> checkout main`。检出停在该固定提交时 `pnpm market:fetch` 直接复制该工作树；检出离开固定提交（切了分支，或提交了自己的改动）时，默认运行会明确提示并仍按固定提交构建，`pnpm market:fetch --local` 才读取该工作树——这样构建出的 `market/dist` 来自未固定内容，不得提交。
+
+**卫星仓的改动必须在卫星仓提交。** `satellites/<仓名>` 是独立的 git 仓库，
+在本仓写下的文件改动不会被本仓的 `git add` 收走：只 `git add` 本仓会把它们的
+工作树留在 dirty 状态（`git status` 显示 `m satellites/<仓名>`），下次检出/清理
+就可能丢失。改完卫星仓（含随源码一起重新生成的 `lib/`）后：
+
+1. 在卫星仓提交：`git -C satellites/<仓名> add -A && git -C satellites/<仓名> commit`；
+2. **把该提交推到卫星仓的远程**：`git -C satellites/<仓名> push origin main`；
+3. 回到本仓把新的 gitlink 一起提交：`git add satellites/<仓名> && git commit`。
+
+三步缺一不可——只提交卫星仓，本仓仍指向旧提交，其他检出与市场构建读到的还是改动前的
+内容；只提交 gitlink 则根本不成立（卫星仓的提交才是被固定的对象）。漏掉第 2 步最隐蔽：
+本地检出的工作树停在该提交上，`pnpm market:fetch` 直接复制它、构建照常成功，但拉取内容时
+的 tarball 回退只按 SHA 寻址该提交，于是只存在于本地的提交让每一个全新克隆与 CI 的
+`pnpm market:fetch` 得到 `HTTP 404`——移动钉扎的那一次运行成功，掩盖了后续所有运行的失败。
+卫星仓内改动的验收与门禁在该仓自己的 CI 跑（见该仓 `AGENTS.md`）。
+
+**桌面宿主读到的是哪份卫星副本**：全家桶聚合包按 semver 声明这四个卫星包
+（`^0.4.2`），`pnpm install` 因此把聚合包 `node_modules/@linxin666` 下的符号链接指到
+pnpm store 的已发布 tarball。桌面宿主解析聚合 patch 行贡献的外部行时从聚合包自身的
+node_modules 出发——仅提交卫星仓并重启，GUI 加载的仍是发布版旧代码。在本地检出开发
+卫星内容后重跑 `node scripts/link-profile.mjs`：它会把这些 store 链接改指到本地卫星
+（仅当该卫星已构建 `lib/` 且版本满足声明的范围），随后重启 DSH 生效。
+
 ## 提交规范
 
 提交信息格式 `type(scope): subject`，type 用 `feat` / `fix` / `chore` /
@@ -82,8 +109,8 @@ active panel (#76 #87)`。提交信息禁止 emoji（全仓规则）。
 ## 提 PR 前检查清单
 
 1. **门禁全绿**：`pnpm typecheck` / `pnpm test` / `pnpm test:scripts` /
-   `pnpm docs:check`；涉及聚合包、市场、皮肤中心时另跑
-   `pnpm aggregate:check` / `pnpm market:check` / `pnpm skin-center:check`。
+   `pnpm docs:check`；涉及聚合包或市场时另跑
+   `pnpm aggregate:check` / `pnpm market:check`。
 2. **文档同步**：改包 README 必须同 PR 维护中英双语三件套（`README.md` +
    `README.zh.md` + `README.i18n.yaml`），改完任一侧后重录配对记录：
 
@@ -110,44 +137,41 @@ pnpm docs:write-pair <包目录名>   # 如 dsh-ssh 或 xp
 
 插件在贡献者自己的仓库实现（官方 cordis bundle 标准：`dsh.bundle.patch`
 指向 `cordis.patch.yml`、`dsh.client` 浏览器半区、仅基于
-`@deepseek-ai/*` NPM SDK，不修改 DSH 源码），然后按
-[docs/plugins.md](docs/plugins.md) 的登记说明在
-`packages/dsh-community-plugins/community.json` 追加条目，运行
-`node scripts/community-index` 重新生成注册表并提交（含生成的
-`src/client/generated/community.ts`），随 PR 提交，PR 类别勾选
-「社区插件索引」。
+`@deepseek-ai/*` NPM SDK，不修改 DSH 源码），然后向
+[dsh-community-plugins](https://github.com/zhu1090093659/dsh-community-plugins)
+仓提交索引登记：在该仓根目录的 `community.json` 追加条目，运行
+`pnpm community:check` 校验后随该仓 PR 提交。
 
 ### 皮肤增加（新皮肤收录）
 
-`node scripts/dsh-skin-new` 生成纯资产骨架（无 package.json），
-`node scripts/dsh-skin validate` 校验后按皮肤契约完善（skin.json v2、
-skin.css token 重映射，可选 patches.css / hooks.mjs / assets/），用
-`node scripts/capture-previews <id>` 重拍 `preview/{light,dark}.png`，
-`pnpm market:build` 与 `pnpm skin-center:check` 通过后随 PR 提交，
-PR 类别勾选「皮肤 / 皮肤中心」。皮肤收录到我们部署的 dsh-market.com
-服务器（Workshop）供用户按需安装，默认安装不带（见上文 PR 范围）。
+在 [dsh-skins](https://github.com/zhu1090093659/dsh-skins) 仓用
+`node scripts/dsh-skin-new.cjs <id>` 生成纯资产骨架（无 package.json），
+`node scripts/dsh-skin.cjs` 校验后按皮肤契约完善（skin.json v2、
+skin.css token 重映射，可选 patches.css / hooks.mjs / assets/），按该仓
+README 生成 `preview/{light,dark}.png`，`pnpm skin-center:check` 通过后随
+该仓 PR 提交。皮肤收录到我们部署的 dsh-market.com 服务器（Workshop）供
+用户按需安装，默认安装不带（见上文 PR 范围）。
 
 ### 宠物增加（新宠物收录）
 
-按 [dsh-pet README](packages/dsh-pet/README.zh.md) 的宠物契约新增
-`packages/dsh-pet/assets/<id>/`（`pet.json` v2 + 8 列 × 9 行图集，
-可选 `previews/`、`voice.json` 与状态装饰），在
-`src/registry.test.ts` 增加该 manifest 的归一化断言，同步维护 dsh-pet
-README 中英三件套（`pnpm docs:write-pair dsh-pet`），
-`pnpm --filter @linxin666/dsh-pet build`、`pnpm --filter @linxin666/dsh-pet test`
-与 `pnpm typecheck` 通过后随 PR 提交，PR 类别勾选「插件功能」（该类别括号内含宠物项），PR 类型勾选「新宠物收录」。
+宠物已迁至独立仓 [dsh-pet](https://github.com/zhu1090093659/dsh-pet)：按该仓 README 的宠物契约
+在 `assets/<id>/` 下新增（`pet.json` v2 + 8 列 × 9 行图集，
+可选 `previews/`、`voice.json` 与状态装饰），在该仓补齐该 manifest 的归一化
+测试与构建产物，同步维护该仓 README 中英三件套，运行该仓的
+`pnpm test` 与 `pnpm typecheck` 后随该仓 PR 提交。
 
 ### 预设增加（agent 预设收录）
 
-按 [presets README](packages/dsh-preset-center/presets/README.md) 把
-`packages/dsh-preset-center/presets/_template/` 复制为 `<id>/`（目录名即预设 id，
-匹配 `^[a-z0-9][a-z0-9-]*$`，官方内置 id 保留），编辑 `preset.yml`（展示文案，
-单行标量）与 `agent.cordis.yml`（composition，service 行置于带 isolate realm 的
-group 内），在 `catalog.json` 登记条目（id / author / version 必填），
-`node scripts/market-build` 重新生成并提交 `market/dist`，`pnpm market:check`
-通过后随 PR 提交。PR 类别勾选「插件功能」（该类别括号内含预设中心项），PR
-类型勾选「新预设收录」。预设启用后运行在 DSH 宿主进程内，PR 描述需说明
-composition 挂载了什么、为什么。
+预设已迁至独立仓 [dsh-presets](https://github.com/zhu1090093659/dsh-presets)：
+按该仓 CONTRIBUTING 把 `presets/_template/` 复制为 `presets/<id>/`（目录名即
+预设 id，匹配 `^[a-z0-9][a-z0-9-]*$`，官方内置 id 保留），编辑 `preset.yml`
+（展示文案，单行标量）与 `agent.cordis.yml`（composition，service 行置于带
+isolate realm 的 group 内），在 `catalog.json` 登记条目（id / author / version
+必填），运行该仓的 `pnpm preset:check` 与 `pnpm test` 后随该仓 PR 提交。市场
+构建按 submodule 钉扎读取该仓的 `presets/`，因此预设在该仓合并后，还要由维护者
+移动本仓 `satellites/dsh-presets` 的 gitlink 并重建 `market/dist` 才到达
+dsh-market.com。预设启用后运行在 DSH 宿主进程内，PR 描述需说明 composition
+挂载了什么、为什么。
 
 ### 范围边界
 
@@ -166,6 +190,8 @@ composition 挂载了什么、为什么。
 | [packages/AGENTS.md](packages/AGENTS.md) | 包级规则：SDK 约束、bundle 形态、测试纪律 | 改 packages/ 前 |
 | [docs/AGENTS.md](docs/AGENTS.md) | 文档标准：结构分层、写作规则、i18n 配对、预算 | 写文档前 |
 | 各包 `AGENTS.md` | 该包特有规则（如 dsh-ssh 安全模型） | 改对应包前 |
+| [docs/architecture.md](docs/architecture.md) | 架构总览与运行时全景 | 了解整体架构时 |
+| [docs/plugins.md](docs/plugins.md) | 新插件入桶规范与脚手架 | 新增或改造插件时 |
 | [docs/development.md](docs/development.md) | 日常开发与发布流程 | 需要细节时 |
 | [docs/i18n.md](docs/i18n.md) | 双语文档配对契约 | 改 README 时 |
 

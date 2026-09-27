@@ -11,6 +11,11 @@ name: Deploy Market
 # 只部署「已提交」的产物，不在 CI 里重建（market-build --check 校验一致性）：
 # 与本仓库产物部署纪律一致，避免构建机绝对路径/不确定性进入产物。
 #
+# 部署后不在这里做整站资产校验：从 GitHub runner 出口发出的请求会被该 zone 的
+# 托管质询（cf-mitigated: challenge）挡在 Worker 之前，车道从该出口证明不了任何
+# 资产。整站走查由维护者在策略允许的网络上按需执行：
+# node scripts/market-verify-assets.mjs --attest https://dsh-market.com
+#
 # 需要的仓库 secrets：
 #   CLOUDFLARE_API_TOKEN   — Workers Scripts / D1 / Zone · Edit
 #   CLOUDFLARE_ACCOUNT_ID  — Cloudflare 账号 ID
@@ -21,10 +26,13 @@ on:
       - dev
     paths:
       - 'market/**'
-      - 'packages/skins/**'
-      - 'packages/dsh-pet/**'
-      - 'packages/dsh-community-plugins/**'
+      # A submodule gitlink is the skin / pet / community pin; moving one is
+      # what makes an upstream content change reach the site.
+      - 'satellites/**'
+      - 'market-inputs.lock.json'
       - 'scripts/market-build'
+      - 'scripts/market-fetch-inputs.mjs'
+      - 'scripts/market-verify-assets.mjs'
       - 'scripts/deploy-market'
       - 'scripts/market-layout.test.mjs'
       - 'package.json'
@@ -41,6 +49,13 @@ concurrency:
 jobs:
   deploy:
     name: Deploy market to Workers
+    # Canonical-repository guard: the production Cloudflare, Turnstile and
+    # attestation secrets exist only here. A fork that enables Actions still
+    # fires this workflow on push and schedule, burns the gates above and then
+    # fails on the empty TURNSTILE_SECRET - noise for the fork, and a
+    # suggestion that the workflow is broken. Skip before checkout instead of
+    # copying credentials or weakening the gates.
+    if: github.repository == 'zhu1090093659/dsh-web'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -65,8 +80,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      # The build reads the skin and pet content from the satellite repositories
+      # at the commits pinned in market-inputs.lock.json.
+      - name: Fetch market content inputs
+        run: node scripts/market-fetch-inputs.mjs
+
+      # The community index is validated in its own repository and consumed here
+      # at the commit pinned in market-inputs.lock.json, so this lane runs only
+      # the gates that belong to this repository.
       - name: Market consistency
-        run: pnpm market:check && pnpm community:check && pnpm test:scripts
+        run: pnpm market:check && pnpm test:scripts
 
       - name: Install wrangler
         run: npm install -g wrangler@4
@@ -82,3 +105,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Refreshes the worker's ASSET_ATTEST_SECRET binding; the deploy fails
+          # loudly when the binding is missing, because the deployed-asset sweep
+          # measures the deployed version through that binding.
+          MARKET_ATTEST_SECRET: ${{ secrets.MARKET_ATTEST_SECRET }}

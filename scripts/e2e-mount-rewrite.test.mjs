@@ -4,6 +4,10 @@
  * file: tarballs (the push-to-publish window fix); the manual family-dir
  * override still rewrites everything; a dependency that is unpublished and
  * missing from the workspace fails loudly.
+ *
+ * A dependency spec is an exact version for workspace-protocol family packages
+ * and a semver range for the plugins consumed from npm; both are resolved
+ * against the registry's published version list.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -11,11 +15,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { rewriteDependencies, findWorkspacePackage, packWorkspace } from './e2e-mount-rewrite'
+import { rewriteDependencies, findWorkspacePackage, packWorkspace, resolvesFromPublished } from './e2e-mount-rewrite'
 
 function makeTmp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-rewrite-test-'))
 }
+
+/** GNU tar reads a `C:\...` argument as a remote host spec; --force-local keeps it a local path. */
+const TAR_LOCAL = process.platform === 'win32' ? ['--force-local'] : []
 
 function writePkg(dir, body) {
   fs.mkdirSync(dir, { recursive: true })
@@ -27,7 +34,7 @@ function writePkg(dir, body) {
 function makeWorkspace(root) {
   writePkg(path.join(root, 'packages', 'dsh-a'), { name: '@linxin666/dsh-a', version: '0.1.0' })
   writePkg(path.join(root, 'packages', 'dsh-b'), { name: '@linxin666/dsh-b', version: '0.2.0' })
-  writePkg(path.join(root, 'packages', 'skins', 'skin-x'), { name: '@linxin666/dsh-skin-x', version: '0.1.0' })
+  writePkg(path.join(root, 'packages', 'dsh-skin-x'), { name: '@linxin666/dsh-skin-x', version: '0.1.0' })
 }
 
 function makeTarballPkg(dir) {
@@ -37,7 +44,7 @@ function makeTarballPkg(dir) {
     dependencies: {
       '@linxin666/dsh-a': '0.1.0',
       '@linxin666/dsh-b': '0.2.0',
-      'dsh-better-sidebar': '0.13.0',
+      'dsh-external-fixture': '0.13.0',
       react: '^18.3.1',
     },
   })
@@ -47,7 +54,7 @@ function makeTgz(dir, pkgBody) {
   const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-tgz-stage-'))
   writePkg(path.join(staging, 'package'), pkgBody)
   const tgz = path.join(dir, pkgBody.name.split('/').pop() + '.tgz')
-  execFileSync('tar', ['-czf', tgz, '-C', staging, 'package'])
+  execFileSync('tar', [...TAR_LOCAL, '-czf', tgz, '-C', staging, 'package'])
   fs.rmSync(staging, { recursive: true, force: true })
   return tgz
 }
@@ -63,7 +70,7 @@ function packFake(packed) {
 
 /** Read the package.json embedded in a tarball. */
 function readTgzPkg(tgz) {
-  const raw = execFileSync('tar', ['-xzf', tgz, '-O', 'package/package.json'], { stdio: 'pipe' }).toString()
+  const raw = execFileSync('tar', [...TAR_LOCAL, '-xzf', tgz, '-O', 'package/package.json'], { stdio: 'pipe' }).toString()
   return JSON.parse(raw)
 }
 
@@ -84,7 +91,7 @@ test('auto mode: published deps stay on npm, unpublished deps rewrite to file:',
   assert.equal(pkg.dependencies['@linxin666/dsh-a'], '0.1.0')
   assert.match(pkg.dependencies['@linxin666/dsh-b'], /^file:.*dsh-b\.tgz$/)
   assert.equal(pkg.dependencies['react'], '^18.3.1')
-  assert.equal(pkg.dependencies['dsh-better-sidebar'], '0.13.0')
+  assert.equal(pkg.dependencies['dsh-external-fixture'], '0.13.0')
   assert.equal(packed.length, 1)
   assert.match(packed[0], /dsh-b$/)
   assert.ok(report.some(line => line.includes('npm 已发布')))
@@ -164,7 +171,7 @@ test('auto mode: default packWorkspace packs and patches unpublished deps', asyn
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
   assert.match(pkg.dependencies['@linxin666/dsh-b'], /^file:.*dsh-b.*\.tgz$/)
   // The packed tarball is a real tar and survives the in-place patch.
-  assert.equal(JSON.parse(execFileSync('tar', ['-xzf', pkg.dependencies['@linxin666/dsh-b'].slice(5), '-O', 'package/package.json'], { stdio: 'pipe' }).toString()).name, '@linxin666/dsh-b')
+  assert.equal(JSON.parse(execFileSync('tar', [...TAR_LOCAL, '-xzf', pkg.dependencies['@linxin666/dsh-b'].slice(5), '-O', 'package/package.json'], { stdio: 'pipe' }).toString()).name, '@linxin666/dsh-b')
 })
 
 test('auto mode: unpublished dep missing from the workspace fails loudly', async () => {
@@ -218,31 +225,42 @@ test('family-dir mode: every family dep rewrites to a patched same-named copy', 
   assert.equal(pkg.dependencies['react'], '^18.3.1')
 })
 
-test('family-dir mode: missing tarball fails loudly', async () => {
+test('family-dir mode: a workspace package the directory misses fails loudly', async () => {
   const tmp = makeTmp()
+  const root = path.join(tmp, 'repo')
+  makeWorkspace(root)
   const familyDir = path.join(tmp, 'family')
   fs.mkdirSync(familyDir, { recursive: true })
   makeTgz(familyDir, { name: '@linxin666/dsh-a', version: '0.1.0' })
   const pkgPath = makeTarballPkg(path.join(tmp, 'tarball'))
   await assert.rejects(
-    rewriteDependencies({ pkgPath, root: tmp, familyDir }),
+    rewriteDependencies({ pkgPath, root, familyDir }),
     /缺少本地 tarball/,
   )
 })
 
-test('better-sidebar manual override rewrites only that dep', async () => {
+test('family-dir mode: a family package outside this workspace stays on the registry', async () => {
   const tmp = makeTmp()
-  const pkgPath = makeTarballPkg(path.join(tmp, 'tarball'))
-  const published = new Set(['@linxin666/dsh-a@0.1.0', '@linxin666/dsh-b@0.2.0'])
-  await rewriteDependencies({
-    pkgPath,
-    root: tmp,
-    betterSidebarTgz: '/tmp/bs.tgz',
-    checkPublished: async (name, version) => published.has(name + '@' + version),
+  const root = path.join(tmp, 'repo')
+  makeWorkspace(root)
+  // The extracted satellites are family-scoped but not built here, so the
+  // override cannot cover them and they must keep resolving from npm.
+  const familyDir = path.join(tmp, 'family')
+  fs.mkdirSync(familyDir, { recursive: true })
+  makeTgz(familyDir, { name: '@linxin666/dsh-a', version: '0.1.0' })
+  const pkgPath = writePkg(path.join(tmp, 'tarball'), {
+    name: '@linxin666/dsh-web-all',
+    version: '9.9.9',
+    dependencies: {
+      '@linxin666/dsh-a': '0.1.0',
+      '@linxin666/dsh-pet': '^0.3.24',
+    },
   })
+  const report = await rewriteDependencies({ pkgPath, root, familyDir })
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
-  assert.equal(pkg.dependencies['dsh-better-sidebar'], 'file:/tmp/bs.tgz')
-  assert.equal(pkg.dependencies['@linxin666/dsh-a'], '0.1.0')
+  assert.match(pkg.dependencies['@linxin666/dsh-a'], /^file:.*dsh-a\.tgz$/)
+  assert.equal(pkg.dependencies['@linxin666/dsh-pet'], '^0.3.24')
+  assert.ok(report.some(line => line.includes('保持 registry 安装')))
 })
 
 test('auto mode: nested unpublished family deps rewrite inside the packed tarball', async () => {
@@ -299,11 +317,64 @@ test('family-dir mode: nested family deps rewrite inside the patched copies', as
   assert.equal(readTgzPkg(fileB).dependencies['@linxin666/dsh-a'], 'file:' + fileA)
 })
 
-test('findWorkspacePackage scans packages/ and packages/skins/', () => {
+test('findWorkspacePackage scans packages/', () => {
   const tmp = makeTmp()
   makeWorkspace(tmp)
   assert.match(findWorkspacePackage(tmp, '@linxin666/dsh-a'), /packages[/\\]dsh-a$/)
-  assert.match(findWorkspacePackage(tmp, '@linxin666/dsh-skin-x'), /packages[/\\]skins[/\\]skin-x$/)
+  assert.match(findWorkspacePackage(tmp, '@linxin666/dsh-skin-x'), /packages[/\\]dsh-skin-x$/)
   assert.equal(findWorkspacePackage(tmp, '@linxin666/nope'), null)
 })
+
+test('published probe: a range resolves through any published version that satisfies it', () => {
+  const published = ['0.3.24', '0.3.25']
+  assert.equal(resolvesFromPublished('^0.3.24', published), true)
+  assert.equal(resolvesFromPublished('0.3.24', published), true)
+  assert.equal(resolvesFromPublished('^0.3.26', published), false)
+  assert.equal(resolvesFromPublished('0.3.26', published), false)
+})
+
+test('auto mode: a range dependency with a published match stays on the registry', async () => {
+  const tmp = makeTmp()
+  const root = path.join(tmp, 'repo')
+  makeWorkspace(root)
+  const pkgPath = writePkg(path.join(tmp, 'tarball'), {
+    name: '@linxin666/dsh-web-all',
+    version: '9.9.9',
+    dependencies: { '@linxin666/dsh-satellite': '^0.3.24' },
+  })
+  const packed = []
+  // The registry probe evaluates the spec, not just an exact version: a range
+  // already served by npm must stay on the registry, because the package is
+  // not in this workspace and substituting a local tarball fails the gate.
+  const report = await rewriteDependencies({
+    pkgPath,
+    root,
+    checkPublished: async (_name, spec) => resolvesFromPublished(spec, ['0.3.24', '0.3.25']),
+    pack: packFake(packed),
+  })
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+  assert.equal(pkg.dependencies['@linxin666/dsh-satellite'], '^0.3.24')
+  assert.equal(packed.length, 0)
+  assert.ok(report.some(line => line.includes('npm 已发布')))
+})
+
+test('auto mode: a range with no published match and no workspace package fails loudly', async () => {
+  const tmp = makeTmp()
+  const root = path.join(tmp, 'repo')
+  fs.mkdirSync(path.join(root, 'packages'), { recursive: true })
+  const pkgPath = writePkg(path.join(tmp, 'tarball'), {
+    name: '@linxin666/dsh-web-all',
+    version: '9.9.9',
+    dependencies: { '@linxin666/dsh-satellite': '^0.3.24' },
+  })
+  await assert.rejects(
+    rewriteDependencies({
+      pkgPath,
+      root,
+      checkPublished: async (_name, spec) => resolvesFromPublished(spec, ['0.2.0']),
+    }),
+    /找不到 workspace 包/,
+  )
+})
+
 

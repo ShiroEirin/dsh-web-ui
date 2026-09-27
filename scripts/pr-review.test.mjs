@@ -4,7 +4,6 @@ import {
   parseNumstat, parseNameStatus, addedLinesFromDiff,
   checkSize, checkForbiddenFiles, checkSecrets, checkEmoji,
   checkWorkflowChanges, checkLockfile, checkTemplate, checkCommits,
-  checkSkinChanges, checkCopyright, checkSkinPreviews, judgeVisualMetrics,
   finalVerdict, parseArgs, fmtBytes, DEFAULT_MAX_ADDED,
 } from "./pr-review.mjs"
 
@@ -197,7 +196,7 @@ function makeBody(overrides = {}) {
     `## 涉及包（Affected Packages）`,
     `- [x] 任务看板 packages/dsh-task-board`,
     `## PR 类别（PR Category）`,
-    `- [x] 插件功能（任务看板 / Git 图谱 / 右侧面板 / 远程 Web UI / SSH / 宠物 / 预设中心 / 设置 / 聚合包）`,
+    `- [x] 插件功能（任务看板 / Git 图谱 / 右侧面板 / 远程 Web UI / SSH / 设置 / 聚合包）`,
     `## PR 类型（PR Type）`,
     `- [x] 面向用户的功能或行为变更`,
     ...(overrides.visual ? [`- [x] 视觉修复（UI / 视觉类问题的修复）`] : []),
@@ -355,66 +354,6 @@ test(`提交信息检查`, () => {
   assert.ok(bad.some((x) => x.severity === `reject` && x.rule === `emoji`))
 })
 
-// ---------------------------------------------------------------- 皮肤识别与版权
-
-test(`皮肤变更识别：源码类命中，README 与 skin-center 排除`, () => {
-  const f1 = checkSkinChanges([
-    { status: `A`, path: `packages/skins/skin-center/skins/xp/skin.css` },
-    { status: `A`, path: `packages/skins/skin-center/skins/xp/skin.json` },
-  ])
-  assert.deepEqual(f1, { isSkin: true, skinIds: [`xp`] })
-  const f2 = checkSkinChanges([
-    { status: `M`, path: `packages/skins/skin-center/skins/xp/README.md` },
-    { status: `M`, path: `packages/skins/skin-center/skins/xp/preview/light.jpg` },
-    { status: `M`, path: `docs/development.md` },
-  ])
-  assert.deepEqual(f2, { isSkin: false, skinIds: [] })
-  const f3 = checkSkinChanges([{ status: `M`, path: `packages/skins/skin-center/src/routes.ts` }])
-  assert.equal(f3.isSkin, false)
-})
-
-test(`版权提醒：外部贡献者皮肤 PR 未声明时 warn，已声明或仓库所有者豁免`, () => {
-  const pr = { body: `## 摘要（Summary）\n测试`, author: { login: `someone` } }
-  const f1 = checkCopyright(pr, true, `owner`)
-  assert.equal(f1.length, 1)
-  assert.equal(f1[0].severity, `warn`)
-  assert.equal(f1[0].rule, `copyright`)
-  const declared = { body: `## 贡献者版权声明（Contributor Copyright）\n- [x] 已声明\n| 包 | 来源 | 版权 |`, author: { login: `someone` } }
-  assert.equal(checkCopyright(declared, true, `owner`).length, 0)
-  assert.equal(checkCopyright(pr, false, `owner`).length, 0)
-  assert.equal(checkCopyright(pr, true, `someone`).length, 0)
-})
-test(`市场预览：新皮肤缺 preview/{light,dark}.jpg 时警告，齐图或存量皮肤豁免`, () => {
-  const base = [
-    { status: `A`, path: `packages/skins/skin-center/skins/xp/skin.css` },
-  ]
-  const f1 = checkSkinPreviews(base, [`xp`])
-  assert.equal(f1.length, 2)
-  assert.ok(f1.every((x) => x.severity === `warn` && x.rule === `preview`))
-  const complete = [
-    { status: `A`, path: `packages/skins/skin-center/skins/xp/skin.css` },
-    { status: `A`, path: `packages/skins/skin-center/skins/xp/preview/light.jpg` },
-    { status: `A`, path: `packages/skins/skin-center/skins/xp/preview/dark.jpg` },
-  ]
-  assert.equal(checkSkinPreviews(complete, [`xp`]).length, 0)
-  const modified = [{ status: `M`, path: `packages/skins/skin-center/skins/xp/skin.css` }]
-  assert.equal(checkSkinPreviews(modified, [`xp`]).length, 0)
-})
-test(`视觉指标判定：过曝与对比度不足警告`, () => {
-  const f1 = judgeVisualMetrics([
-    { file: `xp-light.png`, avgLuma: 219.9, hiPct: 76.6, stdLuma: 60.3 },
-  ])
-  assert.equal(f1.length, 2)
-  assert.ok(f1.every((x) => x.severity === `warn` && x.rule === `visual`))
-  assert.ok(f1.some((x) => x.message.includes(`太闪`)))
-  const ok = judgeVisualMetrics([{ file: `a-dark.png`, avgLuma: 55, hiPct: 3, stdLuma: 52 }])
-  assert.equal(ok.length, 0)
-  const lowContrast = judgeVisualMetrics([{ file: `b-light.png`, avgLuma: 120, hiPct: 1, stdLuma: 12 }])
-  assert.equal(lowContrast.length, 1)
-  assert.ok(lowContrast[0].message.includes(`看不清`))
-  const overexposed = judgeVisualMetrics([{ file: `xp-light.jpg`, avgLuma: 250, hiPct: 95, stdLuma: 10 }])
-  assert.ok(overexposed.some((x) => x.message.includes(`接近纯白`)))
-})
 // ---------------------------------------------------------------- finalVerdict
 
 test(`verdict 优先级`, () => {

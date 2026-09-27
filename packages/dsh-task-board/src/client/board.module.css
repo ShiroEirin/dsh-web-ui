@@ -4,114 +4,28 @@
  * board follows the active theme (light/dark and skins).
  */
 
-/* --- center-column takeover (global rules, attribute-scoped) ----------------- */
+/* --- native panel page ------------------------------------------------------- */
 
-[data-pane='conversation'],
-[class*='centerCol'] {
-  position: relative;
-}
+/* The board is an official center-column panel: the layout mounts this element
+   as the selected keyed 'main' occupant, so the shell's own column already
+   owns position, sizing and the conversation underneath. Nothing here hides or
+   re-parents another plugin's surface — the previous DOM takeover (absolute
+   overlay over a hidden conversation subtree) is gone with it.
 
-/* The board container rides inside the conversation grid item as an extra
-   trailing child; hidden unless the board is active. */
+   The container query context stays: the board's responsive rules measure the
+   PANEL rather than the viewport, so a narrow column or a resized window
+   narrows the board at the same threshold the shell uses for its columns. */
 [data-dsh-taskboard-view] {
-  position: absolute;
-  inset: 0;
-  display: none;
-  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   container-name: task-board-view;
   container-type: inline-size;
-  /* Opaque backdrop: the conversation subtree stays mounted under the view.
-     Even if the hide rule below were defeated by a stronger host inline
-     style, this background keeps sticky code-block banners (host z-index 6)
-     from showing through the active board (issue #100). */
   background: var(--dsw-alias-bg-base);
-}
-
-/* The center column is single-occupant; the :not() guards keep the two
-   sibling panels (task board / ssh) from fighting over visibility if both
-   activation attributes ever coexist. */
-html[data-dsh-taskboard-active]:not([data-dsh-ssh-active]) [data-dsh-taskboard-view] {
-  display: block;
-}
-
-/* While the board is active, the conversation content underneath is hidden
-   (it stays mounted and stateful). The !important is required: the dsh shell
-   (0.1.0-rc.6) wraps the conversation view in a node with an inline
-   `display: contents`, and inline styles beat a plain stylesheet rule. Without
-   it the composer (input card) stays visible at the bottom and paints over the
-   board modals' footer, hiding the run/delete buttons (issue #76).
-   The rule targets both the pane attribute and the center-column class so the
-   chat subtree (including the code-block copy banner, issue #100) stays hidden
-   whichever host container carries it. */
-html[data-dsh-taskboard-active]:not([data-dsh-ssh-active]) [data-pane='conversation'] > :not([data-dsh-taskboard-view]),
-html[data-dsh-taskboard-active]:not([data-dsh-ssh-active]) [class*='centerCol'] > :not([data-dsh-taskboard-view]) {
-  display: none !important;
-}
-
-/* --- sidebar entry row ------------------------------------------------------- */
-
-.entry {
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  height: 36px;
-  padding: 0 10px;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  color: var(--dsw-alias-label-secondary);
-  cursor: pointer;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.entry:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
-}
-
-.entry[data-active] {
-  background: var(--dsw-alias-interactive-bg-active);
-  color: var(--dsw-alias-label-primary);
-  font-weight: 600;
-}
-
-.entryIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  flex: none;
-}
-
-.entryIcon svg {
-  display: block;
-  width: 18px;
-  height: 18px;
-}
-
-.entryLabel {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Collapsed rail: icon-only, centered, matching the shell's 56px rail. */
-:global([data-dsh-frame][data-sidebar-collapsed]) .entry,
-:global([data-sidebar-collapsed]) .entry {
-  justify-content: center;
-  padding: 0;
-  width: 36px;
-  height: 36px;
-  margin: 0 auto 12px;
-  border-radius: 50%;
-}
-
-:global([data-dsh-frame][data-sidebar-collapsed]) .entryLabel,
-:global([data-sidebar-collapsed]) .entryLabel {
-  display: none;
 }
 
 /* --- board frame -------------------------------------------------------------- */
@@ -905,7 +819,6 @@ html[data-dsh-taskboard-active]:not([data-dsh-ssh-active]) [class*='centerCol'] 
     height: 100dvh;
   }
 
-  .entry,
   .card,
   .primaryButton,
   .ghostButton,
@@ -1019,7 +932,6 @@ html[data-dsh-taskboard-active]:not([data-dsh-ssh-active]) [class*='centerCol'] 
  * --------------------------------------------------------------------------- */
 
 /* --- one themed focus-visible ring (approx 2px, 2px offset) --- */
-.entry:focus-visible,
 .card:focus-visible,
 .primaryButton:focus-visible,
 .ghostButton:focus-visible,
@@ -1036,7 +948,6 @@ html[data-dsh-taskboard-active]:not([data-dsh-ssh-active]) [class*='centerCol'] 
 }
 
 /* --- unified 120ms motion across the board's interactive controls --- */
-.entry,
 .primaryButton,
 .ghostButton,
 .dangerButton,
@@ -1056,18 +967,12 @@ html[data-dsh-taskboard-active]:not([data-dsh-ssh-active]) [class*='centerCol'] 
   transform: translateY(0);
 }
 
-.entry:active,
 .primaryButton:active:not(:disabled),
 .ghostButton:active:not(:disabled),
 .dangerButton:active:not(:disabled),
 .iconButton:active:not(:disabled),
 .linkButton:active:not(:disabled) {
   transform: translateY(1px);
-}
-
-/* --- entry row (sidebar) states --- */
-.entry[data-active]:hover {
-  background: var(--dsw-specific-sidebar-nav-item-active);
 }
 
 /* --- guarded hover for the remaining icon/link buttons (defensive: never
@@ -1102,7 +1007,6 @@ html[data-dsh-taskboard-active]:not([data-dsh-ssh-active]) [class*='centerCol'] 
 
 /* --- reduced motion: strip transitions, stop the decorative spinner --- */
 @media (prefers-reduced-motion: reduce) {
-  .entry,
   .card,
   .primaryButton,
   .ghostButton,
@@ -1121,3 +1025,279 @@ html[data-dsh-taskboard-active]:not([data-dsh-ssh-active]) [class*='centerCol'] 
     animation: none;
   }
 }
+
+/* --- task tags (issue #1521) ---------------------------------------------------
+ * A badge takes its tone from a fixed six-colour palette chosen by hashing the
+ * name, so one label always paints the same way and nothing per-tag has to be
+ * stored. The fill is translucent and the text keeps the theme's own primary
+ * label colour, so badges stay readable on light, dark, and every skin without
+ * depending on a token a skin may not define.
+ * ----------------------------------------------------------------------------- */
+
+.cardTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cardTag {
+  max-width: 100%;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid var(--dsh-task-tag-border);
+  border-radius: 999px;
+  background: var(--dsh-task-tag-fill);
+  color: var(--dsw-alias-label-primary);
+  font-size: 10px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tagFilter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.tagFilterLabel {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+
+.tagChip {
+  padding: 1px 9px;
+  border: 1px solid var(--dsh-task-tag-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.tagChip[data-active='true'] {
+  background: var(--dsh-task-tag-fill);
+  color: var(--dsw-alias-label-primary);
+}
+
+.cardTag[data-tag-tone='0'],
+.tagChip[data-tag-tone='0'] {
+  --dsh-task-tag-fill: #4e93e82e;
+  --dsh-task-tag-border: #4e93e866;
+}
+
+.cardTag[data-tag-tone='1'],
+.tagChip[data-tag-tone='1'] {
+  --dsh-task-tag-fill: #2ea36a2e;
+  --dsh-task-tag-border: #2ea36a66;
+}
+
+.cardTag[data-tag-tone='2'],
+.tagChip[data-tag-tone='2'] {
+  --dsh-task-tag-fill: #d08a2a2e;
+  --dsh-task-tag-border: #d08a2a66;
+}
+
+.cardTag[data-tag-tone='3'],
+.tagChip[data-tag-tone='3'] {
+  --dsh-task-tag-fill: #b456c82e;
+  --dsh-task-tag-border: #b456c866;
+}
+
+.cardTag[data-tag-tone='4'],
+.tagChip[data-tag-tone='4'] {
+  --dsh-task-tag-fill: #cf5f7a2e;
+  --dsh-task-tag-border: #cf5f7a66;
+}
+
+.cardTag[data-tag-tone='5'],
+.tagChip[data-tag-tone='5'] {
+  --dsh-task-tag-fill: #4a9fb52e;
+  --dsh-task-tag-border: #4a9fb566;
+}
+
+.fieldHint {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.tagRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tagRow .input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.tagRow .ghostButton {
+  flex: none;
+}
+
+.tagAddButton {
+  align-self: flex-start;
+}
+
+/* --- project partition (#1536) ------------------------------------------------ */
+
+.projectFilter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.projectFilterLabel {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+.projectDialog {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: none;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+}
+
+.projectDialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* --- AI parse of pasted text (#1540) ------------------------------------------ */
+
+.aiParse {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+}
+
+.aiParseRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.aiParseRow .select {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.aiParseRow .ghostButton,
+.aiParseRow .primaryButton {
+  flex: none;
+}
+
+/* --- subtask tree (parent link, cascade runs) ---------------------------------
+ * A subtask is an ordinary card with a parent link; the badges below only mark
+ * the lineage on the board, and the detail block lists the direct children
+ * with their statuses.
+ * ----------------------------------------------------------------------------- */
+
+.cardSubtask {
+  max-width: 100%;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardSubtask[data-tone='failed'] {
+  color: var(--dsw-alias-state-error-primary);
+  border-color: var(--dsw-alias-state-error-primary);
+}
+
+.cardSubtask[data-tone='running'] {
+  color: var(--dsw-alias-state-warn-primary);
+  border-color: var(--dsw-alias-state-warn-primary);
+}
+
+.cardSubtask[data-tone='done'] {
+  color: var(--dsw-alias-state-success-primary);
+  border-color: var(--dsw-alias-state-success-primary);
+}
+
+.subtaskList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.subtaskRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.subtaskRow .linkButton:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.subtaskAddRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pickList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.pickRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+}
+
+.pickTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+}
+

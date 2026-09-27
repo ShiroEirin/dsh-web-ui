@@ -1,9 +1,11 @@
 /**
- * Sidebar footer action triggers (#1035): the update and remote-access
- * buttons sit side by side in the same seat, so their shapes must belong to
- * one rounding family — the rail circle (50%) and the wide full-row pill
- * (999px). A regression to a small fixed radius on the wide variant
- * reintroduces the circle-vs-rectangle mismatch every skin inherits.
+ * Sidebar footer action triggers (#1035): the seat is shared by several
+ * occupants (this plugin's remote trigger, the dsh-update trigger, the usage
+ * card), so their shapes must belong to one rounding family — the rail circle
+ * (50%) and the wide full-row pill (999px). A regression to a small fixed
+ * radius on the wide variant reintroduces the circle-vs-rectangle mismatch
+ * every skin inherits. The dsh-update package pins the same contract for its
+ * own trigger in its tests/footer-trigger-css.spec.ts.
  */
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'

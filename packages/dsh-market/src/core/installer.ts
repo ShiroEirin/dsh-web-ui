@@ -4,9 +4,9 @@
  * directories ($DSH_HOME/skins/<id>, $DSH_HOME/pets/<id>,
  * $DSH_HOME/agent-presets/<id>).
  *
- * A `preset` install lands in the preset LIBRARY, never in the discovery root
- * ($DSH_HOME/.agent-presets): a downloaded composition must stay inert until
- * the user enables it through the preset center, because a preset is code.
+ * A `preset` install lands in the preset LIBRARY ($DSH_HOME/agent-presets/<id>):
+ * a downloaded composition stays inert on disk until the preset center
+ * declares it to the agent-preset registry, because a preset is code.
  *
  * Security model (host half):
  *  - the manifest is fetched from MARKET_ORIGIN only;
@@ -15,7 +15,7 @@
  *  - the download URL is rebuilt from the validated rel, never taken from
  *    the client (the client only sends the asset id);
  *  - the manifest and every downloaded file are size-capped (1 MiB manifest,
- *    200 files per asset, 200 MiB per file) and every fetch has a 30 s
+ *    2000 files per asset, 200 MiB per file) and every fetch has a 30 s
  *    timeout, so a hostile manifest cannot exhaust host memory or disk;
  *  - writes are staged in a temp dir next to the destination and renamed
  *    into place only after every file downloaded successfully, so a failed
@@ -32,6 +32,7 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, sep } from 'node:path'
+import { withIdentityEncoding } from '../http.ts'
 
 export const MARKET_ORIGIN = 'https://dsh-market.com'
 
@@ -57,8 +58,14 @@ export interface InstallProvenance {
 /** Manifest response size cap (bytes). */
 export const MANIFEST_MAX_BYTES = 1024 * 1024
 
-/** Max files one asset may declare. */
-export const MAX_FILES_PER_ASSET = 200
+/**
+ * Max files one asset may declare. Frame-sequence (frames2d) pets are
+ * per-frame image sets that legitimately run past a thousand files (issue
+ * #1578), so the cap must clear the largest published asset; installer.test.ts
+ * pins the exact value and scripts/market-build rejects any catalog entry that
+ * crosses it, so content and installer policy cannot drift apart.
+ */
+export const MAX_FILES_PER_ASSET = 2000
 
 /** Per-file download size cap (bytes). */
 export const FILE_MAX_BYTES = 200 * 1024 * 1024
@@ -193,7 +200,10 @@ async function fetchWithTimeout(
   timeoutMs: number,
 ): Promise<Response> {
   try {
-    return await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) })
+    // The host's built-in fetch loses content-encoding decompression once npm
+    // undici loads; withIdentityEncoding keeps the market origin from
+    // compressing at all (full rationale in shared/host/http.ts).
+    return await fetchImpl(url, withIdentityEncoding({ signal: AbortSignal.timeout(timeoutMs) }))
   } catch (err) {
     if (isAbortError(err)) {
       throw new MarketInstallError(code, `fetch timed out after ${timeoutMs}ms: ${url}`)

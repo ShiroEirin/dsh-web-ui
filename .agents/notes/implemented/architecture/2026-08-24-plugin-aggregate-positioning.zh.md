@@ -12,7 +12,7 @@ Status: implemented
 
 - 根 README 双语对：皮肤章从平级章节降为功能插件章的末节；标语、导言、能力表、包表与故障排查文案均改为「皮肤是皮肤插件的纯资产包，经创意工坊分发」。中文显示名为「皮肤」，英文为 skins——「皮肤中心 / Skin Center」不再作为显示名出现在根 README 对中。
 - GitHub About 描述与主页（dsh-market.com）与该定位一致；AGENTS.md 与 docs/development.md 开篇陈述同一层级。
-- 标识符保持冻结：npm 包 @linxin666/dsh-client-ui-skin-center、packages/skins/skin-center 目录、web-ui-skin-center bundle id 与 skin-center/wallpapers 路径保留技术名；只改展示文案。
+- 标识符保持冻结：npm 包 @linxin666/dsh-client-ui-skin-center、web-ui-skin-center bundle id 与 skin-center/wallpapers 路径保留技术名；只改展示文案。该目录后来迁至 dsh-skins 仓——见 [家族卫星仓库](2026-09-23-family-satellite-repositories.zh.md)。
 - 创意工坊店面保留 皮肤 / 宠物 / 插件 的商品分类——那是商店的货品类目，不是产品支柱。
 - 交叉链接：[产品更名](2026-08-24-product-rename-dsh-web.md) 记录了本定位所依托的 dsh-web-ui 到 dsh-web 更名。
 

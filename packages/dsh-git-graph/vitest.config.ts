@@ -10,6 +10,7 @@ export default defineConfig({
   test: {
     include: ['tests/**/*.spec.{ts,tsx}'],
     pool: 'forks',
+    setupFiles: ['./vitest.setup.ts'],
     // @deepseek-ai SDK packages ship browser bundles (CSS imports included);
     // keep them vite-transformed instead of node-externalized.
     server: {

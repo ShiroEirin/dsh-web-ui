@@ -17,4 +17,4 @@
  * package is a hard reconcile error ("resolves from multiple active Loader
  * sources").
  */
-export { apply, inject } from '../shell.ts'
+export { apply, inject, Config } from '../shell.ts'

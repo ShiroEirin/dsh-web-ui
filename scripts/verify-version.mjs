@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Verify every family package version matches the release tag. The tag is
- * the single version source of truth for the dsh-web release pipeline:
- * a mismatch (e.g. a package bumped out of band, or a forgotten bump) fails
- * the publish before anything reaches npm.
+ * Verify every family package version and the root alias manifest match the
+ * release tag. The tag is the single version source of truth for the dsh-web
+ * release pipeline: a mismatch (e.g. a package bumped out of band, or a
+ * forgotten bump) fails the publish before anything reaches npm.
  *
  * Prints GitHub error annotations (::error file=...) on mismatch and exits
  * non-zero; the release workflow runs this right before publishing.
@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { walkFamilyPackages } from './lib/family-packages.mjs'
-import { rootAggregatePinMismatch } from './lib/root-alias-pin.mjs'
+import { rootAggregatePinMismatch, rootVersionMismatch } from './lib/root-alias-pin.mjs'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(SCRIPT_DIR, '..')
@@ -54,16 +54,18 @@ for (const file of files) {
   }
 }
 
-// The root alias bundle is part of the released contract: its aggregate
-// dependency must be the exact tag version, or an install keeping an older
-// lockfile entry mounts patch rows the installed aggregate cannot export
-// (issue #1442).
+// The root alias bundle is part of the released contract: its own version is
+// what a git or link install reports, and its aggregate dependency must be the
+// exact tag version, or an install keeping an older lockfile entry mounts patch
+// rows the installed aggregate cannot export (issue #1442).
 try {
   const rootManifest = JSON.parse(readFileSync(resolve(REPO_ROOT, 'package.json'), 'utf8'))
-  const pinMismatch = rootAggregatePinMismatch(rootManifest, version)
-  if (pinMismatch !== undefined) {
-    console.error(`::error file=package.json::${pinMismatch}`)
-    mismatch = 1
+  const rootMismatches = [rootVersionMismatch(rootManifest, version), rootAggregatePinMismatch(rootManifest, version)]
+  for (const message of rootMismatches) {
+    if (message !== undefined) {
+      console.error(`::error file=package.json::${message}`)
+      mismatch = 1
+    }
   }
 } catch (error) {
   console.error(`::error file=package.json::unreadable root package.json (${error instanceof Error ? error.message : String(error)})`)
@@ -71,4 +73,4 @@ try {
 }
 
 if (mismatch) process.exit(1)
-console.log(`[verify-version] all ${files.length} packages and the root aggregate pin match v${version}`)
+console.log(`[verify-version] all ${files.length} packages, the root version and the root aggregate pin match v${version}`)

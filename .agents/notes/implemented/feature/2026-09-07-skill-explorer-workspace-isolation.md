@@ -20,7 +20,7 @@ We introduced multi-workspace presentation, isolation tagging, and workspace fil
 2. **Wire Protocol & Client API (`api.ts`)**:
    - Extended `SkillEntry` with `workspaceRoot`, `workspaceName`, and `isActiveWorkspace`.
    - Extended `ListPayload` with `workspaces?: WorkspaceItem[]`.
-3. **Workspace Presentation & Filtering UI (`SkillPanel.tsx` & `skill-panel.module.css`)**:
+3. **Workspace Presentation & Filtering UI (`panel/SkillsTab.tsx` & `panel/panel.module.css`)**:
    - Renders a workspace badge for project skills indicating their home project.
    - Renders a distinct "Workspace isolated" badge with tooltip for project skills outside the current active session, dimming the card slightly to indicate cross-workspace non-invocation.
    - Added a workspace filter dropdown atop the skills list when multiple workspaces exist, allowing users to filter by specific project workspace while keeping global skills visible.

@@ -39,7 +39,8 @@ test('aggregate rows are web-ui-* namespaced and unique', () => {
 test('aggregate ids never collide with standalone package ids', () => {
   const aggregateIds = new Set(AGGREGATES.flatMap(idsOf))
   const standalonePatches = []
-  for (const base of ['packages', 'packages/skins']) {
+  for (const base of ['packages']) {
+    if (!existsSync(join(ROOT, base))) continue
     for (const entry of readdirSync(join(ROOT, base), { withFileTypes: true })) {
       if (!entry.isDirectory()) continue
       const patch = join(base, entry.name, 'cordis.patch.yml')
@@ -64,7 +65,8 @@ test('aggregate ids never collide with standalone package ids', () => {
 
 test('no aggregate deps entry resolves to a private workspace package', () => {
   const aggregates = []
-  for (const base of ['packages', 'packages/skins']) {
+  for (const base of ['packages']) {
+    if (!existsSync(join(ROOT, base))) continue
     for (const entry of readdirSync(join(ROOT, base), { withFileTypes: true })) {
       if (!entry.isDirectory()) continue
       const yml = join(base, entry.name, 'aggregate.yml')
@@ -91,13 +93,14 @@ test('no aggregate deps entry resolves to a private workspace package', () => {
   }
 })
 
-test('web-ui-all mounts dsh-better-sidebar as an external row', () => {
+test('web-ui-all leaves the unbundled dsh-better-sidebar out of the patch', () => {
   const patch = readFileSync(join(ROOT, 'packages/dsh-web-all/cordis.patch.yml'), 'utf8')
-  const lines = patch.split(/\r?\n/)
-  const idx = lines.findIndex((line) => /^ {4}- id: web-ui-better-sidebar$/.test(line))
-  assert.ok(idx >= 0, 'web-ui-better-sidebar row is missing from the aggregate patch')
-  // The paired name line resolves the row from the profile root (npm package).
-  assert.match(lines[idx + 1] ?? '', /^ {6}name: 'dsh-better-sidebar'$/)
+  // Alpha-branch decision (2026-09-17): the plugin's 0.19.1 peers declare
+  // ^0.1.5-rc.1, which does not cover this branch's 0.1.7-rc.2 cohort, so the
+  // aggregate neither mounts nor depends on it. Re-add the row in aggregate.yml
+  // together with this assertion when the branch bundles it again.
+  assert.doesNotMatch(patch, /^ {4}- id: web-ui-better-sidebar$/m, 'dsh-better-sidebar must not be a bundled row on the alpha branch')
+  assert.doesNotMatch(patch, /^ {6}name: 'dsh-better-sidebar'$/m)
 })
 
 test('web-ui-all does not mount the dsh-client-runtime-dependent @mlgbnb/dsh-archive-manager', () => {
@@ -108,6 +111,21 @@ test('web-ui-all does not mount the dsh-client-runtime-dependent @mlgbnb/dsh-arc
   // excluded; re-add the row and this assertion together with package.json deps
   // when upstream ships an alpha.2-compatible build.
   assert.doesNotMatch(patch, /^ {4}- id: web-ui-archive-manager$/m, '@mlgbnb/dsh-archive-manager must not be mounted on the alpha.2 cohort')
+})
+
+test('web-ui-all keeps the removed doctor/describe-image plugins out but their tombstone exports alive', () => {
+  // 2026-09-23 product decision: dsh-doctor and dsh-tool-describe-image were
+  // removed from the family. No patch row or workspace dependency may name
+  // them again without an explicit re-adoption decision; their shell subpath
+  // exports stay as tombstones so a stale profile row fails soft instead of
+  // aborting the boot with ERR_PACKAGE_PATH_NOT_EXPORTED.
+  const patch = readFileSync(join(ROOT, 'packages/dsh-web-all/cordis.patch.yml'), 'utf8')
+  assert.doesNotMatch(patch, /web-ui-(doctor|describe-image)/, 'removed plugins must not reappear as patch rows')
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'packages/dsh-web-all/package.json'), 'utf8'))
+  assert.ok(!('@linxin666/dsh-doctor' in pkg.dependencies), 'dsh-doctor must not be a workspace dependency')
+  assert.ok(!('@linxin666/dsh-tool-describe-image' in pkg.dependencies), 'dsh-tool-describe-image must not be a workspace dependency')
+  assert.equal(pkg.exports['./doctor'], './lib/shells/shell.js', 'doctor tombstone export must survive')
+  assert.equal(pkg.exports['./describe-image'], './lib/shells/shell.js', 'describe-image tombstone export must survive')
 })
 
 test('web-ui-all ships the opt-in family rows disabled by default', () => {
@@ -132,6 +150,56 @@ test('web-ui-all ships the opt-in family rows disabled by default', () => {
   for (const id of inactive) {
     assert.match(patch, new RegExp('^- id: ' + id + '\\n  disabled: true$', 'm'), 'inactive row missing its disabled override: ' + id)
   }
+})
+
+test('family shell rows keep the real plugin config at the row config root', () => {
+  // The Host settings surface edits an entry's OWN Config schema, so a
+  // shell-wrapped family row must present the family plugin's fields where a
+  // standalone install of that package keeps them: beside the shell's own
+  // `plugin` key, never nested under a second `config:` key (which the
+  // settings surface cannot address, and which left a shelled row silently
+  // unconfigurable while its card showed an editable form).
+  const patch = readFileSync(join(ROOT, 'packages/dsh-web-all/cordis.patch.yml'), 'utf8')
+  const lines = patch.split(/\r?\n/)
+  let checked = 0
+  for (let i = 0; i < lines.length; i++) {
+    const name = lines[i].match(/^      name: '@linxin666\/dsh-web-all\/(\S+)'$/)
+    if (!name) continue
+    assert.equal(lines[i + 1], '      config:', 'shell row ' + name[1] + ' must carry a config block')
+    assert.match(lines[i + 2] ?? '', /^        plugin: '@linxin666\/[^']+'$/, 'shell row ' + name[1] + ' must name the real plugin first')
+    for (let j = i + 3; j < lines.length && /^ {8}\S/.test(lines[j]); j++) {
+      assert.doesNotMatch(lines[j], /^ {8}config:/, 'shell row ' + name[1] + ' nests the family config one level too deep')
+    }
+    checked += 1
+  }
+  assert.ok(checked > 10, 'expected the generated patch to carry the family rows, found ' + checked)
+})
+
+test('web-ui-all declares no retire target the current cohort no longer mounts', () => {
+  // The official bundles alpha.2 ships mount no row this aggregate supersedes:
+  // the official archived-sessions page (`ui-settings-unarchive-sessions`) is
+  // gone from dsh-web-app, so a retire override for it changed nothing while
+  // making the loader warn `patch: entry ... not found` on every profile boot.
+  // `dsh-session-archive` owning the official `archived-sessions` section id
+  // (2026-09-15 native-first decision) stands on its own. Declaring a target
+  // again requires proving the foreign row exists in the SAME cohort with
+  // `dsh --profile <name> --dump-config`, then updating this test.
+  const yml = readFileSync(join(ROOT, 'packages/dsh-web-all/aggregate.yml'), 'utf8')
+  let section = null
+  const retire = []
+  for (const raw of yml.split(/\r?\n/)) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#')) continue
+    const sectionMatch = line.match(/^[A-Za-z0-9_-]+:\s*$/)
+    if (sectionMatch) {
+      section = line.slice(0, -1)
+      continue
+    }
+    if (section === 'retire' && line.startsWith('- ')) retire.push(line.slice(2).trim())
+  }
+  assert.deepEqual(retire, [], 'retire targets must be verified against the installed cohort before being declared')
+  const patch = readFileSync(join(ROOT, 'packages/dsh-web-all/cordis.patch.yml'), 'utf8')
+  assert.doesNotMatch(patch, /^- id: ui-settings-unarchive-sessions$/m, 'the aggregate must not patch a foreign row no bundle mounts')
 })
 
 test('web-ui-all leaves the deprecated @morlay/better-session integration out', () => {

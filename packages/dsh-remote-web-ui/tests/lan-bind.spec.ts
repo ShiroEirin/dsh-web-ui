@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import { afterEach, describe, expect, it } from 'vitest'
+import { parseAllDocuments } from 'yaml'
 import { LAN_BIND_BLOCK_BEGIN, LAN_BIND_BLOCK_END, lanBindState, managedBlock, managedBindOf, profilePatchFile, stripManagedBlock, writeLanBind } from '../src/lan-bind.ts'
 
 const tempDirs: string[] = []
@@ -12,6 +13,16 @@ function tempHome(): string {
   const dir = mkdtempSync(join(tmpdir(), 'remote-web-ui-lan-bind-'))
   tempDirs.push(dir)
   return dir
+}
+
+/** Single patch list per file, in plain values, the way the harness reads it. */
+function parsePatch(content: string): Record<string, unknown>[] {
+  const docs = parseAllDocuments(content)
+  expect(docs.map(doc => doc.errors.map(error => error.message))).toEqual([[]])
+  const roots = docs.map(doc => doc.toJS() as unknown).filter(root => root !== null)
+  expect(roots).toHaveLength(1)
+  expect(Array.isArray(roots[0])).toBe(true)
+  return roots[0] as Record<string, unknown>[]
 }
 
 afterEach(() => {
@@ -112,7 +123,7 @@ describe('writeLanBind / lanBindState', () => {
     writeLanBind('0.0.0.0', 3080, 'p1', home)
     const content1 = readFileSync(patch1, 'utf8')
     expect(content1).not.toContain('[]')
-    expect(content1.startsWith(LAN_BIND_BLOCK_BEGIN)).toBe(true)
+    expect(content1.trimStart().startsWith(LAN_BIND_BLOCK_BEGIN)).toBe(true)
     expect(managedBindOf(content1)).toEqual({ host: '0.0.0.0', port: 3080 })
 
     // Case 2: # comment followed by []
@@ -135,5 +146,75 @@ describe('writeLanBind / lanBindState', () => {
     expect(content3).toContain('- id: keep')
     expect(managedBindOf(content3)).toEqual({ host: '0.0.0.0', port: 3080 })
   })
-})
+
+  // #1675: the plugin manager appends rows through the YAML document API,
+  // which preserves the placeholder's flow style, leaving a NON-empty flow
+  // array. Appending the block sequence there produced two root documents and
+  // the profile failed to parse at dsh web startup (7:1).
+  it('operator: a flow-array profile stays one document after the block is written', () => {
+    const home = tempHome()
+    // Given a profile whose placeholder [] was rewritten into flow rows.
+    const patch = join(home, 'profiles', 'web', 'cordis.patch.yml')
+    mkdirSync(join(home, 'profiles', 'web'), { recursive: true })
+    writeFileSync(patch, '[ { id: web-ui-ssh, name: "@linxin666/dsh-web-all/ssh", disabled: false } ]\n')
+    // When the LAN bind toggle writes its managed block.
+    writeLanBind('0.0.0.0', 3080, 'web', home)
+    // Then the file is exactly one patch list holding the user's row and the
+    // managed webserver row, and no second root document exists.
+    const content = readFileSync(patch, 'utf8')
+    const items = parsePatch(content)
+    expect(items).toHaveLength(2)
+    expect(items.map(item => item.id)).toEqual(['web-ui-ssh', 'webserver'])
+    expect(managedBindOf(content)).toEqual({ host: '0.0.0.0', port: 3080 })
+    expect(content.trimStart().startsWith('[')).toBe(false)
+  })
+
+  it('operator: the managed row is appended last so it overrides the user rows', () => {
+    const home = tempHome()
+    // Given a flow-array profile that already carries a webserver row.
+    const patch = join(home, 'profiles', 'web', 'cordis.patch.yml')
+    mkdirSync(join(home, 'profiles', 'web'), { recursive: true })
+    writeFileSync(patch, '[ { id: webserver, name: "@deepseek-ai/dsh-host-webserver", config: { host: "127.0.0.1", port: 3000 } }, { id: other, name: x } ]\n')
+    // When the LAN bind toggle writes its managed block.
+    writeLanBind('0.0.0.0', 3080, 'web', home)
+    // Then the user's rows are untouched and the appended managed row carries
+    // the bind (same-id patch rows replace wholesale).
+    const content = readFileSync(patch, 'utf8')
+    const items = parsePatch(content)
+    expect(items.map(item => item.id)).toEqual(['webserver', 'other', 'webserver'])
+    const last = items[items.length - 1] as { config?: { host?: unknown; port?: unknown } }
+    expect(last.config?.host).toBe('0.0.0.0')
+    expect(last.config?.port).toBe(3080)
+    expect(managedBindOf(content)).toEqual({ host: '0.0.0.0', port: 3080 })
+  })
+
+  it('operator: repeated writes leave one managed row and the latest bind', () => {
+    const home = tempHome()
+    // Given a flow-array profile the toggle has not touched yet.
+    const patch = join(home, 'profiles', 'web', 'cordis.patch.yml')
+    mkdirSync(join(home, 'profiles', 'web'), { recursive: true })
+    writeFileSync(patch, '[ { id: keep, name: y } ]\n')
+    // When the toggle is flipped twice (LAN on, then off).
+    writeLanBind('0.0.0.0', 3080, 'web', home)
+    writeLanBind('127.0.0.1', 3191, 'web', home)
+    // Then the file holds one block and one webserver row carrying the last bind.
+    const content = readFileSync(patch, 'utf8')
+    expect(parsePatch(content)).toHaveLength(2)
+    expect(content.split(LAN_BIND_BLOCK_BEGIN)).toHaveLength(2)
+    expect(content.split('- id: webserver')).toHaveLength(2)
+    expect(managedBindOf(content)).toEqual({ host: '127.0.0.1', port: 3191 })
+  })
+
+  it('operator: an unparsable profile is refused instead of half-rewritten', () => {
+    const home = tempHome()
+    // Given a profile whose text is not a YAML patch list.
+    const patch = join(home, 'profiles', 'web', 'cordis.patch.yml')
+    mkdirSync(join(home, 'profiles', 'web'), { recursive: true })
+    writeFileSync(patch, '[ not: [a, patch, list]\n')
+    // When the LAN bind toggle runs.
+    // Then it reports the file it cannot update and leaves the bytes alone.
+    expect(() => { writeLanBind('0.0.0.0', 3080, 'web', home) }).toThrow(/cannot update the lan-bind block/)
+    expect(readFileSync(patch, 'utf8')).toBe('[ not: [a, patch, list]\n')
+  })
+});
 

@@ -15,10 +15,11 @@ import { tmpdir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import { WebSocket, WebSocketServer } from 'ws'
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
-import type { SshEngine, ShellSession, KeyboardInteractiveHandler } from './engine.ts'
+import type { SshEngine } from './engine.ts'
+import { TerminalSessionRegistry } from './engine/terminal-sessions.ts'
 import { readJsonBody, writeJson } from './http.ts'
 import { isLoopbackRequest } from './loopback.ts'
-import { SSH_API, type HostPayload, type TerminalClientFrame, type TerminalServerFrame } from './protocol.ts'
+import { SSH_API, type HostPayload, type TerminalServerFrame } from './protocol.ts'
 import type { HostStore } from './store.ts'
 
 /** Cap on declared upload bodies (staged to disk before SFTP). */
@@ -30,12 +31,6 @@ const MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024
  * frames (the webserver hands us the raw upgraded socket).
  */
 const terminalWss = new WebSocketServer({ noServer: true })
-
-/** Pause the shell when the socket's send buffer exceeds this… */
-const BACKPRESSURE_HIGH_WATER = 1024 * 1024
-
-/** …and resume once it drains below this. */
-const BACKPRESSURE_LOW_WATER = 512 * 1024
 
 /** URL query helper (first value, decoded). */
 function queryParam(url: URL, name: string): string | undefined {
@@ -60,7 +55,7 @@ maxUploadBytes?: number
  * @param deps - store, engine, staging dir.
  * @returns routes and the upgrade route.
  */
-export function makeRoutes(deps: SshRoutesDeps): { routes: WebRoute[]; upgrade: WebUpgradeRoute } {
+export function makeRoutes(deps: SshRoutesDeps): { routes: WebRoute[]; upgrade: WebUpgradeRoute; terminalSessions: TerminalSessionRegistry } {
   const { store, engine } = deps
   const staging = deps.stagingDir ?? join(tmpdir(), 'dsh-ssh-uploads')
 const maxUploadBytes = deps.maxUploadBytes ?? MAX_UPLOAD_BYTES
@@ -136,7 +131,7 @@ const maxUploadBytes = deps.maxUploadBytes ?? MAX_UPLOAD_BYTES
             // without this the pool would keep running commands on the old
             // host/credentials until the idle sweep (up to 30 min later).
             const patch = body as Record<string, unknown>
-            if (['host', 'port', 'user', 'auth', 'proxyJump'].some(key => patch[key] !== undefined)) {
+            if (['host', 'port', 'user', 'auth', 'proxyJump', 'proxyCommand'].some(key => patch[key] !== undefined)) {
               engine.dropAlias(alias)
             }
             writeJson(res, 200, { host: store.summarize(entry) })
@@ -452,6 +447,12 @@ const maxUploadBytes = deps.maxUploadBytes ?? MAX_UPLOAD_BYTES
   ]
 
   // ---------------------------------------------- terminal (upgrade)
+  // The shell outlives the view that opened it: a session is created once and
+  // any later socket attaches by id, so a panel switch or a dropped socket
+  // does not tear the remote shell down (engine/terminal-sessions.ts).
+  const terminalSessions = new TerminalSessionRegistry({
+    openShell: (alias, size, onKeyboardInteractive) => engine.openShell(alias, size, onKeyboardInteractive),
+  })
   const upgrade: WebUpgradeRoute = {
     path: SSH_API.terminal,
     handler: (req, socket, head) => {
@@ -462,114 +463,32 @@ const maxUploadBytes = deps.maxUploadBytes ?? MAX_UPLOAD_BYTES
       }
       const url = new URL(req.url ?? '/', 'http://localhost')
       const alias = queryParam(url, 'alias')
-      if (alias === undefined) {
+      const sessionId = queryParam(url, 'session')
+      if (alias === undefined && sessionId === undefined) {
         socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n')
         socket.destroy()
         return
       }
       const cols = Number.parseInt(queryParam(url, 'cols') ?? '80', 10)
       const rows = Number.parseInt(queryParam(url, 'rows') ?? '24', 10)
+      const size = {
+        cols: Number.isFinite(cols) ? cols : 80,
+        rows: Number.isFinite(rows) ? rows : 24,
+      }
       terminalWss.handleUpgrade(req, socket, head, (ws) => {
-        let session: ShellSession | undefined
-        let closed = false
-        let paused = false
-        let pendingAuthFinish: ((responses: string[]) => void) | undefined
-        // Resume the shell once the socket's send buffer drains below the
-        // low-water mark (transport backpressure).
-        const resume = (): void => {
-          if (paused && ws.bufferedAmount < BACKPRESSURE_LOW_WATER) {
-            paused = false
-            session?.resume()
-          }
-        }
-        const sendFrame = (frame: TerminalServerFrame): void => {
-          if (closed || ws.readyState !== WebSocket.OPEN) return
-          ws.send(JSON.stringify(frame), resume)
-          if (!paused && ws.bufferedAmount > BACKPRESSURE_HIGH_WATER) {
-            paused = true
-            session?.pause()
-          }
-        }
-        const closeSession = (): void => {
-          if (pendingAuthFinish !== undefined) {
-            const fn = pendingAuthFinish
-            pendingAuthFinish = undefined
-            try { fn([]) } catch { /* ignore */ }
-          }
-          const opened = session
-          session = undefined
-          if (opened !== undefined) opened.close()
-        }
-
-        const onKeyboardInteractive: KeyboardInteractiveHandler = (name, instructions, _lang, prompts, finish) => {
-          const entry = store.find(alias)
-          // Auto-answer password if configured and prompt is a password request
-          if (entry?.auth.kind === 'password' && entry.auth.password !== undefined && prompts.length > 0 && prompts.every(p => /password/i.test(p.prompt))) {
-            const password = entry.auth.password
-            finish(prompts.map(() => password))
-            return
-          }
-          // Interactive 2FA prompt sent to the client terminal
-          pendingAuthFinish = finish
-          sendFrame({
-            type: 'auth_prompt',
-            name,
-            instructions,
-            prompts: prompts.map(p => ({ prompt: p.prompt, echo: p.echo })),
-          })
-        }
-
-        engine.openShell(alias, {
-          cols: Number.isFinite(cols) ? cols : 80,
-          rows: Number.isFinite(rows) ? rows : 24,
-        }, onKeyboardInteractive).then((opened) => {
-          if (ws.readyState !== WebSocket.OPEN) {
-            opened.close()
-            return
-          }
-          session = opened
-          sendFrame({ type: 'ready', alias })
-          opened.onData = (data) => sendFrame({ type: 'output', data: data.toString('utf8') })
-          opened.onExit = (code, error) => {
-            sendFrame({ type: 'exit', code, error })
-            closed = true
-            try { ws.close(1000) } catch { /* already closed */ }
-          }
-        }).catch((error) => {
-          sendFrame({ type: 'exit', code: null, error: error instanceof Error ? error.message : String(error) })
-          closed = true
+        if (sessionId !== undefined) {
+          if (terminalSessions.attach(ws, sessionId, size)) return
+          // The session was reaped or the host restarted: tell the view so it
+          // can fall back to a fresh connect instead of sitting blank.
+          const expired: TerminalServerFrame = { type: 'exit', code: null, error: 'terminal session expired' }
+          try { ws.send(JSON.stringify(expired)) } catch { /* socket raced away */ }
           try { ws.close(1000) } catch { /* already closed */ }
-        })
-        ws.on('message', (data) => {
-          let frame: TerminalClientFrame
-          try {
-            frame = JSON.parse(String(data)) as TerminalClientFrame
-          } catch {
-            return
-          }
-          if (frame.type === 'input') {
-            session?.send(frame.data)
-          } else if (frame.type === 'resize') {
-            session?.resize(Math.max(2, frame.cols), Math.max(1, frame.rows))
-          } else if (frame.type === 'auth_response') {
-            if (pendingAuthFinish !== undefined) {
-              const fn = pendingAuthFinish
-              pendingAuthFinish = undefined
-              fn(frame.responses)
-            }
-          }
-        })
-        ws.on('close', () => {
-          closed = true
-          closeSession()
-        })
-        ws.on('error', () => {
-          closed = true
-          closeSession()
-        })
+          return
+        }
+        void terminalSessions.open(ws, alias as string, size)
       })
     },
   }
 
-  return { routes, upgrade }
+  return { routes, upgrade, terminalSessions }
 }

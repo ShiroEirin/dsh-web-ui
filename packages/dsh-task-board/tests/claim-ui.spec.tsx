@@ -48,6 +48,7 @@ function controller(): BoardController {
   }
   return {
     getSnapshot: () => state,
+    isHostBacked: () => false,
     subscribe: () => () => {},
     closeTask: () => {},
   } as unknown as BoardController

@@ -18,22 +18,20 @@ const flush = (): Promise<void> => new Promise(resolve => { setTimeout(resolve, 
 
 /** Controllable sessions face (selection + open). */
 class FakeSessions {
-  current: string | undefined = undefined
+  opened: string | undefined = undefined
   openCalls: string[] = []
   private listeners = new Set<() => void>()
-  list = {
-    getSnapshot: (): { current: string | undefined } => ({ current: this.current }),
-    subscribe: (fn: () => void): (() => void) => {
-      this.listeners.add(fn)
-      return () => { this.listeners.delete(fn) }
-    },
+  current(): string | undefined { return this.opened }
+  subscribe(fn: () => void): () => void {
+    this.listeners.add(fn)
+    return () => { this.listeners.delete(fn) }
   }
   open(id: string): void {
     this.openCalls.push(id)
     this.setCurrent(id)
   }
   setCurrent(id: string | undefined): void {
-    this.current = id
+    this.opened = id
     for (const fn of [...this.listeners]) fn()
   }
 }
@@ -52,7 +50,7 @@ function snapshot(revision: number, tasks: TaskRecord[] = [], ledgerId = 'ledger
   }
 }
 
-function makeController() {
+function makeController(panel?: { select(panelId: string | null): void }) {
   const sessions = new FakeSessions()
   const store = new InMemoryTaskStore()
   const deps: ControllerDeps = {
@@ -60,6 +58,7 @@ function makeController() {
     sessions,
     now: () => NOW,
     uuid,
+    ...(panel === undefined ? {} : { panel }),
   }
   const controller = new BoardController(deps)
   controller.start()
@@ -216,6 +215,62 @@ describe('view state', () => {
     expect(controller.getSnapshot().boardOpen).toBe(false)
     controller.toggleBoard()
     expect(controller.getSnapshot().boardOpen).toBe(true)
+  })
+
+  it('operator sees the layout select the board panel on open and the conversation on close', () => {
+    // Given a controller wired to the layout panel-navigation face
+    const selections: Array<string | null> = []
+    const { controller } = makeController({ select: panelId => { selections.push(panelId) } })
+
+    // When the user opens and closes the board
+    controller.openBoard()
+    controller.closeBoard()
+    // Re-opening is not a second selection request for the already-open board
+    controller.openBoard()
+
+    // Then the layout was asked for the board panel, then the conversation,
+    // then the board again
+    expect(selections).toEqual(['task-board', null, 'task-board'])
+  })
+
+  it('operator reopening an open board sees no second panel selection (#1233)', () => {
+    // Given an already-open board
+    const selections: Array<string | null> = []
+    const { controller } = makeController({ select: panelId => { selections.push(panelId) } })
+    controller.openBoard()
+
+    // When openBoard runs again
+    controller.openBoard()
+
+    // Then the layout is not asked to re-select the same panel
+    expect(selections).toEqual(['task-board'])
+  })
+
+  it('operator keeps the board open when the layout face throws before its root entry mounts', () => {
+    // Given a layout service that throws by contract during boot
+    const { controller } = makeController({
+      select: () => { throw new Error('layout root entry has not mounted') },
+    })
+
+    // When the board opens
+    // Then the local state still flips; the throw never reaches the caller
+    expect(() => { controller.openBoard() }).not.toThrow()
+    expect(controller.getSnapshot().boardOpen).toBe(true)
+  })
+
+  it('operator clicking another panel row sees the board follow without asking the layout back', () => {
+    // Given an open board whose layout face records any request
+    const selections: Array<string | null> = []
+    const { controller } = makeController({ select: panelId => { selections.push(panelId) } })
+    controller.openBoard()
+    selections.length = 0
+
+    // When the user clicks another sidebar panel row (the layout owns selection)
+    controller.syncPanelSelection('plugins')
+
+    // Then the board's own view state follows, with no write back to the layout
+    expect(controller.getSnapshot().boardOpen).toBe(false)
+    expect(selections).toEqual([])
   })
 
   it('stays open when the current selection changes without user navigation', () => {
@@ -464,6 +519,49 @@ describe('scheduling', () => {
     const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
     expect(() => controller.applyScheduleNextRun(task.id, 1, 2)).not.toThrow()
     expect(controller.getSnapshot().tasks[0].schedule).toBeUndefined()
+  })
+})
+
+describe('legacy parent links', () => {
+  it('user linking a task to a parent through the in-memory controller stores the link and can detach it', async () => {
+    // Given two stored tasks and a controller without a Host transport
+    const { controller, store } = makeController()
+    store.save([
+      createTask({ title: 'Root', description: '', prompt: 'root' }, NOW, 'root'),
+      createTask({ title: 'Free', description: '', prompt: 'free' }, NOW, 'free'),
+    ])
+    controller.reloadFromStore()
+
+    // When the user links the free task under the root
+    const applied = await controller.setParent('free', 'root')
+
+    // Then the link is stored and visible in the snapshot
+    expect(applied).toBe(true)
+    expect(controller.getSnapshot().tasks.find(entry => entry.id === 'free')?.parentId).toBe('root')
+
+    // When the user detaches it again
+    await controller.setParent('free', null)
+
+    // Then the task is a root once more
+    expect(controller.getSnapshot().tasks.find(entry => entry.id === 'free')?.parentId).toBeUndefined()
+  })
+
+  it('user linking a task under a subtask is refused by the in-memory controller at the default depth', async () => {
+    // Given a root with a subtask and one free task
+    const { controller, store } = makeController()
+    store.save([
+      createTask({ title: 'Root', description: '', prompt: 'root' }, NOW, 'root'),
+      createTask({ title: 'Child', description: '', prompt: 'child', parentId: 'root' }, NOW, 'child'),
+      createTask({ title: 'Free', description: '', prompt: 'free' }, NOW, 'free'),
+    ])
+    controller.reloadFromStore()
+
+    // When the user tries to attach the free task under the subtask
+    const applied = await controller.setParent('free', 'child')
+
+    // Then the refusal leaves the task a root
+    expect(applied).toBe(false)
+    expect(controller.getSnapshot().tasks.find(entry => entry.id === 'free')?.parentId).toBeUndefined()
   })
 })
 

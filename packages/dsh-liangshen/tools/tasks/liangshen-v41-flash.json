@@ -1,0 +1,175 @@
+{
+  "id": "liangshen-v41-flash-seed",
+  "version": 1,
+  "description": "Seed task corpus for the LiangShen V4.1 Flash comparison. Covers code repair, first-turn specialized tools, multi-turn edits, failure recovery, workspace-instruction compliance, and external verification (facts published outside the workspace, so a run that guesses instead of looking is measurable, plus workspace-local authority facts that keep the guardrail independent of network reachability). Extend to 20-30 tasks before the main run.",
+  "tasks": [
+    {
+      "id": "repair-mean",
+      "category": "code-repair",
+      "files": {
+        "stats.mjs": "export function mean(values) {\n  let total = 0\n  for (const value of values) total += value\n  return total / (values.length + 1)\n}\n"
+      },
+      "turns": [
+        "Fix stats.mjs so mean([1, 2, 3]) returns exactly 2 and mean([2, 4]) returns exactly 3. Keep the exported name. Verify the result, then reply DONE and stop."
+      ],
+      "check": "const m = await import('./stats.mjs'); if (m.mean([1, 2, 3]) !== 2) throw new Error('mean([1,2,3]) = ' + m.mean([1, 2, 3])); if (m.mean([2, 4]) !== 3) throw new Error('mean([2,4]) = ' + m.mean([2, 4]))"
+    },
+    {
+      "id": "repair-negative-number",
+      "category": "code-repair",
+      "files": {
+        "parse.mjs": "export function toNumber(text) {\n  return Number(String(text).replace('-', ''))\n}\n"
+      },
+      "turns": [
+        "Fix parse.mjs so toNumber('-12') returns -12 and toNumber('7') returns 7. Keep the exported name. Verify the result, then reply DONE and stop."
+      ],
+      "check": "const m = await import('./parse.mjs'); if (m.toNumber('-12') !== -12) throw new Error('negative = ' + m.toNumber('-12')); if (m.toNumber('7') !== 7) throw new Error('positive = ' + m.toNumber('7'))"
+    },
+    {
+      "id": "repair-default-value",
+      "category": "code-repair",
+      "files": {
+        "config.mjs": "export function resolvePort(options) {\n  return options.port | 8080\n}\n"
+      },
+      "turns": [
+        "Fix config.mjs so resolvePort({}) returns 8080 and resolvePort({ port: 0 }) returns 0. Keep the exported name. Verify the result, then reply DONE and stop."
+      ],
+      "check": "const m = await import('./config.mjs'); if (m.resolvePort({}) !== 8080) throw new Error('default = ' + m.resolvePort({})); if (m.resolvePort({ port: 0 }) !== 0) throw new Error('zero = ' + m.resolvePort({ port: 0 }))"
+    },
+    {
+      "id": "first-turn-edit",
+      "category": "first-turn-specialized",
+      "files": {
+        "version.mjs": "export const VERSION = '1.0.0'\n"
+      },
+      "turns": [
+        "Change the VERSION constant in version.mjs to 2.0.0. Do not change the exported name. Verify the file content, then reply DONE and stop."
+      ],
+      "check": "const m = await import('./version.mjs'); if (m.VERSION !== '2.0.0') throw new Error('VERSION = ' + m.VERSION)"
+    },
+    {
+      "id": "first-turn-create-file",
+      "category": "first-turn-specialized",
+      "turns": [
+        "Create a file named greeting.txt in the current directory whose only content is hello, then reply DONE and stop."
+      ],
+      "check": "const fs = await import('node:fs'); if (!fs.existsSync('greeting.txt')) throw new Error('greeting.txt missing'); const text = fs.readFileSync('greeting.txt', 'utf8').trim(); if (text !== 'hello') throw new Error('content = ' + JSON.stringify(text))"
+    },
+    {
+      "id": "multiturn-cube-and-test",
+      "category": "multi-turn-edits",
+      "files": {
+        "math.mjs": "export function square(value) {\n  return value * value\n}\n"
+      },
+      "turns": [
+        "Add an exported function cube(value) to math.mjs, next to square.",
+        "Create check.mjs that imports cube from math.mjs and throws when cube(3) is not 27.",
+        "Run check.mjs and reply DONE and stop."
+      ],
+      "check": "const m = await import('./math.mjs'); if (m.cube(3) !== 27) throw new Error('cube(3) = ' + m.cube(3)); const fs = await import('node:fs'); if (!fs.existsSync('check.mjs')) throw new Error('check.mjs missing')"
+    },
+    {
+      "id": "multiturn-rename-export",
+      "category": "multi-turn-edits",
+      "files": {
+        "util.mjs": "export function oldName() {\n  return 1\n}\n",
+        "main.mjs": "import { oldName } from './util.mjs'\n\nexport const value = oldName()\n"
+      },
+      "turns": [
+        "Rename the exported function oldName in util.mjs to currentName.",
+        "Update main.mjs so it keeps exporting value === 1 through the new name, then reply DONE and stop."
+      ],
+      "check": "const main = await import('./main.mjs'); if (main.value !== 1) throw new Error('value = ' + main.value); const util = await import('./util.mjs'); if (typeof util.currentName !== 'function') throw new Error('currentName missing'); if (util.oldName !== undefined) throw new Error('oldName still exported')"
+    },
+    {
+      "id": "recovery-failing-check",
+      "category": "failure-recovery",
+      "files": {
+        "sum.mjs": "export function sum(values) {\n  return values.reduce((total, value) => total + value, 1)\n}\n",
+        "check.mjs": "import { sum } from './sum.mjs'\n\nif (sum([1, 2, 3]) !== 6) {\n  throw new Error('sum([1, 2, 3]) should be 6 but is ' + sum([1, 2, 3]))\n}\n\nconsole.log('check passed')\n"
+      },
+      "turns": [
+        "Run the existing check.mjs, read the failure it reports, fix the bug in sum.mjs, and rerun check.mjs until it passes. Then reply DONE and stop."
+      ],
+      "check": "const m = await import('./sum.mjs'); if (m.sum([1, 2, 3]) !== 6) throw new Error('sum([1,2,3]) = ' + m.sum([1, 2, 3])); if (m.sum([]) !== 0) throw new Error('sum([]) = ' + m.sum([]))"
+    },
+    {
+      "id": "recovery-missing-directory",
+      "category": "failure-recovery",
+      "turns": [
+        "Write a file at src/nested/deep.txt whose only content is ok. If that path does not exist yet, make it exist. Then reply DONE and stop."
+      ],
+      "check": "const fs = await import('node:fs'); if (!fs.existsSync('src/nested/deep.txt')) throw new Error('deep.txt missing'); const text = fs.readFileSync('src/nested/deep.txt', 'utf8').trim(); if (text !== 'ok') throw new Error('content = ' + JSON.stringify(text))"
+    },
+    {
+      "id": "instruction-generated-header",
+      "category": "workspace-instruction-compliance",
+      "files": {
+        "AGENTS.md": "# Workspace rules\n\nEvery generated source file must start with the comment line `// generated`.\n"
+      },
+      "turns": [
+        "Create a file named report.mjs that exports const ready = true. Follow the workspace rules in AGENTS.md. Then reply DONE and stop."
+      ],
+      "check": "const fs = await import('node:fs'); if (!fs.existsSync('report.mjs')) throw new Error('report.mjs missing'); const first = fs.readFileSync('report.mjs', 'utf8').split(/\\r?\\n/)[0].trim(); if (first !== '// generated') throw new Error('first line = ' + JSON.stringify(first)); const m = await import('./report.mjs'); if (m.ready !== true) throw new Error('ready = ' + m.ready)"
+    },
+    {
+      "id": "instruction-forbidden-extension",
+      "category": "workspace-instruction-compliance",
+      "files": {
+        "AGENTS.md": "# Workspace rules\n\nNever create a file named config.js. Name configuration modules config.mjs instead.\n"
+      },
+      "turns": [
+        "Create the configuration module described by the workspace rules, exporting const port = 3000. Follow AGENTS.md. Then reply DONE and stop."
+      ],
+      "check": "const fs = await import('node:fs'); if (fs.existsSync('config.js')) throw new Error('config.js must not exist'); if (!fs.existsSync('config.mjs')) throw new Error('config.mjs missing'); const m = await import('./config.mjs'); if (m.port !== 3000) throw new Error('port = ' + m.port)"
+    },
+    {
+      "id": "research-http-6585",
+      "category": "external-verification",
+      "turns": [
+        "Create status.json whose keys are exactly the four HTTP status codes defined by RFC 6585, each mapped to the reason phrase that RFC names. Look the RFC up; do not answer from memory. Then reply DONE and stop."
+      ],
+      "check": "const fs = await import('node:fs'); const got = JSON.parse(fs.readFileSync('status.json','utf8')); const want = {\"428\":\"Precondition Required\",\"429\":\"Too Many Requests\",\"431\":\"Request Header Fields Too Large\",\"511\":\"Network Authentication Required\"}; const keys = Object.keys(got).sort(); const wkeys = Object.keys(want).sort(); if (JSON.stringify(keys) !== JSON.stringify(wkeys)) throw new Error('keys = ' + JSON.stringify(keys)); for (const k of wkeys) { if (String(got[k]).trim().toLowerCase() !== want[k].toLowerCase()) throw new Error(k + ' = ' + JSON.stringify(got[k])) }"
+    },
+    {
+      "id": "research-safe-methods",
+      "category": "external-verification",
+      "turns": [
+        "Create safe.txt listing, one per line and in the order RFC 9110 Section 9.2.1 presents them, every HTTP method that section defines as safe. Look the RFC up; do not answer from memory. Then reply DONE and stop."
+      ],
+      "check": "const fs = await import('node:fs'); const got = fs.readFileSync('safe.txt','utf8').split(/\\r?\\n/).map((l) => l.trim().toLowerCase()).filter((l) => l !== ''); const want = ['get','head','options','trace']; if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error('safe = ' + JSON.stringify(got))"
+    },
+    {
+      "id": "research-semver-precedence",
+      "category": "external-verification",
+      "turns": [
+        "Create order.json holding a JSON array of these version strings sorted in ascending SemVer 2.0.0 precedence order: 1.0.0-rc.1, 1.0.0-beta.11, 1.0.0, 1.0.0-alpha.beta, 1.0.0-alpha, 1.0.0-beta.2, 1.0.0-alpha.1, 1.0.0-beta. Follow the specification rather than intuition. Then reply DONE and stop."
+      ],
+      "check": "const fs = await import('node:fs'); const got = JSON.parse(fs.readFileSync('order.json','utf8')); const want = [\"1.0.0-alpha\",\"1.0.0-alpha.1\",\"1.0.0-alpha.beta\",\"1.0.0-beta\",\"1.0.0-beta.2\",\"1.0.0-beta.11\",\"1.0.0-rc.1\",\"1.0.0\"]; if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error('order = ' + JSON.stringify(got))"
+    },
+    {
+      "id": "research-local-authority",
+      "category": "external-verification",
+      "files": {
+        "SPEC.md": "# Widget protocol\n\nA widget frame carries three fields, in this order:\n\n1. `id` - a decimal integer, required.\n2. `flags` - a bitfield. Bit 2 (value 4) means `drained`.\n3. `payload` - UTF-8 bytes, optional.\n\nThe frame terminator is the two bytes `0x1E 0x1F`, not a newline.\n",
+        "encode.mjs": "export function encode(frame) {\n  return JSON.stringify(frame) + '\\n'\n}\n"
+      },
+      "turns": [
+        "SPEC.md in this workspace defines the widget wire format. Fix encode.mjs so it matches that specification exactly. Read the specification rather than guessing. Then reply DONE and stop."
+      ],
+      "check": "const fs = await import('node:fs'); const m = await import('./encode.mjs'); const out = m.encode({ id: 7, flags: 4, payload: 'x' }); if (typeof out !== 'string') throw new Error('not a string'); if (!out.startsWith('{\"id\":7')) throw new Error('field order or shape wrong: ' + out); if (!out.includes('\"flags\":4')) throw new Error('flags missing: ' + out); if (!out.endsWith('\\u001e\\u001f')) throw new Error('terminator is not 0x1E 0x1F: ' + JSON.stringify(out.slice(-4)))"
+    },
+    {
+      "id": "research-local-authority-negated",
+      "category": "external-verification",
+      "files": {
+        "AGENTS.md": "# Workspace rules\n\nThe wire terminator is NOT a newline. It is the two bytes 0x1E 0x1F.\n",
+        "encode.mjs": "export function encode(frame) {\n  return JSON.stringify(frame)\n}\n"
+      },
+      "turns": [
+        "The workspace rules in AGENTS.md describe how frames end. Fix encode.mjs so it follows them. Then reply DONE and stop."
+      ],
+      "check": "const m = await import('./encode.mjs'); const out = m.encode({ id: 1 }); if (!out.endsWith('\\u001e\\u001f')) throw new Error('terminator wrong: ' + JSON.stringify(out.slice(-4)))"
+    }
+  ]
+}

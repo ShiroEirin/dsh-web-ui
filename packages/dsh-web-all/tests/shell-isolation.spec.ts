@@ -4,68 +4,32 @@
  * built shell artifact (lib/index.js). The contract: a family patch row that
  * mounts @linxin666/dsh-web-all with `config.plugin` degrades alone when the
  * real plugin fails to import or start, while healthy siblings mount and
- * provide services as usual. The control proves today's direct-mount shape
- * still kills the whole boot, anchoring why the shell exists.
+ * provide services as usual. The control pins the alpha.2 native floor: the
+ * host boot itself now isolates a direct-mount failing plugin (FAILED entry,
+ * siblings ACTIVE), and the shell adds the audit-friendly ACTIVE state plus
+ * the degraded ledger and health routes on top of it.
  *
  * The installed host is an optional peer: when dsh-app-boot is not resolvable
  * (clean CI checkout without the host face), the suite skips with a note — the
  * cordis-level semantics are separately covered by the shell unit tests.
  */
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, existsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
-import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import { PACKAGE_DIR, HOST_BOOT, dshIt, runBootScript } from './boot-harness.ts'
 import { apply, _resetDegradedRouteForTest } from '../src/shell.ts'
 
-const PACKAGE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const require = createRequire(import.meta.url)
-
-/** Locate the installed host's dsh-app-boot (the shell contract's authority). */
-function resolveHostBoot(): string | null {
-  for (const base of [PACKAGE_DIR, join(PACKAGE_DIR, '../..'), '/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-app-boot']) {
-    try {
-      return require.resolve('@deepseek-ai/dsh-app-boot', { paths: [base] })
-    } catch {
-      continue
-    }
-  }
-  return null
-}
-
-const HOST_BOOT = resolveHostBoot()
-const dshIt = HOST_BOOT ? it : it.skip
-
-function dirname(path: string): string {
-  return resolve(path, '..')
-}
-
 /**
- * Run one boot() simulation in a child node process: boot() installs process
- * handlers and may exit; isolation demands the child, not the suite. The
- * child prints one JSON line on stdout with the verification facts.
+ * Run one boot() simulation over the standard fixtures.
+ * @param rows - the loader rows to insert.
+ * @returns the child's JSON facts line, or the failure that replaced it.
  */
 function runBootScenario(rows: unknown[]): { ok: boolean; output: string; error?: string } {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-shell-it-'))
-  writeFileSync(join(dir, 'bad.mjs'), 'export function apply() { throw new Error("real plugin start boom") }\n')
-  writeFileSync(
-    join(dir, 'good.mjs'),
-    'export function apply(ctx) { ctx.provide("goodSvc", { ok: true }); globalThis.__GOOD = 1 }\n',
-  )
-  writeFileSync(
-    join(dir, 'late-web.mjs'),
-    'export function apply(ctx) { const regs = []; ctx.provide("webServer", { register: (r) => { regs.push(r.path); globalThis.__REGS = regs; return () => {} } }) }\n',
-  )
-  writeFileSync(join(dir, 'cordis.yml'), '[]\n')
   const script = [
     `const { boot } = await import(${JSON.stringify(HOST_BOOT)})`,
-    // __DIR__ = the scenario dir (bad/good plugins, cordis.yml);
-    // __PKG__ = this package's built lib/ (the shell artifact).
-    `const rows = ${JSON.stringify(rows).replaceAll('__DIR__', dir).replaceAll('__PKG__', join(PACKAGE_DIR, 'lib'))}`,
+    `const rows = ${JSON.stringify(rows)}`,
     `try {`,
-    `  const ctx = await boot('shell-it', ${JSON.stringify(join(dir, 'cordis.yml'))}, rows)`,
+    `  const ctx = await boot('shell-it', '__DIR__/cordis.yml', rows)`,
     `  const loader = ctx.get('loader')`,
     `  const include = [...loader.entries()][0]`,
     `  const entries = [...include.subtree.entries()].map(e => ({ id: e.options.id, state: e.fiber ? e.fiber.state : null }))`,
@@ -75,17 +39,7 @@ function runBootScenario(rows: unknown[]): { ok: boolean; output: string; error?
     `  console.log(JSON.stringify({ ok: false, error: String(error.message).slice(0, 160) }))`,
     `}`,
   ].join('\n')
-  writeFileSync(join(dir, 'scenario.mjs'), script)
-  try {
-    const stdout = execFileSync(process.execPath, [join(dir, 'scenario.mjs')], { encoding: 'utf8', timeout: 30_000 })
-    const line = stdout.trim().split('\n').find(l => l.startsWith('{'))
-    return { ok: true, output: line ?? '' }
-  } catch (error) {
-    const e = error as { stdout?: string; stderr?: string }
-    const line = (e.stdout ?? '').trim().split('\n').find(l => l.startsWith('{'))
-    if (line) return { ok: true, output: line }
-    return { ok: false, output: '', error: (e.stderr ?? String(error)).slice(0, 200) }
-  }
+  return runBootScript(script)
 }
 
 describe('dsh-web-all fault-isolation shell (real boot)', () => {
@@ -178,14 +132,25 @@ describe('dsh-web-all fault-isolation shell (real boot)', () => {
     expect(facts.goodSvc).toEqual({ ok: true })
   })
 
-  dshIt('control: direct-mount failing plugin still kills the boot (today\'s behavior)', () => {
+  dshIt('control: the alpha.2 native boot isolates a direct-mount failing plugin', () => {
+    // Behavior change anchored 2026-09-23: before alpha.2 a direct-mount
+    // start-failing plugin rejected boot() ('failed to apply loader entry
+    // include') and killed the whole process — the fault-isolation shell's
+    // raison d'être. The alpha.2 host (cordis 4.0.4) isolates the fault
+    // natively: boot resolves, the failing entry stays FAILED(3), and healthy
+    // siblings mount and serve. The shell still earns its keep on top of the
+    // native floor: it keeps family rows ACTIVE for the boot audit and owns
+    // the degraded ledger plus the /api/dsh-web-all/degraded|/rows routes.
     const result = runBootScenario([
       { insert: [{ id: 'bad-direct', name: '__DIR__/bad.mjs' }] },
       { insert: [{ id: 'good-entry-c', name: '__DIR__/good.mjs' }] },
     ])
-    const facts = JSON.parse(result.output || '{}') as { ok: boolean; error?: string }
-    expect(facts.ok).toBe(false)
-    expect(facts.error).toContain('failed to apply loader entry include')
+    expect(result.error).toBeUndefined()
+    const facts = JSON.parse(result.output || '{}') as { ok: boolean; entries: Array<{ id: string; state: number }>; goodSvc: unknown }
+    expect(facts.ok).toBe(true)
+    expect(facts.entries.find(e => e.id === 'bad-direct')?.state).toBe(3) // FAILED — isolated, not fatal
+    expect(facts.entries.find(e => e.id === 'good-entry-c')?.state).toBe(2) // ACTIVE
+    expect(facts.goodSvc).toEqual({ ok: true })
   })
 
   dshIt('a late-provided webServer still gets both health routes (boot ordering)', () => {
@@ -246,7 +211,10 @@ describe('dsh-web-all fault-isolation shell (real boot)', () => {
         effect: (fn: () => () => void) => {
           effects.push(fn())
         },
-        plugin: vi.fn(),
+        // A settings edit reaches the mounted plugin through this event; the
+        // mount itself goes through ctx.plugin.
+        on: vi.fn(),
+        plugin: vi.fn(() => ({ dispose: async () => {} })),
       })
 
       // Simulate 17 family subpath rows mounting sequentially
@@ -292,7 +260,5 @@ describe('dsh-web-all fault-isolation shell (real boot)', () => {
 
 /** Read the generated aggregate patch for the artifact contract assertions. */
 function await_import_patch(): string {
-  // Lazy require keeps vitest happy without top-level await.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('node:fs').readFileSync(join(PACKAGE_DIR, 'cordis.patch.yml'), 'utf8')
+  return readFileSync(join(PACKAGE_DIR, 'cordis.patch.yml'), 'utf8')
 }

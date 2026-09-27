@@ -17,8 +17,8 @@ Five actionable issues remained in the repository:
    - Updated `packages/dsh-task-board/src/client/board.module.css` and `packages/dsh-ssh/src/client/panel/panel.module.css` to match both `:global([data-dsh-frame][data-sidebar-collapsed])` and `:global([data-sidebar-collapsed])`.
    - Updated respective unit test assertions.
 2. **Skill Explorer Badges & i18n (#1305, #1304)**:
-   - Improved `.badgeInvokable` contrast in `packages/dsh-skill-explorer/src/client/skill-panel.module.css`.
-   - Added `providerLabel` helper and tooltip attributes in `SkillPanel.tsx`.
+   - Improved `.badgeInvokable` contrast in `packages/dsh-skill-explorer/src/client/panel/panel.module.css`.
+   - Added `providerLabel` helper and tooltip attributes in `panel/SkillsTab.tsx`.
    - Added localized translation keys in `packages/dsh-skill-explorer/src/client/locales.ts` and `packages/dsh-i18n/src/client/ru/skill-explorer.ts`.
 3. **Task Board Version Degradation (#1313)**:
    - Added `isInvocationUnavailable` check in `packages/dsh-task-board/src/host-runner.ts` to log a single actionable warning on DSH < 0.1.2-alpha.2 runtimes and degrade gracefully without continuous error logs.

@@ -20,7 +20,7 @@
 2. **API 协议与客户端类型 (`api.ts`)**：
    - `SkillEntry` 补充 `workspaceRoot`、`workspaceName` 与 `isActiveWorkspace`；
    - `ListPayload` 补充 `workspaces?: WorkspaceItem[]`。
-3. **工作区隔离提示与筛选界面 (`SkillPanel.tsx` 与 CSS)**：
+3. **工作区隔离提示与筛选界面 (`panel/SkillsTab.tsx` 与 `panel/panel.module.css`)**：
    - 为项目技能显示工作区名称徽标；
    - 非当前工作区技能醒目标记「工作区隔离」徽标，并提供悬停释义提示，卡片轻度半透明呈现；
    - 存在多个工作区时，在技能列表顶部提供工作区下拉筛选器，支持按当前工作区或指定工作区聚焦浏览。

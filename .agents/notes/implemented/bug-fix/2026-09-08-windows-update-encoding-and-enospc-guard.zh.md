@@ -11,7 +11,7 @@ Status: implemented
 
 ## Decision
 
-1. 在 `packages/dsh-remote-web-ui/src/update.ts` 中：
+1. 在 `packages/dsh-update/src/update.ts` 中（当时为 `packages/dsh-remote-web-ui/src/update.ts`）：
    - 增加容错解码函数 `decodeProcessChunk`，优先按 UTF-8 严格解码，遇无效字节序列自动回退至 GBK（`new TextDecoder('gbk')`），彻底解决 Windows 中文控制台乱码；
    - 扩展 `WIN_CMD_MISSING_RE` 正则以同时支持中英文命令缺失提示，并支持 Windows 下退出码 9009 的缺失判定；
    - 错误提示信息归因到具体失败的候选命令，不再写死 `pnpm`。
@@ -35,5 +35,5 @@ Status: implemented
 
 ## Testing
 
-- `packages/dsh-remote-web-ui/tests/update.spec.ts` 单测验证了 GBK 解码、中文 cmd 命令缺失降级与退出码 9009 识别。
+- `packages/dsh-update/tests/update.spec.ts` 单测验证了 GBK 解码、中文 cmd 命令缺失降级与退出码 9009 识别。
 - `packages/dsh-task-board/tests/host-ledger.spec.ts` 与 `host-service.spec.ts` 单测验证了启动 tmp 清理、ENOSPC 心跳优雅降级与流错误防护。

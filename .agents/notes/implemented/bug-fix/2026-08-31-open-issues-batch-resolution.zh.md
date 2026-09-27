@@ -17,7 +17,7 @@ Status: implemented
    - 在 `packages/dsh-task-board/src/client/board.module.css` 与 `packages/dsh-ssh/src/client/panel/panel.module.css` 中补齐 `:global([data-sidebar-collapsed])` 选择器，并更新单测断言。
 2. **技能中心徽标与国际化 (#1305, #1304)**：
    - 提升 `.badgeInvokable` 颜色对比度以满足 WCAG AA 标准。
-   - 在 `SkillPanel.tsx` 中增加 `providerLabel` 本地化映射与来源 tooltip，并为可调用状态补充说明 tooltip。
+   - 在 `panel/SkillsTab.tsx` 中增加 `providerLabel` 本地化映射与来源 tooltip，并为可调用状态补充说明 tooltip。
    - 在 `dsh-skill-explorer` 与 `dsh-i18n`（含俄语字典）中同步对应国际化词条。
 3. **版本探测与降级 (#1313)**：
    - 在 `packages/dsh-task-board/src/host-runner.ts` 中增加 `isInvocationUnavailable` 判定，低版本运行时仅输出单次明确 Warning 并优雅降级，避免每秒报错刷屏。

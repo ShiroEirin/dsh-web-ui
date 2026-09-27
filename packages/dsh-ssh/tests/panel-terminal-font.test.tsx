@@ -36,6 +36,7 @@ vi.mock('@xterm/addon-fit', () => ({
 }))
 
 import { TerminalTab } from '../src/client/panel/TerminalTab.tsx'
+import { PanelController } from '../src/client/panel/controller.ts'
 import type { SshApi, TerminalConnection } from '../src/client/api.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -58,6 +59,7 @@ function fakeApi(): { api: SshApi, connection: FakeConnection } {
     send: () => undefined,
     resize: vi.fn(),
     sendAuthResponse: vi.fn(),
+    detach: vi.fn(),
     close: () => undefined,
   }
   return {
@@ -92,7 +94,7 @@ describe('TerminalTab terminal font (#577)', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<TerminalTab api={api} presetAlias="demo" terminalFont={source} />) })
+    await act(async () => { root.render(<TerminalTab api={api} controller={new PanelController()} presetAlias="demo" terminalFont={source} />) })
     await act(async () => { await Promise.resolve() })
 
     // presetAlias preselects the host; the first control button is Connect.

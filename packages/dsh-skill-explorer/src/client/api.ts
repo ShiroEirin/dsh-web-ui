@@ -3,12 +3,22 @@
  * same-origin fetch; the host enforces the trust fence on its side.
  */
 
-/** Route paths mirrored from the host (src/routes.ts ROUTES). */
+/**
+ * Route paths mirrored from the host (src/routes.ts ROUTES).
+ *
+ * DOCUMENT-RELATIVE on purpose (no leading slash): the harness serves the GUI
+ * with `<base href="./">`, so a sub-path deployment (`/dsh/dsh/`) is the
+ * entry directory. A root-absolute `/api/...` escapes that prefix and the
+ * request never reaches the plugin's route (issue #1707); the official client
+ * posts its own routes the same way (`api/session.list`).
+ */
 const API = {
-  list: '/api/dsh-skill-explorer/list',
-  setEnabled: '/api/dsh-skill-explorer/set-enabled',
-  create: '/api/dsh-skill-explorer/create',
-  delete: '/api/dsh-skill-explorer/delete',
+  list: 'api/dsh-skill-explorer/list',
+  read: 'api/dsh-skill-explorer/read',
+  setEnabled: 'api/dsh-skill-explorer/set-enabled',
+  create: 'api/dsh-skill-explorer/create',
+  update: 'api/dsh-skill-explorer/update',
+  delete: 'api/dsh-skill-explorer/delete',
 } as const
 
 /** One skill entry as served by the host. */
@@ -78,15 +88,28 @@ export class SkillApi {
     return this.request(API.create, { method: 'POST', body: payload })
   }
 
+  /** One skill's editable fields and body, resolved from the panel's path. */
+  async read(name: string, path: string): Promise<{ name: string; path: string; description: string; whenToUse?: string; content: string }> {
+    return this.request(`${API.read}?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`)
+  }
+
+  /** Rewrite an existing skill file in place (name and location unchanged). */
+  async update(payload: { name: string; path: string; description: string; whenToUse?: string; content: string }): Promise<{ ok: true; name: string; path: string; disabled: boolean }> {
+    return this.request(API.update, { method: 'POST', body: payload })
+  }
+
   /** Delete a skill (moves it into .trash). */
   async remove(name: string, path: string): Promise<{ ok: true; name: string; moved: string }> {
     return this.request(API.delete, { method: 'POST', body: { name, path } })
   }
 
   private async request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+    const headers = options.body === undefined
+      ? new Headers()
+      : new Headers({ 'content-type': 'application/json' })
     const response = await fetch(path, {
       method: options.method ?? 'GET',
-      headers: options.body === undefined ? undefined : { 'content-type': 'application/json' },
+      headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     })
     let body: unknown

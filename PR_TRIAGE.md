@@ -29,13 +29,17 @@
 
 | name | 分类 | 类别勾选 | 负责人 / 审批者 |
 | --- | --- | --- | --- |
-| `renderer` | 渲染器 / Wallpaper Engine / WebGL（`packages/skins/skin-center` 的 we-*、pkg-extract、wallpaper、backdrop-scene、WallpaperPanel 等） | 壁纸 / 渲染器 | Aa728848 |
+| `plugins` | 插件功能（任务看板 / Git 图谱 / 右侧面板 / 远程 Web UI / SSH / 设置 / 聚合包） | 插件功能 | zhu1090093659 |
+| `maintenance` | 维护 / 其他 | 维护 / 其他 | zhu1090093659 |
 
+未命中任何分类的 PR 由 `defaultRoute` 兜底，交给 zhu1090093659。
+
+皮肤 / 皮肤中心、社区插件索引与预设三类没有路由：这三类内容贡献已迁至独立仓，按这三类提交到本仓的 PR 由 `.github/workflows/reject-non-content-pr.yml` 关闭并重定向到 [dsh-skins](https://github.com/zhu1090093659/dsh-skins) / [dsh-community-plugins](https://github.com/zhu1090093659/dsh-community-plugins) / [dsh-presets](https://github.com/zhu1090093659/dsh-presets)；勾「新宠物收录」类型的 PR 同样重定向到 [dsh-pet](https://github.com/zhu1090093659/dsh-pet)。该工作流按模板标签前缀识别勾选项，模板可以在标签后追加说明文字。本仓库不再接受任何外部内容贡献，外部 PR 一律由该工作流关闭并指向对应独立仓或 Issue。
 
 新增分类：在 `routes` 追加条目并同步本表格；纯按标题路由可只写 `title`，
 例如 `{"name": "community", "title": "^社区", "reviewers": ["zhu1090093659"]}`；
-按类别路由可只写 `types`，值为 PR 描述「PR 类别」勾选项的完整标签（须与模板一致），例如
-`{"name": "skin-content", "types": ["皮肤 / 皮肤中心（新皮肤收录、皮肤样式）"], "assignees": ["Aa728848"], "reviewers": ["Aa728848"]}`；
+按类别路由可只写 `types`，值为 PR 描述「PR 类别」勾选项的标签（须与模板一致），例如
+`{"name": "<分类名>", "types": ["<PR 类别勾选项标签>"], "assignees": ["<用户名>"], "reviewers": ["<用户名>"]}`；
 按作者转交可只写 `authors`：`{"name": "maintainer", "authors": ["Aa728848"], "reviewers": ["zhu1090093659"]}`（当前未启用）。
 
 ## 自动化行为
