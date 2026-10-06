@@ -18,7 +18,7 @@ The dsh-market.com creative-workshop home page presented the catalog as an inter
 - Favorites: 我的收藏 persists a device-local `kind:id` list in `localStorage` (`dsh-market-saved`) and is toggled from the detail dialog; favorites never reach the server.
 - Cards: skins show their light preview, pets their first preview contained inside a fixed-ratio media box, and plugins and presets a text card (icon, category, description). Skin, plugin, and preset names still link to `item.repo`.
 - Detail dialog: per-kind media and install instructions are unchanged (skin light and dark preview plus 实时试穿, pet previews and spritesheet, plugin npm command with copy, preset install steps), now ending with a like button and a 收藏作品 action.
-- Motion: a footer 背景动效 toggle flips `window.marketWave.setEnabled(...)` and the `.ocean.paused` class; it is forced off under `prefers-reduced-motion: reduce`.
+- Motion: a footer 背景动效 toggle flips `window.marketWave.setEnabled(...)` and the `.ocean.paused` class; it is forced off under `prefers-reduced-motion: reduce`. The backdrop is **off by default** and the choice persists in `localStorage` under `dsh-market-motion` (`'1'` / `'0'`); closing is a real close (the RAF loop stops, queued click ripples are dropped, and the canvas loses `.ready` so it returns to `opacity: 0` instead of holding a last frame). See [the motion-toggle note](2026-10-02-market-background-motion-default-off.md) for why.
 - Deep link: `#kind:id` opens the matching detail dialog on load and is cleared on close.
 - The per-tab awards podium is removed.
 

@@ -74,8 +74,8 @@ export class SshEngine {
   // ------------------------------------------------------------ exec
 
   /** Run one command on `alias` (reusing the pooled connection). */
-  async exec(alias: string, command: string, timeoutMs?: number): Promise<ExecResult> {
-    return execCommand(this, alias, command, timeoutMs)
+  async exec(alias: string, command: string, timeoutMs?: number, signal?: AbortSignal): Promise<ExecResult> {
+    return execCommand(this, alias, command, timeoutMs, signal)
   }
 
   /** Run one command against many hosts concurrently. */
@@ -86,6 +86,7 @@ export class SshEngine {
     tags?: string[]
     timeoutMs?: number
     maxWorkers?: number
+    signal?: AbortSignal
   }): Promise<ClusterResult[]> {
     return cluster(this, options)
   }

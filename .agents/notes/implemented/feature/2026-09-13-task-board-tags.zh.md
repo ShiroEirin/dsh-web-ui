@@ -32,7 +32,7 @@ Status: implemented
 
 - 卡片徽章、顶栏多选标签筛选（候选项来自全账本在用的标签，含已归档任务）、同时匹配标签名的搜索，以及新建/编辑表单里的标签编辑器（标签名输入提供看板上已有的标签，并沿用已有标签的执行提示）。
 - 多选为「与」语义：增加一个标签只会收窄结果集。
-- 新增语义部件 `tag-filter`、`tag-chip`、`tag-badge`，已在同一次改动中记录进 [semantic-attrs-v1.md](../../../packages/skins/skin-center/contracts/semantic-attrs-v1.md)。
+- 新增语义部件 `tag-filter`、`tag-chip`、`tag-badge`，已在同一次改动中记录进 [semantic-attrs-v1.md](https://github.com/zhu1090093659/dsh-skins/blob/main/contracts/semantic-attrs-v1.md)。
 
 ## Alternatives considered
 

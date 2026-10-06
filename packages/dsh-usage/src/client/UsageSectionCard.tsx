@@ -16,7 +16,7 @@ import styles from './usage.module.css'
 import { isDeepSeekProviderRoute } from '../core/adapters.ts'
 import { deepseekPeriodAt } from '../core/pricing.ts'
 import { deepseekVoucherData, drawVoucher, faceValue, formatDay, formatDenomination, loadVoucherArt } from './voucher.ts'
-import type { ObservedSpendView, ProviderSnapshotView, UsageOverviewView, UsageProviderSummary, UsageTokenTotals, UsageWindowSummary } from '../core/types.ts'
+import type { ObservedSpendView, ProviderSnapshotView, UsageDayView, UsageOverviewView, UsageProviderSummary, UsageTokenTotals, UsageWindowSummary } from '../core/types.ts'
 
 /** The settings fields this section edits (immediate-apply semantics). */
 export interface UsageSettings {
@@ -32,6 +32,12 @@ export interface UsageSectionFace {
   poll: () => void
   /** Force a host probe cycle now (resolves with the fresh overview). */
   refresh: () => void
+  /**
+   * Fetch one retained local day (YYYY-MM-DD) from the host. The overview
+   * only carries today plus the list of recorded days, so a day the user picks
+   * is one small on-demand request.
+   */
+  loadDay: (date: string) => Promise<UsageDayView>
   /** The shared configuration form this section's settings row reads and writes. */
   settings: ConfigForm<UsageSettings>
 }
@@ -43,6 +49,12 @@ export interface UsageSectionProps extends UsageSectionFace {
 
 /** Poll cadence while the section is open. */
 const SECTION_POLL_MS = 10_000
+
+/**
+ * The Token bank's default window: the whole retained ledger. It is a select
+ * value rather than a date, so it can never collide with a day key.
+ */
+const BANK_ALL_DAYS = 'all'
 
 /** Compact token count: 12345 -> 12.3k, 1234567 -> 1.23M. */
 export function formatTokens(value: number): string {
@@ -149,13 +161,87 @@ function ProviderRow(props: { provider: ProviderSnapshotView; current?: string }
   )
 }
 
+/** One day the pickers selected, as its fetch progresses. */
+interface DayLoad {
+  status: 'loading' | 'ready' | 'error'
+  /** The served day, once the host answered. */
+  view?: UsageDayView
+  /** Transport error message, on a failed load. */
+  error?: string
+}
+
+/**
+ * Fetch the day a picker selected, or stay idle for the default window. Today
+ * never fetches: the overview already carries it live, so switching back to
+ * today is instant and keeps counting with the poll. A superseded selection
+ * never lands (the effect cancels), and a failed load reports its own message
+ * instead of leaving the card on a stale day.
+ */
+function useDayView(loadDay: (date: string) => Promise<UsageDayView>, date: string | undefined, today: string | undefined): DayLoad | undefined {
+  const [load, setLoad] = useState<DayLoad | undefined>(undefined)
+  useEffect(() => {
+    if (date === undefined || date === today) {
+      setLoad((previous) => (previous === undefined ? previous : undefined))
+      return undefined
+    }
+    let cancelled = false
+    setLoad({ status: 'loading' })
+    loadDay(date).then(
+      (view) => { if (!cancelled) setLoad({ status: 'ready', view }) },
+      (error: unknown) => { if (!cancelled) setLoad({ status: 'error', error: error instanceof Error ? error.message : String(error) }) },
+    )
+    return () => { cancelled = true }
+  }, [date, today, loadDay])
+  return load
+}
+
+/**
+ * The day picker: today plus every retained day that recorded usage, newest
+ * first (the host serves the list ascending). Without that list (an older host
+ * document) no picker renders and the card stays on its default window.
+ */
+function DayPicker(props: {
+  value: string
+  options: string[]
+  today: string
+  /** An extra leading option; the Token bank passes its whole-ledger window. */
+  leading?: { value: string; label: string }
+  onSelect: (date: string) => void
+  /** Namespaces the element id, so the two tabs keep one control each. */
+  part: string
+}): ReactNode {
+  const { value, options, today, leading, onSelect, part } = props
+  if (options.length === 0) return null
+  return (
+    <div className={styles.dayPicker}>
+      <label className={styles.dayPickerLabel} htmlFor={'dsh-usage-day-' + part}>{t('usage.day.label')}</label>
+      <select
+        id={'dsh-usage-day-' + part}
+        className={styles.daySelect}
+        value={value}
+        onChange={(event) => { onSelect(event.target.value) }}
+      >
+        {leading !== undefined && <option value={leading.value}>{leading.label}</option>}
+        {options.map((date) => (
+          <option key={date} value={date}>{date === today ? t('usage.day.today') : date}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 /** The section component; the slot merges the face into these props. */
 export function UsageSectionCard(props: UsageSectionProps): ReactNode {
-  const { store, poll, refresh, settings } = props
+  const { store, poll, refresh, loadDay, settings } = props
   const ui = useSyncExternalStore(store.subscribe, store.getSnapshot)
   const settingsSnapshot = settings.getSnapshot()
   const settingsValue = settingsSnapshot.value ?? {}
   const [tab, setTab] = useState<'usage' | 'plans' | 'bank'>('usage')
+  // Undefined means "the default window of this tab": today on the usage tab,
+  // the whole retained ledger in the Token bank. A date switches that tab to
+  // one retained day instead.
+  const [usageDay, setUsageDay] = useState<string | undefined>(undefined)
+  const [bankDay, setBankDay] = useState<string | undefined>(undefined)
   const [refreshing, setRefreshing] = useState(false)
   // The enable checkbox writes through the shared form, so subscribing here
   // keeps the flag below live: the form republishes the Host's accepted value,
@@ -195,6 +281,31 @@ export function UsageSectionCard(props: UsageSectionProps): ReactNode {
   }, [poll, enabled])
 
   const snapshot = ui.snapshot
+  const todayDate = snapshot?.usage.today.date
+  // Every retained day that recorded usage, newest first, plus today so the
+  // default window is always one of the options even before it has usage.
+  const dayOptions = snapshot === null
+    ? []
+    : [...new Set([todayDate, ...(snapshot.usage.availableDays ?? [])]
+      .filter((date): date is string => date !== undefined))].sort().reverse()
+  // A selection retention no longer holds falls back to the tab's default
+  // window, so a picker can never keep displaying a day the host dropped.
+  const usageSelection = usageDay !== undefined && dayOptions.includes(usageDay) ? usageDay : undefined
+  const bankSelection = bankDay !== undefined && dayOptions.includes(bankDay) ? bankDay : undefined
+  const selectedDay = usageSelection ?? todayDate
+  const isToday = selectedDay === todayDate
+  const usageDayLoad = useDayView(loadDay, usageSelection, todayDate)
+  const bankDayLoad = useDayView(loadDay, bankSelection, todayDate)
+  // A selected day rides its own fetch; the default windows ride the overview.
+  const day = isToday ? snapshot?.usage.today : usageDayLoad?.view
+  const bankDayView = bankSelection === undefined
+    ? undefined
+    : bankSelection === todayDate ? snapshot?.usage.today : bankDayLoad?.view
+  const bankWindow = bankSelection === undefined
+    ? snapshot?.usage.all ?? snapshot?.usage.range
+    : bankDayView === undefined
+      ? undefined
+      : { from: bankDayView.date, to: bankDayView.date, totals: bankDayView.totals, providers: bankDayView.providers }
 
   const onRefresh = (): void => {
     setRefreshing(true)
@@ -227,10 +338,11 @@ export function UsageSectionCard(props: UsageSectionProps): ReactNode {
   const current = snapshot.current
   const currentProvider = snapshot.providers.find((provider) => provider.provider === current.provider)
   // Peak-period line: only when the official DeepSeek family is in play this
-  // session (the current route, or spend recorded under one today).
+  // session (the current route, or spend recorded under one today). It
+  // describes the pricing window now, so a past day's card drops it.
   const deepseekPeriod = deepseekPeriodAt(Date.now())
-  const deepseekVisible = (current.provider !== undefined && isDeepSeekProviderRoute(current.provider))
-    || snapshot.usage.today.providers.some((row) => isDeepSeekProviderRoute(row.provider))
+  const deepseekVisible = isToday && ((current.provider !== undefined && isDeepSeekProviderRoute(current.provider))
+    || snapshot.usage.today.providers.some((row) => isDeepSeekProviderRoute(row.provider)))
   // Plans tab: only configured routes with a real coding-plan/subscription
   // adapter (planSupported; an older host without the flag falls back to "has
   // a plan fact"). Balance-only providers (DeepSeek, ZenMux, ...) and
@@ -268,24 +380,35 @@ export function UsageSectionCard(props: UsageSectionProps): ReactNode {
       {tab === 'usage' && (
         <>
           <div className={styles.card} data-dsh-part="today-card">
-            <span className={styles.cardTitle}>{t('usage.today')}</span>
+            <span className={styles.cardTitle}>{isToday ? t('usage.today') : t('usage.day.title', { date: selectedDay ?? '' })}</span>
+            <DayPicker
+              part="usage"
+              value={selectedDay ?? ''}
+              options={dayOptions}
+              today={todayDate ?? ''}
+              onSelect={(date) => { setUsageDay(date === todayDate ? undefined : date) }}
+            />
             {deepseekVisible && (
               <span className={styles.muted} data-dsh-part="peak-status">
                 {t(deepseekPeriod.peak ? 'usage.peak.on' : 'usage.peak.off', { time: formatClock(deepseekPeriod.boundaryMs) })}
               </span>
             )}
-            {snapshot.usage.today.totals.calls === 0
-              ? <span className={styles.muted}>{t('usage.noData')}</span>
-              : <TotalsRow totals={snapshot.usage.today.totals} />}
-            {snapshot.usage.today.totals.cost > 0 && (
+            {usageDayLoad?.status === 'error'
+              ? <span className={styles.errorLine}>{t('usage.day.error', { error: usageDayLoad.error ?? '' })}</span>
+              : day === undefined
+                ? <span className={styles.muted}>{t('usage.day.loading')}</span>
+                : day.totals.calls === 0
+                  ? <span className={styles.muted}>{isToday ? t('usage.noData') : t('usage.day.empty')}</span>
+                  : <TotalsRow totals={day.totals} />}
+            {(day?.totals.cost ?? 0) > 0 && (
               <div className={styles.providerRow} data-dsh-part="today-cost">
-                <span className={styles.providerName}>{t('usage.today.cost')}</span>
-                <span className={styles.providerTokens}>{formatCost(snapshot.usage.today.totals.cost)}</span>
+                <span className={styles.providerName}>{isToday ? t('usage.today.cost') : t('usage.day.cost')}</span>
+                <span className={styles.providerTokens}>{formatCost(day?.totals.cost ?? 0)}</span>
               </div>
             )}
-            {snapshot.usage.today.providers.length > 0 && (
+            {(day?.providers.length ?? 0) > 0 && (
               <div data-dsh-part="provider-list">
-                {snapshot.usage.today.providers.map((row) => (
+                {(day?.providers ?? []).map((row) => (
                   <div key={row.provider} className={styles.providerRow}>
                     <span className={styles.providerName}>
                       {snapshot.providers.find((provider) => provider.provider === row.provider)?.displayName ?? row.provider}
@@ -332,7 +455,27 @@ export function UsageSectionCard(props: UsageSectionProps): ReactNode {
           : planProviders.map((provider) => <PlanCard key={provider.provider} provider={provider} current={current.provider} />)
       )}
 
-      {tab === 'bank' && <VoucherCard window={snapshot.usage.all ?? snapshot.usage.range} observedSpend={snapshot.usage.observedSpend} />}
+      {tab === 'bank' && (
+        <>
+          <DayPicker
+            part="bank"
+            value={bankSelection ?? BANK_ALL_DAYS}
+            options={dayOptions}
+            today={todayDate ?? ''}
+            leading={{ value: BANK_ALL_DAYS, label: t('usage.bank.windowAll') }}
+            onSelect={(date) => { setBankDay(date === BANK_ALL_DAYS ? undefined : date) }}
+          />
+          <VoucherCard
+            window={bankWindow}
+            // The observed-spend watch accrues from its own first balance
+            // reading, so it describes the whole window only: a single day's
+            // voucher falls back to that day's fold-time estimate.
+            observedSpend={bankSelection === undefined ? snapshot.usage.observedSpend : undefined}
+            loading={bankSelection !== undefined && bankDayLoad?.status === 'loading'}
+            {...(bankDayLoad?.status === 'error' ? { error: bankDayLoad.error ?? '' } : {})}
+          />
+        </>
+      )}
     </div>
   )
 }
@@ -408,15 +551,16 @@ function totalOf(totals: UsageTokenTotals): number {
 
 /**
  * The Token 银行 card: the DeepSeek official family's retained-ledger usage
- * minted onto the whale-yuan note at 1,000,000 tokens per whale yuan. The window
- * prefers the host's whole-ledger aggregate and falls back to the 30-day
- * trend when an older host serves no `all`; the spend line prefers the
- * official balance watch and falls back to the fold-time estimate; the
- * artwork draw failure degrades to an error line and never takes the
- * section down.
+ * minted onto the whale-yuan note at 1,000,000 tokens per whale yuan. The
+ * window is the whole retained ledger by default (the host's aggregate,
+ * falling back to the 30-day trend when an older host serves no `all`) or the
+ * single day the user picked; the spend line prefers the official balance
+ * watch (whole window only) and falls back to the fold-time estimate; the
+ * artwork draw failure degrades to an error line and never takes the section
+ * down.
  */
-function VoucherCard(props: { window?: UsageWindowSummary; observedSpend?: ObservedSpendView }): ReactNode {
-  const { window: ledger, observedSpend } = props
+function VoucherCard(props: { window?: UsageWindowSummary; observedSpend?: ObservedSpendView; loading?: boolean; error?: string }): ReactNode {
+  const { window: ledger, observedSpend, loading, error } = props
   const data = deepseekVoucherData(ledger)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [drawError, setDrawError] = useState<string | undefined>(undefined)
@@ -478,9 +622,13 @@ function VoucherCard(props: { window?: UsageWindowSummary; observedSpend?: Obser
   return (
     <div className={styles.card} data-dsh-part="bank-card">
       <span className={styles.cardTitle}>{t('usage.bank.title')}</span>
-      {data === undefined
-        ? <span className={styles.muted}>{t('usage.bank.noUsage')}</span>
-        : <>
+      {error !== undefined
+        ? <span className={styles.errorLine}>{t('usage.day.error', { error })}</span>
+        : loading === true
+          ? <span className={styles.muted}>{t('usage.day.loading')}</span>
+          : data === undefined
+            ? <span className={styles.muted}>{t('usage.bank.noUsage')}</span>
+            : <>
             <span className={styles.muted}>{t('usage.bank.hint')}</span>
             <div className={styles.voucherPreview} data-dsh-part="voucher-preview">
               <canvas ref={canvasRef} aria-label={t('usage.bank.title')} />

@@ -33,6 +33,22 @@ describe('deepseekVoucherData', () => {
     expect(data).toMatchObject({ tokens: 150_000, calls: 5, cost: 2, from: '2025-12-01', to: '2026-01-01' })
   })
 
+  // #1772: the account route minted nowhere, so a user signed in to a DeepSeek
+  // account saw a permanently empty bank while spending against it.
+  it('user on the signed-in account route sees their tokens mint alongside the key routes', () => {
+    // Given a usage window holding the account route, an official key route,
+    // and an unrelated provider
+    const data = deepseekVoucherData(windowOf([
+      row('deepseek-account', 12_000_000, 40, 3.5),
+      row('deepseek-official', 50_000, 2, 0.75),
+      row('kimi-coding', 999_999, 40, 0),
+    ]))
+    // When the bank mints from the family
+    // Then the account route counts toward the face value, spend and calls,
+    // and the unrelated provider still never mints
+    expect(data).toMatchObject({ tokens: 12_050_000, calls: 42, cost: 4.25 })
+  })
+
   it('counts cache tokens as minted whale yuan', () => {
     const data = deepseekVoucherData(windowOf([{
       provider: 'deepseek',

@@ -4,7 +4,7 @@ import { HostApiError, HttpTaskBoardHostTransport, type HostApiFailure } from '.
 import type { TaskBoardEventPayload, TaskBoardSnapshot } from '../src/protocol.ts'
 
 const snapshot: TaskBoardSnapshot = {
-  schemaVersion: 3,
+  schemaVersion: 5,
   revision: 1,
   tasks: [],
   scheduler: { timeZone: 'UTC', ledgerId: 'ledger-a' },
@@ -108,9 +108,22 @@ describe('HttpTaskBoardHostTransport Host failure classes (#1528)', () => {
     expect(failure.message).not.toContain('JSON')
   })
 
-  it('reports the authentication fence as a signed-out session', async () => {
+  it('operator sees the authentication fence reported as a forbidden fence rejection', async () => {
+    // Given a Host response rejected by the same-origin fence
+    // When reading the JSON failure envelope
+    // Then the failure is classified as forbidden with the fence message
     const failure = await failureOf(() => new Response(JSON.stringify({ ok: false, error: 'forbidden' }), { status: 403 }))
+    expect(failure.failure).toBe('forbidden')
+    expect(failure.message).toContain('同源')
+  })
+
+  it('operator sees a 401 response reported as an unauthorized session', async () => {
+    // Given an unauthorized 401 response
+    // When reading the plain text failure
+    // Then the failure is classified as unauthorized
+    const failure = await failureOf(() => new Response('unauthorized', { status: 401, headers: { 'content-type': 'text/plain' } }))
     expect(failure.failure).toBe('unauthorized')
+    expect(failure.message).toContain('登录状态')
   })
 
   it('surfaces a locked ledger with the Host reason attached', async () => {
@@ -143,11 +156,130 @@ describe('HttpTaskBoardHostTransport Host failure classes (#1528)', () => {
   })
 
   it('lists every failure class the panel can render', () => {
-    const classes: HostApiFailure[] = ['not-mounted', 'unauthorized', 'locked', 'rejected', 'timeout', 'unreachable', 'unexpected']
+    const classes: HostApiFailure[] = ['not-mounted', 'ledger-locked', 'degraded', 'unauthorized', 'forbidden', 'locked', 'rejected', 'timeout', 'unreachable', 'unexpected']
     expect(new Set(classes).size).toBe(classes.length)
   })
 })
 
+describe('HttpTaskBoardHostTransport ledger-lock diagnosis (#1730)', () => {
+  /**
+   * Serve the board's own routes as absent while the family health route
+   * answers `degraded`. A second DSH process holding the ledger is exactly
+   * this shape: the row exists, its API was never registered.
+   */
+  function hostWithHealth(body: unknown, healthStatus = 200): ReturnType<typeof vi.fn> {
+    const mock = vi.fn(async (url: string) => {
+      if (url === 'api/dsh-web-all/degraded') {
+        return new Response(JSON.stringify(body), { status: healthStatus, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response('not found', { status: 404, headers: { 'content-type': 'text/plain' } })
+    })
+    vi.stubGlobal('fetch', mock)
+    return mock
+  }
+
+  const ownedByAnotherProcess = {
+    ok: true,
+    degraded: [
+      {
+        plugin: '@linxin666/dsh-client-ui-task-board',
+        stage: 'start',
+        message: 'Error: task-board ledger is already owned by process 4242',
+        reason: 'task-board ledger is already owned by process 4242',
+        at: '2026-09-28T00:00:00.000Z',
+      },
+    ],
+  }
+
+  it('operator sees the owning pid and the advice that can actually work', async () => {
+    // Given a second DSH process holding the ledger, so this instance's routes are absent
+    const fetchMock = hostWithHealth(ownedByAnotherProcess)
+    // When the panel reads the board state
+    const failure = await new HttpTaskBoardHostTransport(new MemoryStorage()).state().catch((error: unknown) => error)
+    // Then the failure names the owner and refuses to recommend a restart of this instance
+    expect(failure).toBeInstanceOf(HostApiError)
+    const api = failure as HostApiError
+    expect(api.failure).toBe('ledger-locked')
+    expect(api.status).toBe(404)
+    expect(api.message).toContain('4242')
+    expect(api.message).toContain('关闭')
+    expect(api.message).not.toContain('重启 DSH 服务后再试')
+    // The health ledger is read document-relative like every board route (#1707).
+    expect(fetchMock).toHaveBeenCalledWith('api/dsh-web-all/degraded', expect.objectContaining({ cache: 'no-store' }))
+  })
+
+  it('operator whose row failed for another reason sees that reason verbatim', async () => {
+    // Given a row that degraded while importing its module
+    hostWithHealth({
+      ok: true,
+      degraded: [
+        { plugin: '@linxin666/dsh-client-ui-task-board', stage: 'import', reason: 'Cannot find module @linxin666/dsh-client-ui-task-board', at: '2026-09-28T00:00:00.000Z' },
+      ],
+    })
+    // When the panel reads the board state
+    const failure = await new HttpTaskBoardHostTransport(new MemoryStorage()).state().catch((error: unknown) => error)
+    // Then the recorded reason is rendered instead of the generic unmounted wording
+    const api = failure as HostApiError
+    expect(api.failure).toBe('degraded')
+    expect(api.message).toContain('Cannot find module')
+    expect(api.message).not.toContain('没有挂载')
+  })
+
+  it('operator whose plugin was never loaded keeps the unmounted wording', async () => {
+    // Given a healthy family shell with an empty degraded ledger
+    hostWithHealth({ ok: true, degraded: [] })
+    // When the panel reads the board state
+    const failure = await new HttpTaskBoardHostTransport(new MemoryStorage()).state().catch((error: unknown) => error)
+    // Then the routes are genuinely absent and the original wording stands
+    expect((failure as HostApiError).failure).toBe('not-mounted')
+    expect((failure as HostApiError).message).toContain('挂载')
+  })
+
+  it('operator of a shell whose answer is unusable keeps the unmounted wording', async () => {
+    // Given health-route answers that are missing, unreadable or refusing
+    const answers: Array<() => Response> = [
+      () => new Response('not found', { status: 404 }),
+      () => new Response('not json', { status: 200 }),
+      () => new Response(JSON.stringify({ ok: false, degraded: [] }), { status: 200 }),
+    ]
+    for (const answer of answers) {
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+        if (url === 'api/dsh-web-all/degraded') return answer()
+        return new Response('not found', { status: 404 })
+      }))
+      // When the panel reads the board state
+      const failure = await new HttpTaskBoardHostTransport(new MemoryStorage()).state().catch((error: unknown) => error)
+      // Then the diagnosis degrades to the plain absence wording
+      expect((failure as HostApiError).failure).toBe('not-mounted')
+    }
+  })
+
+  it('operator whose shell is unreachable keeps the unmounted wording', async () => {
+    // Given a family shell that cannot be read at all
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === 'api/dsh-web-all/degraded') throw new TypeError('Failed to fetch')
+      return new Response('not found', { status: 404 })
+    }))
+    // When the panel reads the board state
+    const failure = await new HttpTaskBoardHostTransport(new MemoryStorage()).state().catch((error: unknown) => error)
+    // Then the diagnosis degrades to the plain absence wording
+    expect((failure as HostApiError).failure).toBe('not-mounted')
+  })
+
+  it('operator of the AI-parse form sees the same lock diagnosis with that form wording', async () => {
+    // Given a second DSH process holding the ledger
+    hostWithHealth(ownedByAnotherProcess)
+    // When the form asks the Host to parse pasted text
+    const failure = await new HttpTaskBoardHostTransport(new MemoryStorage())
+      .parseDraft({ text: 'note', model: 'deepseek/deepseek-chat' })
+      .catch((error: unknown) => error)
+    // Then the same diagnosis arrives, not the parse route's absence copy
+    const api = failure as HostApiError
+    expect(api.failure).toBe('ledger-locked')
+    expect(api.message).toContain('4242')
+    expect(api.message).not.toContain('解析接口')
+  })
+})
 describe('HttpTaskBoardHostTransport task parsing (#1540)', () => {
   const draft = { title: 'Parsed', description: 'From the model', prompt: 'Do it' }
 

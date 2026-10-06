@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-聚合 shell（见 [aggregate-plugin-fault-isolation-shell](../../architecture/2026-09-01-aggregate-plugin-fault-isolation-shell.md)）把单个插件的启动失败包含在了家族内部，但 shell 覆盖不到的失败——坏掉的外部插件、宿主级故障、手改坏的 profile patch——仍会炸掉启动，恢复全靠手工：读启动报错、推断是哪一行坏了、手工编辑 `cordis.patch.yml`。doctor Supervisor 其实一直在盯启动（launcher 上报的 `launcher-exit` 携带 32 KiB 的 stderr 尾巴和 `started` 标志），也有按 profile 的失败计数和 2 次熔断，但闭环里没有任何环节把故障映射到插件行或禁用一行。
+聚合 shell（见 [aggregate-plugin-fault-isolation-shell](../architecture/2026-09-01-aggregate-plugin-fault-isolation-shell.md)）把单个插件的启动失败包含在了家族内部，但 shell 覆盖不到的失败——坏掉的外部插件、宿主级故障、手改坏的 profile patch——仍会炸掉启动，恢复全靠手工：读启动报错、推断是哪一行坏了、手工编辑 `cordis.patch.yml`。doctor Supervisor 其实一直在盯启动（launcher 上报的 `launcher-exit` 携带 32 KiB 的 stderr 尾巴和 `started` 标志），也有按 profile 的失败计数和 2 次熔断，但闭环里没有任何环节把故障映射到插件行或禁用一行。
 
 ## Decision
 

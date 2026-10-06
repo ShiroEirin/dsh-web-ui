@@ -8,7 +8,7 @@ After the product rename, profiles still mounted on `@linxin666/dsh-web-ui-all` 
 
 ## Decision
 
-The legacy aggregate migration is a deterministic, transactional replacement implemented in three layers (the rename decision is recorded in [the product rename note](../../architecture/2026-08-24-product-rename-dsh-web.md)):
+The legacy aggregate migration is a deterministic, transactional replacement implemented in three layers (the rename decision is recorded in [the product rename note](../architecture/2026-08-24-product-rename-dsh-web.md)):
 
 - The release pipeline dual-publishes the current `@linxin666/dsh-web-all` and a final `@linxin666/dsh-web-ui-all` package. The legacy tarball is built from the current aggregate package, rewrites the browser loader id and self row to the old npm identity, and carries `dsh.migrate` metadata describing the target package and version.
 - The plugin-manager update path recognizes the legacy package, reports a migration update, and runs a CLI-backed migration job through the official `dsh plugin` writer. The job removes the legacy package through the official CLI, installs the current aggregate, restores the legacy layer position, runs `--dump-config`, and rolls back through the official remove/add path on failure. Its Windows process path invokes a trusted `dsh.cmd` through `cmd.exe` with validated arguments.

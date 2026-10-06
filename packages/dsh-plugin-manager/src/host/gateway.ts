@@ -6,6 +6,11 @@
  * CLI changed (the conflict ledger). The npm web runtime has no installer
  * service, so this gateway is its write path; on runtimes with official
  * channels the browser half never calls it.
+ *
+ * One exception: an application-owned profile (a packaged Desktop launch)
+ * cannot be written by the CLI at all — the official launcher refuses it — so
+ * installs, updates and removals there run through the official in-process
+ * plugin manager instead (see {@link NativePluginManager}).
  * @module @linxin666/dsh-client-ui-plugin-manager/host
  */
 
@@ -80,12 +85,67 @@ export interface GatewayJob {
   error?: string
 }
 
+/**
+ * The Electron resource roots a packaged Desktop install may carry, as
+ * absolute directories. Two independent launcher facts name them, and either
+ * alone is enough:
+ *
+ * - `process.resourcesPath` is Electron's own answer for the directory holding
+ *   `app.asar` and the bundled runtime (the Desktop host runs as an Electron
+ *   Node-mode child, so it always has one);
+ * - the running host entry script sits INSIDE that tree
+ *   (`<resources>/app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js`),
+ *   so the first ancestor directory named `resources` is the same location even
+ *   when the process is not Electron.
+ *
+ * A root is only ever used to build a candidate path that must then exist, so
+ * an unrelated `resources` directory elsewhere in the tree resolves to nothing.
+ * @param hostEntryPath - the running host's entry script.
+ * @param resourcesPath - Electron's resource directory, when the host has one.
+ * @param pathApi - platform path semantics.
+ * @returns candidate resource roots, in probe order.
+ */
+function desktopResourceRoots(
+  hostEntryPath: string | undefined,
+  resourcesPath: string | undefined,
+  pathApi: typeof win32,
+): string[] {
+  const roots: string[] = []
+  if (resourcesPath !== undefined && resourcesPath !== '') roots.push(resourcesPath)
+  if (hostEntryPath !== undefined && hostEntryPath !== '') {
+    let current = pathApi.dirname(hostEntryPath)
+    for (let depth = 0; depth < 12; depth += 1) {
+      const parent = pathApi.dirname(current)
+      if (parent === current) break
+      current = parent
+      // macOS spells the directory `Resources`; the match is case-insensitive
+      // because a false positive only ever yields a candidate that must exist.
+      if (pathApi.basename(current).toLowerCase() === 'resources') {
+        roots.push(current)
+        break
+      }
+    }
+  }
+  return roots
+}
+
+/**
+ * Electron's resource directory when this process is an Electron child, read
+ * defensively: the type is not in `@types/node`, and a plain Node host has no
+ * such property at all.
+ */
+function processResourcesPath(): string | undefined {
+  const value = (process as unknown as { resourcesPath?: unknown }).resourcesPath
+  return typeof value === 'string' && value !== '' ? value : undefined
+}
+
 /** The binary search roots for the dsh CLI. */
 export function findDshBinary(
   env: NodeJS.ProcessEnv = process.env,
   platform: string = process.platform,
   exists: (path: string) => boolean = existsSync,
   hostEntryPath: string | undefined = process.argv[1],
+  resourcesPath: string | undefined = processResourcesPath(),
 ): string | null {
   const candidates: string[] = []
   const separator = platform === 'win32' ? ';' : ':'
@@ -126,6 +186,23 @@ export function findDshBinary(
     const entryDir = pathApi.dirname(hostEntryPath)
     const packageRoot = pathApi.dirname(entryDir)
     candidates.push(pathApi.join(packageRoot, 'lib', 'bin.js'))
+  }
+  // The packaged Desktop installer puts the CLI nowhere near the running host:
+  // the private host package ships only lib/index.js and lib/cli.js (no
+  // lib/bin.js), every node_modules/.bin directory is stripped, and the CLI
+  // launcher lives in a sibling resource tree
+  // (<resources>/runtime/cli/bin/dsh.cmd on Windows, .../dsh elsewhere) that
+  // the launcher never adds to the host's PATH — it prepends only
+  // <resources>/runtime/bin, which carries node alone. Without this candidate
+  // the packaged Desktop has no CLI at all, and every version probe and
+  // CLI-backed write fails closed (#1819, following #1588).
+  for (const root of desktopResourceRoots(hostEntryPath, resourcesPath, pathApi)) {
+    const cliBin = pathApi.join(root, 'runtime', 'cli', 'bin')
+    if (platform === 'win32') {
+      candidates.push(pathApi.join(cliBin, 'dsh.cmd'), pathApi.join(cliBin, 'dsh.exe'))
+    } else {
+      candidates.push(pathApi.join(cliBin, 'dsh'))
+    }
   }
   for (const candidate of candidates) {
     if (exists(candidate)) return candidate
@@ -366,9 +443,69 @@ export interface NativePluginManager {
    * Install or update one package spec through the official manager.
    * @param spec - package spec (e.g. `@scope/pkg@1.2.3`).
    * @param options - activation choice and the request id the run is tracked under.
-   * @returns the manager's own diagnostics (the caller re-reads the profile).
+   * @returns the manager's own verdict ({@link NativeManagerOutcome}); the caller
+   * re-reads the profile as well, but must read this first — a refusal resolves.
    */
   installBundle(spec: string, options?: { enabled?: boolean; requestId?: string }): Promise<unknown>
+  /**
+   * Remove one profile-owned bundle through the official manager.
+   * @param name - installed dependency (bundle) name.
+   * @returns the manager's own verdict ({@link NativeManagerOutcome}); the caller
+   * re-reads the profile as well, but must read this first — a refusal resolves.
+   */
+  removeBundle(name: string): Promise<unknown>
+}
+
+/**
+ * The verdict the official in-process manager returns for one mutation. Its
+ * internal `change()` wrapper never rejects a failed operation: it folds the
+ * failure into this resolved value (`application: 'failed'` plus `error`), so a
+ * resolved promise is not proof the profile moved. Reading only whether the
+ * call threw reported a refused pnpm run as "the manager succeeded but nothing
+ * changed" and hid the real reason (2026-09-29: `dsh-better-sidebar` update
+ * blocked by `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`). Contract observation,
+ * shape mirrored from `@deepseek-ai/dsh-plugin-manager`.
+ */
+export interface NativeManagerOutcome {
+  /** `applied` or `restart-required` on success, `cancelled`, or `failed`. */
+  application?: string
+  /** Whether the profile files differ from before the run. */
+  changed?: boolean
+  /** Present when `application` is `failed`. */
+  error?: {
+    /** The manager's own failure code (`operation-error`, `incompatible-version`, …). */
+    code?: string
+    /** Raw failure text for `operation-error` (the pnpm output tail). */
+    diagnostic?: string
+    /** Packages an `incompatible-version` refusal names. */
+    incompatible?: readonly { name?: string; version?: string; runtimeVersion?: string }[]
+  }
+}
+
+/**
+ * The official manager's own failure text for one run, or undefined when its
+ * verdict is not a failure. The manager resolves a failed run instead of
+ * rejecting it, so this is the only place its refusal can be read — the profile
+ * re-read afterwards can only say that nothing moved, never why.
+ * @param outcome - the resolved value of `installBundle` / `removeBundle`.
+ * @returns the failure text to report, or undefined for a run that did not fail.
+ */
+export function nativeManagerFailure(outcome: unknown): string | undefined {
+  if (typeof outcome !== 'object' || outcome === null) return undefined
+  const verdict = outcome as NativeManagerOutcome
+  if (verdict.application === 'cancelled') return '本次操作已取消（profile 未改动）'
+  if (verdict.application !== 'failed') return undefined
+  const failure = verdict.error
+  const diagnostic = typeof failure?.diagnostic === 'string' ? failure.diagnostic.trim() : ''
+  if (diagnostic !== '') return diagnostic
+  const incompatible = failure?.incompatible
+  if (Array.isArray(incompatible) && incompatible.length > 0) {
+    return incompatible
+      .map(item => `${item.name ?? '未知包'}@${item.version ?? '未知版本'} 与 dsh ${item.runtimeVersion ?? '当前版本'} 不兼容`)
+      .join('；')
+  }
+  const code = failure?.code
+  return typeof code === 'string' && code !== '' ? `官方插件管理器拒绝执行（${code}）` : '官方插件管理器报告失败'
 }
 
 /** One layer snapshot plus the profile patch text and dependency list. */
@@ -449,6 +586,17 @@ export class CliGateway {
   private nativeManager(): NativePluginManager | undefined {
     if (this.facts.desktop !== true) return undefined
     return this.deps.nativeManager?.()
+  }
+
+  /**
+   * Whether this gateway will write through the official in-process manager
+   * instead of the CLI (an application-owned profile, see
+   * {@link nativeManager}). The HTTP layer reads it so its CLI-availability
+   * guard never rejects a job the CLI is not going to run.
+   * @returns true when the native writer serves installs, updates and removals.
+   */
+  usesNativeWriter(): boolean {
+    return this.nativeManager() !== undefined
   }
 
   /** Run one CLI command to completion and return the bounded output. */
@@ -635,7 +783,12 @@ export class CliGateway {
     return (this.deps.spawnImpl ?? spawnDsh)(binary, args, this.env)
   }
 
-  /** Start an install; the caller polls {@link status}. */
+  /**
+   * Start an install; the caller polls {@link status}. An application-owned
+   * profile runs it through the official in-process manager instead of the CLI
+   * (see {@link nativeManager}), exactly like {@link update}; the job table,
+   * polling contract and profile verification are identical either way.
+   */
   install(spec: string): { jobId: string } {
     const job: GatewayJob = { id: `job-${++this.counter}`, action: 'install', spec, phase: 'running' }
     this.jobs.set(job.id, job)
@@ -644,6 +797,13 @@ export class CliGateway {
       job.phase = 'error'
       job.error = unsafe
       this.retainFinished(job.id)
+      return { jobId: job.id }
+    }
+    // An application-owned profile takes the official writer; everything else
+    // keeps the CLI, whose reconciliation guards this gateway compensates for.
+    const native = this.nativeManager()
+    if (native !== undefined) {
+      this.enqueueNativeInstall(job, native)
       return { jobId: job.id }
     }
     this.enqueue(() => this.run(job, ['plugin', '--profile', this.facts.profileName, 'add', spec], ADD_TIMEOUT_MS))
@@ -685,6 +845,62 @@ export class CliGateway {
     return { jobId: job.id }
   }
 
+  /** Start an install through the official in-process manager. */
+  private enqueueNativeInstall(job: GatewayJob, native: NativePluginManager): void {
+    this.enqueue(async () => {
+      try {
+        await this.runNativeInstall(job, native)
+      } catch (error) {
+        job.phase = 'error'
+        job.error = `plugin-manager: 官方插件管理器安装失败：${error instanceof Error ? error.message : String(error)}`
+      }
+      this.retainFinished(job.id)
+    })
+  }
+
+  /**
+   * Run one install through the official in-process manager (an
+   * application-owned profile, where the CLI refuses to write). The manager
+   * resolves the registry, runs pnpm with the launcher's bundled toolchain and
+   * applies the bundle, then this reads the profile the same way the CLI path
+   * does: the install is only `done` once the profile carries a dependency it
+   * did not carry before, so a green manager call that added nothing is still
+   * reported as a failure. Its resolved verdict is read first
+   * ({@link nativeManagerFailure}): the manager folds a refused run into that
+   * value instead of rejecting, and only the verdict names the reason. The
+   * CLI-specific guards are deliberately absent — the official manager
+   * validates and applies the bundle itself, exactly as it does for the
+   * official Plugins page.
+   * @param job - the install job being settled.
+   * @param native - the official manager.
+   */
+  private async runNativeInstall(job: GatewayJob, native: NativePluginManager): Promise<void> {
+    const before = await this.capture()
+    const verdict = await native.installBundle(job.spec, { enabled: true, requestId: job.id })
+    const refusal = nativeManagerFailure(verdict)
+    if (refusal !== undefined) {
+      job.phase = 'error'
+      job.error = `plugin-manager: 官方插件管理器安装失败：${refusal}`
+      return
+    }
+    const after = await this.capture()
+    const name = this.newDependency(before, after)
+    if (name === undefined) {
+      job.phase = 'error'
+      job.error = 'plugin-manager: 官方插件管理器报告成功，但 profile 未新增任何依赖（安装未生效）'
+      return
+    }
+    const manifest = await readProfileManifest(this.facts.packageJsonPath)
+    job.plugin = await buildPluginRow(this.facts, name, manifest.dependencies[name] ?? job.spec, after.layer.rows)
+    job.conflicts = significantChanges(diffLayer(before.layer, after.layer)).map(change => ({
+      id: change.id,
+      name: change.id,
+      from: change.from,
+      to: change.to,
+    }))
+    job.phase = 'done'
+  }
+
   /** Start an in-place update through the official in-process manager. */
   private enqueueNativeUpdate(job: GatewayJob, native: NativePluginManager): void {
     this.enqueue(async () => {
@@ -705,6 +921,10 @@ export class CliGateway {
    * this reads the profile the same way the CLI path does: the dependency must
    * still be there and the installed version must be the one the route resolved,
    * so a green manager call that changed nothing is still reported as a failure.
+   * Its resolved verdict is read first ({@link nativeManagerFailure}): a refused
+   * run (pnpm exited non-zero, an incompatible version, a cancellation) resolves
+   * with `application: 'failed'`, and only that verdict carries the reason — the
+   * profile re-read can only show that the version did not move.
    * @param job - the update job being settled.
    * @param native - the official manager.
    */
@@ -717,7 +937,13 @@ export class CliGateway {
       return
     }
     const before = await this.capture()
-    await native.installBundle(job.spec, { enabled: true, requestId: job.id })
+    const verdict = await native.installBundle(job.spec, { enabled: true, requestId: job.id })
+    const refusal = nativeManagerFailure(verdict)
+    if (refusal !== undefined) {
+      job.phase = 'error'
+      job.error = `plugin-manager: 官方插件管理器更新失败：${refusal}`
+      return
+    }
     const after = await this.capture()
     if (!after.dependencies.includes(targetId)) {
       job.phase = 'error'
@@ -775,7 +1001,11 @@ export class CliGateway {
     return { jobId: job.id }
   }
 
-  /** Start a removal; the caller polls {@link status}. */
+  /**
+   * Start a removal; the caller polls {@link status}. An application-owned
+   * profile removes through the official in-process manager, the same writer
+   * the install and update paths use there (the CLI refuses that profile).
+   */
   remove(id: string): { jobId: string } {
     const job: GatewayJob = { id: `job-${++this.counter}`, action: 'remove', spec: id, phase: 'running' }
     this.jobs.set(job.id, job)
@@ -786,8 +1016,62 @@ export class CliGateway {
       this.retainFinished(job.id)
       return { jobId: job.id }
     }
+    const native = this.nativeManager()
+    if (native !== undefined) {
+      this.enqueueNativeRemove(job, native)
+      return { jobId: job.id }
+    }
     this.enqueue(() => this.run(job, ['plugin', '--profile', this.facts.profileName, 'remove', id], REMOVE_TIMEOUT_MS))
     return { jobId: job.id }
+  }
+
+  /** Start a removal through the official in-process manager. */
+  private enqueueNativeRemove(job: GatewayJob, native: NativePluginManager): void {
+    this.enqueue(async () => {
+      try {
+        await this.runNativeRemove(job, native)
+      } catch (error) {
+        job.phase = 'error'
+        job.error = `plugin-manager: 官方插件管理器卸载失败：${error instanceof Error ? error.message : String(error)}`
+      }
+      this.retainFinished(job.id)
+    })
+  }
+
+  /**
+   * Run one removal through the official in-process manager (an
+   * application-owned profile, where the CLI refuses to write). The removal is
+   * only `done` once a dependency the profile carried before is gone, exactly
+   * the verification the CLI path performs. Its resolved verdict is read first
+   * ({@link nativeManagerFailure}): a refused removal resolves with
+   * `application: 'failed'` rather than rejecting.
+   * @param job - the removal job being settled.
+   * @param native - the official manager.
+   */
+  private async runNativeRemove(job: GatewayJob, native: NativePluginManager): Promise<void> {
+    const before = await this.capture()
+    const verdict = await native.removeBundle(job.spec)
+    const refusal = nativeManagerFailure(verdict)
+    if (refusal !== undefined) {
+      job.phase = 'error'
+      job.error = `plugin-manager: 官方插件管理器卸载失败：${refusal}`
+      return
+    }
+    const after = await this.capture()
+    const name = before.dependencies.find(candidate => !after.dependencies.includes(candidate))
+    if (name === undefined) {
+      job.phase = 'error'
+      job.error = 'plugin-manager: 官方插件管理器报告成功，但依赖仍在 profile 中（卸载未生效）'
+      return
+    }
+    job.plugin = await this.rowFor('remove', job.spec, before, after)
+    job.conflicts = significantChanges(diffLayer(before.layer, after.layer)).map(change => ({
+      id: change.id,
+      name: change.id,
+      from: change.from,
+      to: change.to,
+    }))
+    job.phase = 'done'
   }
 
   /**

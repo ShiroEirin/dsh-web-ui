@@ -45,7 +45,7 @@ pnpm coverage:check    # 覆盖率棘轮（Tier 2，整仓约一分钟）
 
 仓库工具测试（`scripts/`）只受机械规则约束，业务行为测试（`packages/`、`tests/`）适用全部规则；纯算法单测放在前者，用户可见行为放在后者。
 
-覆盖率棘轮由 `scripts/coverage-gate.mjs` 执行：逐包跑 `vitest --coverage`，把 lines / statements / functions / branches 记入 `scripts/coverage-baseline.json`，任一指标低于基线超过 0.5 个百分点即失败（插桩本身有约 0.04 个百分点的抖动，故留容差），提升后运行 `pnpm coverage:write` 收紧。仓库当前并存两代 vitest，覆盖率 provider 按代声明：3.x 包各自声明 `@vitest/coverage-v8@^3.2.7`，4.x 包由根 devDependency 经 Node 解析提供；升级某包 vitest 主版本必须同步升级其 provider，否则门禁直接报错而不是静默跳过。基线必须在 CI 侧也成立：包内有条件运行的测试（如 harness 安装可用才跑的 benchmark 用例）会让本机覆盖率高于 Linux runner，两侧不一致时按 CI 的较低值记录。
+覆盖率棘轮由 `scripts/coverage-gate.mjs` 执行：逐包跑 `vitest --coverage`，把 lines / statements / functions / branches 记入 `scripts/coverage-baseline.json`，任一指标低于基线超过 0.5 个百分点即失败（插桩本身有约 0.04 个百分点的抖动，故留容差），提升后运行 `pnpm coverage:write` 收紧。全部包都解析到 vitest 4.x；六个自带 vitest 的包同时声明同主版本的 `@vitest/coverage-v8`，其余包由根 devDependency 经 Node 解析提供；升级某包 vitest 主版本必须同步升级其 provider，否则门禁直接报错而不是静默跳过。门禁传 `--coverage.excludeAfterRemap`：内联了第三方依赖的构建产物（如聚合包的 shell bundle 内联 `@deepseek-ai/schemastery` 与 cosmokit）否则会把依赖自身的未映射文件算进该包，把 dsh-web-all 从约 92% 压到约 51%。基线必须在 CI 侧也成立：包内有条件运行的测试（如 `dsh` 不在 PATH 时跳过的 benchmark 用例、解析不到已安装宿主时跳过的真实启动用例）会让本机覆盖率高于 Linux runner，两侧不一致时按 CI 的较低值记录。
 
 门禁分两层：`ci.yml` 是 PR 门禁，一次跑完全部检查；`nightly.yml` 是 Tier 2，每晚补充 PR 单趟看不到的证据——覆盖率棘轮与全量测试三连跑（flake 检测）。
 

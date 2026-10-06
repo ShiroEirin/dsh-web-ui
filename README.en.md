@@ -1,11 +1,11 @@
-# dsh-web · DeepSeek Harness Web GUI Plugins & Themes
+# dsh-web · Modular Plugin Ecosystem & Themes for DeepSeek Harness (DSH) Web GUI
 
 [中文](README.md) | English
 
-dsh-web is a modular plugin ecosystem and desktop workstation for the DeepSeek Harness (DSH) Web GUI. It equips AI coding workflows with task automation boards, cross-device mobile remote control, SSH terminal operations, visual Git commit graphs, and personalized theme skins. Users can install the complete plugin bundle into an existing `dsh web` instance via the official profile mechanism, or into the official DeepSeek Harness desktop client the same way.
+dsh-web is an all-in-one modular plugin ecosystem and AI agent workbench for DeepSeek Harness (DSH) Web GUI and the official desktop client. It equips developers and power users with autonomous task automation boards (cron scheduling), mobile and cross-device remote control, SSH terminal operations and cluster management, visual Git commit graphs with multi-agent worktree isolation, full session archive management, token usage and cost monitoring, and a unified workshop for themes, skins, and desktop pets. Users can install the complete plugin bundle into an existing `dsh web` instance via the official profile mechanism, or install and run it directly in the official DeepSeek Harness desktop client.
 
 <p align="center">
-  <img src="docs/dsh-web-banner.png" alt="dsh-web — DeepSeek Harness Web GUI plugins and themes" width="100%">
+  <img src="docs/dsh-web-banner.png" alt="dsh-web — Modular Plugin Ecosystem & Themes for DeepSeek Harness (DSH) Web GUI" width="100%">
 </p>
 
 <p align="center">
@@ -23,19 +23,19 @@ dsh-web is a modular plugin ecosystem and desktop workstation for the DeepSeek H
   &nbsp;
   <a href="https://dsh-market.com"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdsh-market.com%2Fapi%2Ftelemetry%2Fbadge%2Fusers&style=flat-square&label=users" alt="users"></a>
   &nbsp;
-  <a href="https://www.npmjs.com/package/@deepseek-ai/dsh"><img src="https://img.shields.io/badge/DSH-%3E%3D0.1.7--rc.1-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH"></a>
+  <a href="https://www.npmjs.com/package/@deepseek-ai/dsh"><img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH"></a>
   &nbsp;
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
 </p>
 
 <p align="center">
   <strong>DeepSeek Harness (DSH) Web Plugin Ecosystem · Modular Agent Workspace</strong><br>
-  <em>Workshop · Task Board · Mobile Remote · SSH Ops · Git Graph · Usage Statistics</em>
+  <em>Workshop · Task Board · Mobile Remote · SSH Ops · Git Graph · Usage Statistics · Session Archive</em>
 </p>
 
 <div align="center">
 
-[What It Is](#what-it-is) · [Desktop Client](#official-desktop-client) · [Workshop](#workshop-dsh-marketcom) · [Feature Plugins](#feature-plugins) · [Skins](#skins) · [Quick Start](#quick-start) · [FAQ](#faq) · [Known Limitations](#known-limitations) · [Community](#community)
+[What It Is](#what-it-is) · [Official Desktop Client](#official-desktop-client) · [Workshop](#workshop-dsh-marketcom) · [Feature Plugins](#feature-plugins) · [Skins](#skins) · [Quick Start](#quick-start) · [Compatibility](#compatibility-and-environments) · [FAQ](#faq) · [Known Limitations](#known-limitations) · [Community](#community) · [Business Cooperation](#business-cooperation)
 
 </div>
 
@@ -44,51 +44,54 @@ dsh-web is a modular plugin ecosystem and desktop workstation for the DeepSeek H
 Stock DeepSeek Harness Web delivers fundamental chat interactions and tool execution capabilities. However, production workflows often require concurrent task scheduling, persistent background runs, remote collaboration, and developer-oriented tooling.
 
 dsh-web mounts directly into `dsh web` via official profiles without modifying DSH core source code, providing a comprehensive modular extension suite:
-- **Developer Operations & Collaboration Plugins**: Long-running scheduled task boards, cross-device mobile remote control, SSH terminal operations and file transfers, Git history graphs with worktree isolation, full session archive management, model capability declarations, and a sidebar resource explorer;
+- **Developer Operations & Collaboration Plugins**: Long-running scheduled task boards, cross-device mobile remote control, SSH terminal operations and file transfers, Git history graphs with worktree isolation, full session archive management, and model capability declarations;
 - **Decoupled Visual Themes & Assets**: Functional plugins and visual assets remain strictly separated. The skin loader handles stylesheet and dynamic effect rendering, while themes and animated desktop pets can be installed on demand from the [DSH Workshop](#workshop-dsh-marketcom);
-- **Bundled or Pick-and-Choose**: Install everything with one command via `@linxin666/dsh-web-all`, or install individual plugins independently. The aggregate pre-integrates every family plugin; the alpha branch bundles no external plugin such as `dsh-better-sidebar` (install it on demand) - see the [plugin bundle installation and configuration guide](packages/dsh-web-all/README.md).
+- **Bundled or Pick-and-Choose**: Install everything with one command via `@linxin666/dsh-web-all`, or install individual plugins independently. The aggregate pre-integrates every family plugin - see the [plugin bundle installation and configuration guide](packages/dsh-web-all/README.md).
 
-![DeepSeek Harness Web GUI with the dsh-web plugin workspace](docs/screenshots/13-hero-main.png)
+![DeepSeek Harness Web GUI workspace powered by the dsh-web modular plugin ecosystem](docs/screenshots/13-hero-main.png)
 
-| Capability | Stock dsh web | dsh-web family |
+| Core Capability | Stock dsh web | dsh-web Modular Ecosystem Advantage |
 | --- | --- | --- |
-| Agent presets | Official presets (Standard / Minimal…) | Official and community presets |
-| Custom model capabilities | None | Declare image input and reasoning efforts per model, and disable / re-enable custom providers |
-| Task board | None | Multi-column board + cron-scheduled real runs |
-| Mobile remote control | None | QR pairing with SSE real-time sync; the same link also pairs a PC browser |
-| Remote server ops | None | SSH panel: terminal / transfer / tunnels / cluster |
-| Usage statistics | None | Token usage, provider balances, plan quotas, and Token Bank |
-| File preview & changes | None | Right panel: explorer / editor / terminal / git / browser |
-| Git visualization | None | Branch picker + commit history graph |
-| Session archive | None | Browse and filter every session, batch archive / restore / delete with automatic policies |
-| Themes & skins | Default theme | Blue Fantasy bundled with skin center; others install from Workshop |
+| Agent Presets | Stock presets only (Standard / Minimal, etc.) | Stock presets + instant activation of community presets from Workshop |
+| Custom Model Capabilities | No visual configuration for model attributes | Visual declarations for vision image inputs and reasoning effort tiers |
+| Autonomous Task Board | None | 5-column lifecycle board + real agent execution + cron-scheduled background runs |
+| Mobile & Remote Control | Localhost browser only | QR code pairing, cross-device PC access, WebSocket token streaming & touch gestures |
+| Remote Server Operations | None | Web-based SSH terminal (xterm.js), SFTP file transfer, tunnels & cluster commands |
+| Token Usage & Cost Monitor | None | Daily token metrics, provider balance queries, plan quota tracking & Token Bank |
+| Git Visualization & Worktrees | Command line only | Visual branch & commit graph + automated Git worktree directory isolation |
+| Session Lifecycle & Archive | Basic session list | Full-text & faceted search, batch archiving, cascade deletion & retention rules |
+| Themes & Visual Skins | Default theme only | Bundled Blue Fantasy dark theme + marketplace for skins, pets & live wallpapers |
 
-### Find the Right DSH Extension
+### Quick Index by Use Case
 
-| Goal | Entry Point |
-| --- | --- |
-| Run and schedule autonomous AI agent tasks | [Task board and cron execution](packages/dsh-task-board/README.md) |
-| Access DSH from a mobile phone or another computer | [Mobile and PC browser remote control](packages/dsh-remote-web-ui/README.md) |
-| Manage remote servers over SSH | [SSH terminal, file transfer, and tunnels](packages/dsh-ssh/README.md) |
-| Customize skins and desktop pets | [Explore the DSH Workshop](https://dsh-market.com) |
-| Run inside the official desktop client | [Official desktop client](#official-desktop-client) |
-| Add plugins to an existing DSH setup | [Quick start installation](#quick-start) |
+| User Goal & Scenario | Recommended Solution & Capability | Entry Point |
+| --- | --- | --- |
+| Run autonomous unattended AI tasks, daily code audits, health checks, or automated reports | Task Board: 5-column tracking, cron scheduling, power management, session reuse | [Task board and cron execution](packages/dsh-task-board/README.md) |
+| Access DeepSeek from an iPhone, Android device, iPad, or another remote computer | Mobile Remote: instant QR pairing, WebSocket real-time streaming, touch gestures & security gate | [Mobile and PC browser remote control](packages/dsh-remote-web-ui/README.md) |
+| Perform Linux server administration, SFTP configuration sync, or remote troubleshooting | SSH Remote Ops: web terminal, visual SFTP, port forwarding tunnels, cluster commands | [SSH terminal, file transfer, and tunnels](packages/dsh-ssh/README.md) |
+| Monitor multi-provider token consumption, check API balances, or track subscription quotas | Usage Statistics: daily token breakdown, balance queries, bill estimation & Token Bank | [Usage statistics and Token Bank](packages/dsh-usage/README.md) |
+| Prevent Git merge conflicts and dirty working trees during multi-agent concurrent coding | Git Graph & Worktree: visual commit swimlanes, automated session worktree branches | [Git visualization and worktree isolation](packages/dsh-git-graph/README.md) |
+| Clean up and manage large numbers of historical sessions without losing valuable context | Session Archive Manager: faceted filtering, batch archive/delete, automated retention | [Full session archive management](packages/dsh-session-archive/README.md) |
+| Declare multimodal vision support or adjust reasoning effort tiers for custom models | Model Capabilities: per-model visual vision declaration and reasoning effort profiles | [Model capabilities declarations](packages/dsh-model-capabilities/README.md) |
+| Customize the interface with dark mode, immersive aesthetic skins, dynamic backgrounds, or pets | Workshop & Skin Center: built-in Blue Fantasy theme + rich marketplace catalog | [Explore the DSH Workshop](https://dsh-market.com) |
+| Run plugins directly inside the official DeepSeek Harness Desktop application | Official Desktop Client: install the bundle directly via in-app plugin settings | [Official desktop client guide](#official-desktop-client) |
+| Add the modular extension suite to an existing DeepSeek Harness CLI setup | Quick Start: one-command installation via npm or GitHub repository URL | [Quick start installation](#quick-start) |
 
 ## Official Desktop Client
 
-The DeepSeek Harness desktop client ships from the official project; this repository no longer publishes `dsh-desktop-*` installers with its Releases. The desktop client shares the `~/.dsh` data directory with `dsh web`, and installs plugins into its own `desktop` profile with the same command:
+For a dedicated desktop application experience, we recommend downloading and using the official DeepSeek Harness desktop client (DeepSeek Harness Desktop).
 
-```sh
-dsh plugin --profile desktop add @linxin666/dsh-web-all@latest
-```
+The official desktop client shares the `~/.dsh` data directory with `dsh web` and operates under its internal `desktop` profile. Because the official desktop client manages the `desktop` profile exclusively within the application (external CLI commands reject modifications to the `desktop` profile), install this plugin bundle directly from inside the desktop client:
 
-Restart the desktop client afterwards and the plugin entries appear under "Settings > Plugin Configuration".
+1. Open the official desktop client and navigate to the **Plugins** section in **Settings** (or the sidebar plugins view);
+2. In the plugin installation input field, enter the aggregate package specifier `@linxin666/dsh-web-all` (or `@linxin666/dsh-web-all@latest`), then click **Install**;
+3. Restart the desktop client once installation completes to activate all family plugins, including the task board, themes, and remote access.
 
 ## Workshop (dsh-market.com)
 
 The [DSH Workshop](https://dsh-market.com) is a unified hub for themes, pets, plugins, and community Agent presets. Entries are ranked by verified device likes; themes provide live interactive previews, and plugins offer copy-ready install commands. The classic Blue Fantasy theme is bundled with the skin center plugin; additional themes and pets can be previewed, inspected, and installed on demand. In the Web GUI, the "Workshop" settings tab lets you browse the catalog directly: skins and pets install straight into the DSH home directory for immediate use, while community presets install to an inactive local library and activate under "Settings → Agent Presets".
 
-![Workshop homepage](docs/screenshots/31-market-home.png)
+![DeepSeek Harness Workshop (dsh-market.com) — Themes, skins, desktop pets, and plugin marketplace](docs/screenshots/31-market-home.png)
 
 The site is built directly from this repository: static pages are generated by `scripts/market-build` from authoritative manifests (`skin.json`, `pet.json`, and `community.json`), while interactive features like anonymous voting run on Cloudflare Workers edge functions with D1 persistence (one vote per device). Changes deploy automatically on push to `main`.
 
@@ -96,7 +99,7 @@ The Workshop provides an open, transparent space for community creators to share
 
 ## Feature Plugins
 
-### Task Board（任务看板）
+### Task Board（Task Board · Autonomous AI Agent Tasks & Cron Scheduling）
 
 Open from the "Task Board" icon in the sidebar. Tasks are organized into five columns: Backlog, Todo, In Progress, Done, and Failed. Clicking "Run" on any card dispatches the task to an autonomous DSH agent session; status updates automatically write back to the card upon completion, and you can jump straight into the execution session to review the conversation log.
 
@@ -106,25 +109,25 @@ Tasks can optionally reuse sessions: when enabled, subsequent runs continue in t
 
 | Multi-Column Board | Scheduled Execution |
 | --- | --- |
-| ![Task board](docs/screenshots/09-task-board.png) | ![Task scheduling](docs/screenshots/10-task-board-detail-cron.png) |
+| ![DeepSeek Harness Task Board — AI agent multi-column task scheduling and lifecycle](docs/screenshots/09-task-board.png) | ![DeepSeek Task Scheduling — Cron expressions and persistent background automation](docs/screenshots/10-task-board-detail-cron.png) |
 
-### Mobile Remote Control（移动端远程控制）
+### Mobile Remote Control（Mobile Remote · Mobile Access & Cross-Device Touch Optimization）
 
 Click the phone icon at the bottom of the sidebar to open the pairing modal. Scan the QR code or copy the link to access the full Web GUI on your mobile browser with dedicated touch adaptations: tap the whale floating button to toggle the sidebar, swipe horizontally to show or hide panels, long-press session items for context menus, press Enter for newlines, and interact with 16px inputs configured to prevent viewport auto-zooming. Desktop-heavy panels (such as SSH terminals, task boards, and Git graphs) automatically collapse on mobile screens, leaving a focused interface for message exchange, model switching, and reasoning adjustments in sync with the desktop state.
 
 The same pairing link works seamlessly on **secondary PC browsers**: open the desktop URL variant on another computer to launch the full Web GUI interface. All traffic passes through the authenticated `/remote/api` proxy route; unpaired devices encounter an access-denied banner. Pairing tokens are single-use and time-limited, and clicking "Stop" immediately revokes active device sessions. Communication defaults to the local network; pairing over wide-area networks is easily enabled using tunnel utilities like cloudflared. For security, route connections through the pairing gateway and avoid setting `--trusted-host` on tunnel domains, as that flag bypasses pairing checks (see [remote plugin README](packages/dsh-remote-web-ui/README.md)).
 
-![Mobile and Web interface sync](docs/assets/phone-and-web.png)
+![DeepSeek Harness mobile phone and desktop browser real-time interface synchronization](docs/assets/phone-and-web.png)
 
-> **Real-Time Streaming & Tunnels**: Mobile clients rely on SSE (Server-Sent Events) for token streaming. Services like Cloudflare quick tunnels (trycloudflare.com) and Tailscale Serve do not proxy SSE streams by default; under these connections, the plugin automatically falls back to short polling. Messages send and receive normally with a minor polling interval delay. For smooth real-time streaming, use tunnels supporting persistent HTTP connections (such as Cloudflare named tunnels or self-hosted TCP proxies).
+> **Real-Time Streaming & Tunnels**: Mobile streaming rides the official WebSocket channel (relayed through the gated `/remote` proxy once paired), which Cloudflare quick tunnels, named tunnels, and the dsh-market stable-hostname relay all forward. Remote access adds a wide-area round trip to every update, and the relay costs one hop more than a bare tunnel; turn the relay off in the settings card when latency matters most.
 
 | Mobile Home (Whale toggle) | Session List |
 | --- | --- |
-| ![Mobile Home](docs/screenshots/20-mobile-home.png) | ![Mobile Session List](docs/screenshots/21-mobile-sessions.png) |
+| ![DeepSeek Harness Mobile Home — Touch-optimized interface and navigation drawer](docs/screenshots/20-mobile-home.png) | ![DeepSeek Mobile Session List — Cross-device synchronization across phones and PCs](docs/screenshots/21-mobile-sessions.png) |
 | Chat (Thinking & Tool execution) | Model Selection Sheet |
-| ![Mobile Chat](docs/screenshots/22-mobile-chat.png) | ![Model Selection Sheet](docs/screenshots/23-mobile-model-sheet.png) |
+| ![DeepSeek Mobile Chat — Real-time token streaming and reasoning process folding](docs/screenshots/22-mobile-chat.png) | ![DeepSeek Mobile Model Selector — Quick switching for LLM providers and reasoning effort](docs/screenshots/23-mobile-model-sheet.png) |
 
-### SSH Remote Ops（远程连接）
+### SSH Remote Ops（SSH Remote Ops · Web Terminal, SFTP Transfer & Cluster Commands）
 
 Open the remote operations panel from the "SSH" sidebar icon. Supports key-based and password authentication, and imports existing host definitions from `~/.ssh/config` with one click; configurations persist securely in `~/.dsh/dsh-ssh.json`. Available capabilities include:
 
@@ -134,7 +137,7 @@ Open the remote operations panel from the "SSH" sidebar icon. Supports key-based
 - **Cluster Execution**: Concurrently dispatch commands across multiple servers filtered by alias, environment, or tags;
 - **Agent Integration**: AI agents share host configurations with the panel; simply instruct the agent in chat to inspect remote servers and run diagnostics.
 
-### Usage Statistics（使用统计）
+### Usage Statistics（Usage Statistics · Token Metrics, Balance Monitoring & Token Bank）
 
 Monitor token consumption, provider balances, and subscription quotas under "Settings > Usage Statistics" with automated refresh and manual query options.
 
@@ -145,9 +148,9 @@ Monitor token consumption, provider balances, and subscription quotas under "Set
 
 Tracking starts upon initial plugin activation without backfilling historical sessions; vouchers cover DeepSeek official usage within configured ledger retention windows. See [dsh-usage README](packages/dsh-usage/README.md) for supported providers and limitations.
 
-![Usage Statistics Plugin: Token Bank & Whale Vouchers](docs/screenshots/35-usage-token-bank.webp)
+![DeepSeek Token Usage Tracker & Token Bank — API expenditure tracking and bill estimation](docs/screenshots/35-usage-token-bank.webp)
 
-### Model Capabilities（模型能力）
+### Model Capabilities（Model Capabilities · Multimodal Vision & Reasoning Effort Profiles）
 
 Configure model-level parameters for custom providers directly within "Settings > Models". This plugin supplies a visual editor for capabilities omitted from default cards:
 
@@ -158,13 +161,7 @@ Configure model-level parameters for custom providers directly within "Settings 
 
 *Note: Declarations inform outgoing request payloads and do not perform automated gateway probing. If a model is declared with image support but the upstream provider gateway rejects multimodal payloads, the request will fail at the gateway level. Details in [dsh-model-capabilities README](packages/dsh-model-capabilities/README.md).*
 
-### Right Panel（右侧面板）
-
-The right panel is provided by community plugin [dsh-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar). It embeds a file explorer, inline code editor, auxiliary terminal, Git interface, and web browser, while allowing third-party plugin panels to dock cleanly. The alpha branch's aggregate does not bundle it (its 0.19.1 peers declare `^0.1.5-rc.1`, which this branch's 0.1.7-rc.2 cohort does not satisfy); install it on demand with `dsh plugin --profile web add dsh-better-sidebar@latest`. Architecture and setup details are available in its [repository](https://github.com/omdsh-dev/DSH-better-sidebar).
-
-![Right Panel](docs/screenshots/19-right-panel.png)
-
-### Git Graph（Git 图谱）
+### Git Graph（Git Graph · Visual Commits & Worktree Session Isolation）
 
 An integrated Git toolbar and visual commit history graph positioned above the chat composer:
 
@@ -174,9 +171,9 @@ An integrated Git toolbar and visual commit history graph positioned above the c
 
 | Git Graph | Parallel Sessions with Git Worktree |
 | --- | --- |
-| ![Git Graph](docs/screenshots/04-git-graph.png) | ![Git worktree parallel sessions](docs/screenshots/34-git-worktree.png) |
+| ![DeepSeek Harness Git Graph — Visual branch visualization and commit log](docs/screenshots/04-git-graph.png) | ![DeepSeek Multi-Agent Parallel Sessions — Git Worktree workspace isolation](docs/screenshots/34-git-worktree.png) |
 
-### Session Archive Manager（会话归档管理）
+### Session Archive Manager（Session Archive · Full-Text Search, Batch Archiving & Lifecycle）
 
 The session archive manager (`dsh-session-archive`) provides centralized governance over growing numbers of short-lived and persistent conversation logs:
 
@@ -195,7 +192,7 @@ Permanent deletions cannot be undone, and all operational routes bind strictly t
 
 The classic Blue Fantasy theme serves as the built-in default skin: rich indigo gradients, semi-transparent frosted glass elements, and custom whale artwork provide an immersive dark-mode visual experience. Additional themes and Wallpaper Engine animated backgrounds are managed by the skin center and can be previewed, tried on, and installed through the [Workshop](https://dsh-market.com).
 
-![Blue Fantasy Dark](docs/screenshots/17-skin-blue-fantasy-dark.png)
+![DeepSeek Harness Theme Skin — Blue Fantasy dark immersive theme preview](docs/screenshots/17-skin-blue-fantasy-dark.png)
 
 ## Quick Start
 
@@ -211,9 +208,9 @@ The classic Blue Fantasy theme serves as the built-in default skin: rich indigo 
   2. Restart `dsh web` to display new plugin icons in the sidebar
   3. Navigate to "Settings > Plugin Configuration" to toggle individual features, or select skins from the skin panel
 - **Official Desktop Client (DeepSeek Harness Desktop)**:
-  1. Install and launch the official desktop client
-  2. Install the bundle: `dsh plugin --profile desktop add @linxin666/dsh-web-all@latest`
-  3. Restart the client and toggle features under "Settings > Plugin Configuration"
+  1. Open the official desktop client and navigate to "Settings > Plugins"
+  2. Enter `@linxin666/dsh-web-all` in the plugin install input and click Install
+  3. Restart the client to access all plugin features and settings from the sidebar
 
 > To install only the skin engine, use `@linxin666/dsh-client-ui-skin-center`. If your package manager pins an older version due to release age restrictions, see "Install Troubleshooting" below.
 
@@ -251,22 +248,18 @@ dsh web
 
 > Note: Because profile directories are not configured as pnpm workspaces, internal `workspace:*` dependencies fall back to npm versions. If published npm packages differ from local builds, run `node scripts/link-profile.mjs` first to ensure all sub-packages resolve to local build outputs.
 
-### Upgrade from the legacy aggregate
-
-If your profile still references `@linxin666/dsh-web-ui-all`, the plugin manager's update routine recognizes this as a migration path (`@linxin666/dsh-web-ui-all` → `@linxin666/dsh-web-all`). Clicking "Update" executes a safe transactional replacement: the legacy package is unmounted and replaced with the new aggregate while preserving bundle order, followed by configuration verification via `--dump-config` with automatic rollback upon errors.
-
 ### Install a Single Plugin
 
 Install individual components independently if you prefer not to use the complete bundle:
 
 ```sh
 dsh plugin --profile web add @linxin666/dsh-client-ui-task-board@latest              # Task Board
+dsh plugin --profile web add @linxin666/dsh-client-ui-task-board-github@latest      # Task board GitHub Issues sync extension
 dsh plugin --profile web add @linxin666/dsh-ssh@latest                             # SSH Remote Ops
 dsh plugin --profile web add @linxin666/dsh-usage@latest                           # Usage Statistics
 dsh plugin --profile web add @linxin666/dsh-client-ui-model-capabilities@latest    # Model Capabilities
 dsh plugin --profile web add @linxin666/dsh-pet@latest                             # Desktop Pet
 dsh plugin --profile web add @linxin666/dsh-session-archive@latest                 # Session Archive Manager
-dsh plugin --profile web add dsh-better-sidebar@latest                             # Right Panel (not bundled on the alpha branch)
 ```
 
 <details>
@@ -278,6 +271,7 @@ All plugins are published under the `@linxin666/dsh-*` npm scope:
 | --- | --- |
 | [@linxin666/dsh-web-all](https://www.npmjs.com/package/@linxin666/dsh-web-all) | Aggregate bundle: complete suite of feature plugins and skin center |
 | [@linxin666/dsh-client-ui-task-board](https://www.npmjs.com/package/@linxin666/dsh-client-ui-task-board) | Task board: multi-column tracking and cron scheduling |
+| [@linxin666/dsh-client-ui-task-board-github](https://www.npmjs.com/package/@linxin666/dsh-client-ui-task-board-github) | Task board extension: GitHub Issues sync, on by default and switchable off in settings |
 | [@linxin666/dsh-remote-web-ui](https://www.npmjs.com/package/@linxin666/dsh-remote-web-ui) | Mobile remote control: QR pairing, cross-device sync, and touch gestures |
 | [@linxin666/dsh-ssh](https://www.npmjs.com/package/@linxin666/dsh-ssh) | SSH operations: web terminal, SFTP transfers, tunnels, and cluster commands |
 | [@linxin666/dsh-usage](https://www.npmjs.com/package/@linxin666/dsh-usage) | Usage statistics: token consumption, balances, plan tracking, and Token Bank |
@@ -323,6 +317,19 @@ Architecture and mounting details are documented in [docs/plugins.md](docs/plugi
 
 </details>
 
+## Compatibility and Environments
+
+dsh-web is engineered for seamless operation across diverse operating systems, client browsers, and network topologies:
+
+| Dimension | Supported Matrix & Specifications |
+| --- | --- |
+| Host Runtime | DeepSeek Harness CLI (`dsh web`), Official Desktop Client (DeepSeek Harness Desktop) |
+| Operating Systems | macOS (Apple Silicon M-series & Intel), Windows 10/11 (including WSL2), Linux (Ubuntu, Debian, Fedora, Arch, CentOS, etc.) |
+| Browsers & Devices | Desktop Chrome, Edge, Safari, Firefox; Mobile iOS Safari, Android Chrome, and modern mobile browsers |
+| Network Topologies | Localhost (127.0.0.1), Local Area Network (LAN), Secure WAN Tunnels (Cloudflare Tunnel, Tailscale, FRP, Nginx reverse proxies) |
+| LLM Provider Matrix | DeepSeek official routes & reasoning models, OpenAI, Anthropic Claude, Google Gemini, Kimi, GLM, MiniMax, Ollama local models, SiliconFlow, etc. |
+| Runtime Prerequisites | npm installation requires no extra developer tools; building from source requires Node.js >= 22 and pnpm >= 9 |
+
 ## FAQ
 
 <details>
@@ -342,7 +349,7 @@ Scheduling runs directly on the `dsh web` host daemon without requiring browser 
 <details>
 <summary><strong>Why does mobile pairing fail to stream real-time updates?</strong></summary>
 
-Streaming relies on SSE. Cloudflare quick tunnels and Tailscale Serve do not proxy SSE connections, causing the client to fall back to short polling. For seamless token streaming, use tunnels supporting persistent connections such as Cloudflare named tunnels or self-hosted TCP reverse proxies.
+Streaming rides the official WebSocket channel, relayed through the gated `/remote` proxy once paired. Updates pause while the tunnel is down and resume when the channel recovers, with no re-pairing needed; pacing differences come from the wide-area round trip of the remote link.
 
 </details>
 
@@ -367,37 +374,67 @@ Yes. Aggregate bundle entries use the `web-ui-` ID prefix (such as `web-ui-usage
 
 </details>
 
+
+<details>
+<summary><strong>How do I access DeepSeek Harness from a mobile phone or tablet? Does it require the same local network?</strong></summary>
+
+Mobile access is secured by one-time pairing tokens. If your mobile device and the computer running DSH share the same local Wi-Fi or LAN, click the mobile phone icon in the desktop sidebar to generate a QR code, then scan it with your phone camera to launch the mobile touch interface immediately. For remote wide-area access (e.g. accessing your home machine over cellular networks while away), route DSH through a secure tunnel like Cloudflare Tunnel (cloudflared) or Tailscale. All requests pass through authentication gates, and unauthorized visits are rejected.
+
+</details>
+
+<details>
+<summary><strong>Will scheduled tasks continue to execute after closing the browser or when the computer enters sleep mode?</strong></summary>
+
+Task acceptance is on by default for goal-form tasks: before the agent may mark a goal complete, the board calls the judge model itself (inheriting the host model by default, or a model and reasoning level chosen under Settings, Web plugins, Task board, Task acceptance). It uses the three coding criteria, a 0.65 threshold, and two rounds per criterion with the A/B slots swapped; one execution may accept at most twice, so a first failure sends its scores and findings back to the fixing agent and a second failure fails that execution. The acceptance configuration is frozen when each execution starts, so a later settings change only affects new runs; plain chat and tasks that opt out of goal mode are untouched. Every acceptance really spends the judge model's quota.
+
+Task scheduling runs directly within the `dsh web` host daemon on the server machine, so closing browser tabs will not interrupt pending or running tasks. However, if the machine enters deep sleep or is powered down, the host process pauses and missed scheduled triggers will follow the skip policy rather than backfilling. To ensure unattended 24/7 background execution, enable the optional "Power Management" setting in the Task Board configuration to keep the system awake while allowing screens to power off.
+
+</details>
+
+<details>
+<summary><strong>How can I monitor token consumption and check account balances across different LLM providers?</strong></summary>
+
+With the Usage Statistics plugin installed, open "Settings > Usage Statistics" to view daily breakdowns of input, output, and cached tokens, alongside 30-day expenditure trends per model. When using DeepSeek official endpoints, the panel provides off-peak pricing and billing estimates; for compatible third-party providers, the plugin periodically queries remaining account balances and plan reset intervals.
+
+</details>
+
+<details>
+<summary><strong>How do I prevent Git merge conflicts and file overwrites when multiple AI agents work concurrently?</strong></summary>
+
+Running multiple autonomous agents in a single shared Git checkout often results in overwritten files and dirty working trees. With the built-in Git Graph plugin, you can automatically or manually allocate dedicated Git Worktrees for each session. Every agent operates on its own isolated branch and filesystem directory under `$DSH_HOME/worktrees/`, completely protecting the main working tree until you are ready to review and merge changes.
+
+</details>
+
 ## Known Limitations
 
 - Task board scheduling runs on the backend host; closing browser tabs will not interrupt tasks, but stopping the host process or putting the machine to sleep will skip missed schedules without backfilling. Optional power management prevents idle sleep only and cannot bypass manual sleep, lid closure, or power shutdown (see [dsh-task-board README](packages/dsh-task-board/README.md)).
 - SSH credentials (passwords and private key passphrases) persist locally in `~/.dsh/dsh-ssh.json` with 0600 permissions; reconnecting during connection drops may replay non-idempotent commands, and remote outputs return without sanitization (see [dsh-ssh README](packages/dsh-ssh/README.md)).
-- Mobile streaming uses SSE: connections through proxies without SSE pass-through automatically drop back to polling with small update latencies.
+- Mobile streaming is relayed through a tunnel or the stable-hostname relay, so a wide-area round trip is added to every update; the relay costs one hop more than a bare quick tunnel, and both work.
 - Full repository builds require Node.js >= 22 and pnpm; standard npm installations have no developer tool prerequisites.
 
 ## Community
 
 Join the community to discuss workflows, report issues, and share ideas.
 
-Scan the QR code to join the "DSH Web UI" QQ community:
+Scan the QR code to join the "DSH Web" QQ community:
 
-<img src="docs/community-center.jpg" alt="DSH Web UI Community Group" width="240">
+<img src="docs/community-center.jpg" alt="DeepSeek Harness DSH Web Community QR Code" width="240">
 
 You can also join our [Discord community](https://discord.gg/6v4gm9u4S), or submit bug reports and feature requests directly via [GitHub Issues](https://github.com/zhu1090093659/dsh-web/issues).
 
-<details>
-<summary>Friendly Links</summary>
 
-- [DeepSeek Harness Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop) —— Modern desktop client tailored for the DeepSeek Harness ecosystem.
+### Keywords and Topics Index
+
+`DeepSeek` · `DeepSeek Harness` · `DSH` · `DeepSeek Web GUI` · `DeepSeek Desktop Client` · `DeepSeek Plugins` · `DeepSeek Extensions` · `DeepSeek Task Board` · `DeepSeek Cron Scheduling` · `DeepSeek Automation` · `DeepSeek Mobile Remote` · `DeepSeek Phone Access` · `DeepSeek SSH Terminal` · `DeepSeek Server DevOps` · `DeepSeek Token Tracker` · `DeepSeek API Cost Monitor` · `DeepSeek Themes` · `DeepSeek Skins` · `DeepSeek Live Wallpapers` · `DeepSeek Desktop Pet` · `DeepSeek Git Graph` · `DeepSeek Worktree Isolation` · `DeepSeek Session Archive` · `AI Agent Workspace` · `AI Coding Assistant`
+
+### Friendly Links
+
 - [LINUX DO](https://linux.do) —— An earnest community for modern developers.
 - [dshfind](https://dshfind.com) —— Learning and discovery hub for DSH: paper deep-dives, plugin directory, and community leaderboards.
-- [deepseek-plugin-store](https://github.com/Ericwong5021/deepseek-plugin-store) —— Community plugin directory to discover, install, and share vetted tools.
-- [dsh-data-agent](https://github.com/omdsh-dev/dsh-data-agent) —— Dedicated data agent presets for querying, analyzing, and transforming datasets.
-- [dsh-TUI](https://github.com/ccch1mneyyy/dsh-TUI) —— Fullscreen terminal TUI inspired by Claude Code: status bars, streaming thought display, and TPS monitoring.
-- [dsh-tianshu-tui](https://github.com/huiliyi37/dsh-tianshu-tui) —— Interactive terminal interface with built-in TDD and evidence gates.
-- [dsh-genui](https://github.com/omdsh-dev/dsh-genui) —— Generative UI rendering inline cards, diagrams, 3D scenes, and forms directly within assistant replies.
-- [dsh-annotation](https://github.com/omdsh-dev/dsh-annotation) —— Inline annotation plugin: select text, attach notes, and prompt models with point-by-point feedback.
 
-</details>
+## Business Cooperation
+
+We welcome ecosystem integrations, custom development, and commercial collaborations. For business inquiries, please reach out via email: [chunlinzhu666@gmail.com](mailto:chunlinzhu666@gmail.com).
 
 ## Contributing
 
@@ -417,8 +454,7 @@ Licensed under [Apache-2.0](LICENSE). Imported third-party code must retain orig
 
 **Plugins**
 
-- **dsh-task-board / dsh-git-graph / dsh-pet / dsh-remote-web-ui / dsh-web-settings / dsh-ssh / dsh-skill-explorer / dsh-market / dsh-plugin-manager / dsh-community-plugins / dsh-web-all** — authored by zhu1090093659, Apache-2.0 (zhu1090093659)
-- **dsh-better-sidebar** — external integrated plugin [omdsh-dev/DSH-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar) (right panel, an on-demand install on the alpha branch rather than a bundled dependency), MIT (omdsh-dev)
+- **dsh-task-board / dsh-task-board-github / dsh-git-graph / dsh-pet / dsh-remote-web-ui / dsh-web-settings / dsh-ssh / dsh-skill-explorer / dsh-market / dsh-plugin-manager / dsh-community-plugins / dsh-web-all** — authored by zhu1090093659, Apache-2.0 (zhu1090093659)
 - **dsh-ssh** — implemented against the capability list of [badseal/ssh-skill](https://github.com/badseal/ssh-skill); code is this repository's Apache-2.0 (zhu1090093659), the upstream capability list belongs to badseal/ssh-skill
 - **Community plugin index** — 37 external plugins with sources and licenses declared by their authors, registered in [community.json](https://github.com/zhu1090093659/dsh-community-plugins/blob/main/community.json), browsable in Settings → Community Plugins and on dsh-market.com
 
@@ -495,8 +531,9 @@ Licensed under [Apache-2.0](LICENSE). Imported third-party code must retain orig
   <a href="https://github.com/spacexun2"><img src="https://github.com/spacexun2.png?size=64" width="48" height="48" alt="spacexun2" title="spacexun2" /></a>
   <a href="https://github.com/xiaoyuyu6420"><img src="https://github.com/xiaoyuyu6420.png?size=64" width="48" height="48" alt="xiaoyuyu6420" title="xiaoyuyu6420" /></a>
   <a href="https://github.com/z953218350"><img src="https://github.com/z953218350.png?size=64" width="48" height="48" alt="z953218350" title="z953218350" /></a>
-  <a href="https://github.com/guo6x"><img src="https://github.com/guo6x.png?size=64" width="48" height="48" alt="guo6x" title="guo6x" /></a>
   <a href="https://github.com/LittleDarkZero"><img src="https://github.com/LittleDarkZero.png?size=64" width="48" height="48" alt="LittleDarkZero" title="LittleDarkZero" /></a>
+  <a href="https://github.com/guo6x"><img src="https://github.com/guo6x.png?size=64" width="48" height="48" alt="guo6x" title="guo6x" /></a>
+  <a href="https://github.com/taekchef"><img src="https://github.com/taekchef.png?size=64" width="48" height="48" alt="taekchef" title="taekchef" /></a>
   <a href="https://github.com/xohmai"><img src="https://github.com/xohmai.png?size=64" width="48" height="48" alt="xohmai" title="xohmai" /></a>
   <a href="https://github.com/YEYUbaka"><img src="https://github.com/YEYUbaka.png?size=64" width="48" height="48" alt="YEYUbaka" title="YEYUbaka" /></a>
   <a href="https://github.com/suyicon"><img src="https://github.com/suyicon.png?size=64" width="48" height="48" alt="suyicon" title="suyicon" /></a>
@@ -530,7 +567,6 @@ Licensed under [Apache-2.0](LICENSE). Imported third-party code must retain orig
   <a href="https://github.com/Chimney"><img src="https://github.com/Chimney.png?size=64" width="48" height="48" alt="Chimney" title="Chimney" /></a>
   <a href="https://github.com/viplocco"><img src="https://github.com/viplocco.png?size=64" width="48" height="48" alt="viplocco" title="viplocco" /></a>
   <a href="https://github.com/activeing123"><img src="https://github.com/activeing123.png?size=64" width="48" height="48" alt="activeing123" title="activeing123" /></a>
-  <a href="https://github.com/Zhiyi-Zhao"><img src="https://github.com/Zhiyi-Zhao.png?size=64" width="48" height="48" alt="Zhiyi-Zhao" title="Zhiyi-Zhao" /></a>
   <a href="https://github.com/JAVA-LW"><img src="https://github.com/JAVA-LW.png?size=64" width="48" height="48" alt="JAVA-LW" title="JAVA-LW" /></a>
   <a href="https://github.com/AngleNaris"><img src="https://github.com/AngleNaris.png?size=64" width="48" height="48" alt="AngleNaris" title="AngleNaris" /></a>
   <a href="https://github.com/ShiroEirin"><img src="https://github.com/ShiroEirin.png?size=64" width="48" height="48" alt="ShiroEirin" title="ShiroEirin" /></a>
@@ -553,6 +589,7 @@ Licensed under [Apache-2.0](LICENSE). Imported third-party code must retain orig
   <a href="https://github.com/slywalker2006"><img src="https://github.com/slywalker2006.png?size=64" width="48" height="48" alt="slywalker2006" title="slywalker2006" /></a>
   <a href="https://github.com/Sivan757"><img src="https://github.com/Sivan757.png?size=64" width="48" height="48" alt="Sivan757" title="Sivan757" /></a>
   <a href="https://github.com/sclass53"><img src="https://github.com/sclass53.png?size=64" width="48" height="48" alt="sclass53" title="sclass53" /></a>
+  <a href="https://github.com/Zhiyi-Zhao"><img src="https://github.com/Zhiyi-Zhao.png?size=64" width="48" height="48" alt="Zhiyi-Zhao" title="Zhiyi-Zhao" /></a>
   <a href="https://github.com/PcHeN0720"><img src="https://github.com/PcHeN0720.png?size=64" width="48" height="48" alt="PcHeN0720" title="PcHeN0720" /></a>
   <a href="https://github.com/OctKwong30"><img src="https://github.com/OctKwong30.png?size=64" width="48" height="48" alt="OctKwong30" title="OctKwong30" /></a>
   <a href="https://github.com/Nwflower"><img src="https://github.com/Nwflower.png?size=64" width="48" height="48" alt="Nwflower" title="Nwflower" /></a>
@@ -609,11 +646,3 @@ Licensed under [Apache-2.0](LICENSE). Imported third-party code must retain orig
 [Report Bug](https://github.com/zhu1090093659/dsh-web/issues) · [Request Feature](https://github.com/zhu1090093659/dsh-web/issues) · [View Releases](https://github.com/zhu1090093659/dsh-web/releases)
 
 </div>
-
-## Support the Project
-
-Thank you to everyone who uses, gives feedback on and contributes to dsh-web. If this project helps you, you are welcome to scan the QR code to support its continued maintenance and development:
-
-<p align="center">
-  <img src="docs/zanzhu-wechat.jpg" alt="WeChat sponsorship QR code" width="360">
-</p>

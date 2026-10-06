@@ -61,7 +61,7 @@ html[data-dsh-skin="whale-mom"] [class*="markdown"] :is(p, li, h1, h2, h3, h4, h
   font-weight: 500;
 }
 
-html[data-dsh-skin="whale-mom"] [class*="summary"], html[data-dsh-skin="whale-mom"] [class*="timeEnd"], html[data-dsh-skin="whale-mom"] [class*="turnStatus"], html[data-dsh-skin="whale-mom"] [class*="usage"], html[data-dsh-skin="whale-mom"] [class*="footerItem"], html[data-dsh-skin="whale-mom"] [class*="footerHint"] {
+html[data-dsh-skin="whale-mom"] [class*="summary"], html[data-dsh-skin="whale-mom"] [class*="timeEnd"], html[data-dsh-skin="whale-mom"] [data-chat-running] [data-shimmer], html[data-dsh-skin="whale-mom"] [class*="usage"], html[data-dsh-skin="whale-mom"] [class*="footerItem"], html[data-dsh-skin="whale-mom"] [class*="footerHint"] {
   color: var(--dsh-skin-text-mid);
   font-weight: 500;
 }

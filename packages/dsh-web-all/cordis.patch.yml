@@ -38,6 +38,13 @@
       config:
         plugin: '@linxin666/dsh-client-ui-task-board'
 
+# from ../dsh-task-board-github
+- insert:
+    - id: web-ui-task-board-github
+      name: '@linxin666/dsh-web-all/task-board-github'
+      config:
+        plugin: '@linxin666/dsh-client-ui-task-board-github'
+
 # from ../dsh-git-graph
 - insert:
     - id: web-ui-git-graph

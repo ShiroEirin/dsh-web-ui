@@ -4,7 +4,7 @@ import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { mountOnce } from './mount-once.ts'
 import { UsageService, type UsageServiceOptions } from './host/usage-service.ts'
-import { makeUsageOverviewRoute, makeUsageRefreshRoute } from './host/routes.ts'
+import { makeUsageDayRoute, makeUsageOverviewRoute, makeUsageRefreshRoute } from './host/routes.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
@@ -126,9 +126,9 @@ export const apply = mountOnce('@linxin666/dsh-usage', (ctx: Context, config?: U
   /** True while this activation has a start queued behind a predecessor's flush. */
   let queued = false
 
-  /** Register the service's two routes; the returned disposer unregisters them. */
+  /** Register the service's routes; the returned disposer unregisters them. */
   const mountRoutes = (next: UsageService): (() => void) => {
-    const disposers = [makeUsageOverviewRoute(ctx, next), makeUsageRefreshRoute(ctx, next)]
+    const disposers = [makeUsageOverviewRoute(ctx, next), makeUsageDayRoute(ctx, next), makeUsageRefreshRoute(ctx, next)]
       .map((route) => ctx.webServer.register(route))
     return () => {
       for (const dispose of disposers) {

@@ -19,10 +19,12 @@ import { readProfileManifest, stripBom, type ProfileFacts } from './profile.ts'
  * itself (the UI performing the write), the family settings surface the tab
  * injects into, and the aggregate compat face (disabling it unmounts the
  * whole folded client bundle while host rows keep running — a half-dead
- * page). Covers both the standalone and the aggregate row ids.
+ * page). Covers both the standalone and the aggregate row ids. The standalone
+ * id is this package's own `cordis.patch.yml` insert id, never the official
+ * `ui-plugin-manager` row the DSH web-app bundle already claims.
  */
 export const LOCKED_ENTRY_IDS: ReadonlySet<string> = new Set([
-  'ui-plugin-manager',
+  'ui-plugin-manager-update-check',
   'web-ui-plugin-manager',
   'ui-web-ui-settings',
   'web-ui-settings',

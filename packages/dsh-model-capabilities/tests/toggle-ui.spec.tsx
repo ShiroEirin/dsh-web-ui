@@ -12,6 +12,7 @@ import type { RemoteResult, SettingsDescribeValue, SettingsNamespaceView } from 
 import { CapabilitiesPanel } from '../src/client/CapabilitiesPanel.tsx'
 import { DisabledProvidersFooter } from '../src/client/DisabledProvidersFooter.tsx'
 import type { RefreshBus, SettingsNamespaceFace } from '../src/client/settings-face.ts'
+import type { ProviderCardSeatStatus, ProviderCardSeatStore } from '../src/client/provider-card-seat.ts'
 import { CAPS_ENTRY_IDS } from '../src/core/provider-toggle.ts'
 
 afterEach(() => {
@@ -120,6 +121,25 @@ function bus(): RefreshBus & { notifyCount: number } {
       for (const listener of [...listeners]) listener()
     },
     get notifyCount() { return notifyCount },
+  }
+}
+
+/** A provider-card claim store for the footer; cases pick the status. */
+function seat(status: ProviderCardSeatStatus = { kind: 'claimed' }): ProviderCardSeatStore & {
+  set(next: ProviderCardSeatStatus): void
+} {
+  let current = status
+  const listeners = new Set<() => void>()
+  return {
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    getSnapshot() { return current },
+    set(next) {
+      current = next
+      for (const listener of [...listeners]) listener()
+    },
   }
 }
 
@@ -304,7 +324,7 @@ describe('CapabilitiesPanel disable/enable', () => {
 describe('DisabledProvidersFooter', () => {
   it('renders nothing while the archive is empty', async () => {
     const world = baseWorld()
-    const { container } = render(<DisabledProvidersFooter settings={makeFace(world)} refresh={bus()} />)
+    const { container } = render(<DisabledProvidersFooter settings={makeFace(world)} refresh={bus()} cardSeat={seat()} />)
     await waitFor(() => {
       expect(world.describeCount).toBe(1)
     })
@@ -321,7 +341,7 @@ describe('DisabledProvidersFooter', () => {
       },
     })
     const mirror = bus()
-    render(<DisabledProvidersFooter settings={makeFace(world)} refresh={mirror} />)
+    render(<DisabledProvidersFooter settings={makeFace(world)} refresh={mirror} cardSeat={seat()} />)
     await waitFor(() => {
       expect(screen.getByText('已禁用的提供方')).toBeTruthy()
     })
@@ -343,7 +363,7 @@ describe('DisabledProvidersFooter', () => {
     const world = baseWorld()
     setUserSection(world.llm, { providers: {} })
     setUserSection(world.caps, { disabled: { 'acme-gateway': { profile: { apiKeyEnv: 'OLD' } } } })
-    render(<DisabledProvidersFooter settings={makeFace(world)} refresh={bus()} />)
+    render(<DisabledProvidersFooter settings={makeFace(world)} refresh={bus()} cardSeat={seat()} />)
     await waitFor(() => {
       expect(screen.getByText('已禁用的提供方')).toBeTruthy()
     })
@@ -363,7 +383,7 @@ describe('DisabledProvidersFooter', () => {
     const world = baseWorld()
     // The archive still holds the profile, but the route is live in the user layer.
     setUserSection(world.caps, { disabled: { 'acme-gateway': { profile: { apiKeyEnv: 'OLD' } } } })
-    const { container } = render(<DisabledProvidersFooter settings={makeFace(world)} refresh={bus()} />)
+    const { container } = render(<DisabledProvidersFooter settings={makeFace(world)} refresh={bus()} cardSeat={seat()} />)
     await waitFor(() => {
       expect(world.describeCount).toBe(1)
     })
@@ -375,7 +395,7 @@ describe('DisabledProvidersFooter', () => {
     setUserSection(world.llm, { providers: {} })
     world.llm.base = { providers: { 'acme-gateway': { apiKeyEnv: 'BASE_KEY' } } }
     setUserSection(world.caps, { disabled: { 'acme-gateway': { profile: { apiKeyEnv: 'OLD' } } } })
-    const { container } = render(<DisabledProvidersFooter settings={makeFace(world)} refresh={bus()} />)
+    const { container } = render(<DisabledProvidersFooter settings={makeFace(world)} refresh={bus()} cardSeat={seat()} />)
     await waitFor(() => {
       expect(world.describeCount).toBe(1)
     })

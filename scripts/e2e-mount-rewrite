@@ -42,8 +42,7 @@ const semver = require('semver')
 const FAMILY_SCOPE = '@linxin666/'
 const REGISTRY = 'https://registry.npmjs.org'
 
-/** GNU tar reads a `C:\...` argument as a remote host spec; --force-local keeps it a local path. */
-const TAR_LOCAL = process.platform === 'win32' ? ['--force-local'] : []
+const { TAR_LOCAL } = require('./tar-args.cjs')
 
 /**
  * True when a dependency spec is served by the published version list.

@@ -17,7 +17,7 @@ The repository no longer ships a desktop application. The whole `desktop/` tree 
 - The root README pair replaces the DSH Desktop download section with the official desktop client: the client shares `~/.dsh` and installs the family into its own `desktop` profile with the same `dsh plugin` command as `dsh web`.
 - `packages/AGENTS.md` credits the official desktop client as the desktop surface in the removed-desktop-launcher exception.
 
-No shipped plugin code changes: nothing under `packages/` imported the app, and the desktop-scheme handling in [the remote-access page-locality predicate](2026-09-21-remote-one-time-landing-grant.md) is what makes the family correct inside the official client.
+No shipped plugin code changes: nothing under `packages/` imported the app, and the desktop-scheme handling in [the remote-access page-locality predicate](../architecture/2026-09-21-remote-one-time-landing-grant.md) is what makes the family correct inside the official client.
 
 ## Alternatives considered
 

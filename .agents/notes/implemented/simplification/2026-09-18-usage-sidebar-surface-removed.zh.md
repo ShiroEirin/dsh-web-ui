@@ -2,7 +2,7 @@
 
 Status: implemented
 
-取代 [用量侧栏控件落位入口行](2026-09-17-usage-sidebar-controls-on-entry-row.md) 与 [issue 批次 1587-1600](2026-09-16-issue-batch-1587-1600-fixes.md) 中记录的 #1592 侧栏面：用量侧栏入口、其可折叠面板，以及专为它建立的 entry-core 机制全部移除。用量仍可从设置页一级分区访问。
+取代 用量侧栏控件落位入口行 与 [issue 批次 1587-1600](../bug-fix/2026-09-16-issue-batch-1587-1600-fixes.md) 中记录的 #1592 侧栏面：用量侧栏入口、其可折叠面板，以及专为它建立的 entry-core 机制全部移除。用量仍可从设置页一级分区访问。
 
 被 [用量侧栏底部速览卡](../feature/2026-09-23-usage-sidebar-foot-card.md) 部分取代：一张紧凑速览卡应用户明确要求回归到侧栏「设置」行下方；入口行、可折叠面板与 entry-core `actions` API 保持移除。
 

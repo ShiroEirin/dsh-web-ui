@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-26",
+  "generated": "2026-10-06",
   "items": [
     {
       "id": "dsh-quick-ask",
@@ -384,12 +384,12 @@
     },
     {
       "id": "dsh-chatgpt-subscription",
-      "name": "子代理管理",
+      "name": "订阅管理",
       "rank": 31,
-      "nameEn": "Subagent Management",
+      "nameEn": "Subscription Management",
       "author": "Aa728848",
-      "description": "让 DSH 通过 ChatGPT 订阅使用 GPT 系列模型：PKCE OAuth 登录、DPAPI/钥匙串/0600 凭据存储、流式 Responses、图片生成、Codex 搜索、额度展示与子代理管理。",
-      "descriptionEn": "Use GPT models in DSH through your ChatGPT subscription: PKCE OAuth login, DPAPI/keychain/0600 credential storage, streaming Responses, image generation, Codex search, quota display and subagent management.",
+      "description": "让 DSH 用上你已订阅的模型：ChatGPT、Kimi、Claude、Command Code、WorkBuddy、MiniMax Code、Google Antigravity 七条线路各自独立登录、独立额度卡片；支持 PKCE OAuth 与设备码登录、DPAPI/钥匙串/0600 凭据存储、流式 Responses、图片生成、Codex 搜索与子代理模型授权。",
+      "descriptionEn": "Bring the model subscriptions you already pay for into DSH: seven independent lines (ChatGPT, Kimi, Claude, Command Code, WorkBuddy, MiniMax Code, Google Antigravity), each with its own login and quota card; PKCE OAuth and device-code login, DPAPI/keychain/0600 credential storage, streaming Responses, image generation, Codex search and subagent model authorization.",
       "repo": "https://github.com/Aa728848/dsh-chatgpt-subscription",
       "npm": "@eddyskywalker/dsh-chatgpt-subscription",
       "category": "integration",
@@ -1602,6 +1602,96 @@
       "repo": "https://github.com/mengge237/dsh-model-priority",
       "category": "tools",
       "subcategory": "model"
+    },
+    {
+      "id": "dsh-550c-boot",
+      "name": "550C 开机动画",
+      "rank": 126,
+      "nameEn": "550C Boot Splash",
+      "author": "yannicksong0106",
+      "description": "给 DSH 加一段 550C 全屏开机片头：简易档 4 秒、完整档 16 秒覆写流程，点击或按 Esc 跳过，四套磷光配色。首帧由宿主半边在文档解析阶段注入，DSH 自带的 Loading 卡片不会露脸；桌面窗口右上角那条原生按钮条带在片头期间透明化，按钮像浮在动画上。",
+      "descriptionEn": "Full-screen 550C boot intro for DSH: a 4-second simple cut and a 16-second rewrite sequence, skippable by click or Esc, with four phosphor palettes. The host half injects the opening frame while the document is still parsing, so the built-in loading card never shows; the desktop caption strip turns transparent, so those window buttons float on the animation.",
+      "repo": "https://github.com/yannicksong0106/dsh-550c-boot",
+      "npm": "dsh-550c-boot",
+      "category": "ui",
+      "subcategory": "render"
+    },
+    {
+      "id": "dsh-widgets",
+      "name": "组件栏",
+      "rank": 127,
+      "nameEn": "Widget Rail",
+      "author": "Physicolor",
+      "description": "会话右侧的多列组件栏：55 个内置单元覆盖会话（轮次·步数、上下文水位、token 与缓存命中率、首 token 延迟、工具调用、后台任务、子代理）、额度（OpenCode Go 与 Command Code 的滚动/周/月窗口、余额、月末外推与今日推荐）、机器（CPU / GPU / 内存 / 磁盘 / 网络 / 供电，含迷你折线与环形图，另有本地服务与代理出口看板）与 GitHub（待审队列、提交、Issue）。每个单元独立安装，2×2 或 2×4，悬浮时沿组件栏形成连续放大波；设置页可安装、排序、改尺寸与逐实例配置。",
+      "descriptionEn": "A multi-column widget rail on the right of the session: 55 built-in units for the session (turns and steps, context level, tokens and cache-hit rate, first-token latency, tool calls, background jobs, subagents), quota (OpenCode Go and Command Code rolling / weekly / monthly windows, balances, month-end projection and today's budget), the machine (CPU, GPU, memory, disk, network and power with sparklines and rings, plus a local-service and proxy-egress board) and GitHub (review queue, pushes, issues). Every unit installs on its own at 2x2 or 2x4, a continuous magnification wave follows the pointer along the rail, and the settings page installs, reorders, resizes and configures each instance.",
+      "repo": "https://github.com/Physicolor/dsh-widgets",
+      "npm": "dsh-widgets",
+      "category": "ui",
+      "subcategory": "panel"
+    },
+    {
+      "id": "dsh-novel-writer",
+      "name": "网文写作工作台",
+      "rank": 128,
+      "nameEn": "Novel Writing Workbench",
+      "author": "siweina",
+      "description": "给中文网文作者的本地写作工作台：动笔前一次调用取齐上一章承接口、本章大纲、人物卡、待回收伏笔与用语规范；写完按六维文笔基线与原著波动带量化自检，诊断结果排成带原句行号的改稿待办；跨章可查伏笔埋设跨度、人物连续缺席与大纲偏离。句式、情感与语义全部用随包分发的 24MB 中文模型在本机推理，零 API 花费、正文不出本机；18 个工具，同一套能力也可作为 MCP 服务器给 Claude Desktop / Cursor 使用。",
+      "descriptionEn": "A local workbench for Chinese web-novel writers: one call before drafting gathers the previous chapter's hand-off, the current outline, related character cards, unresolved plot threads and the world's language rules; after drafting, a six-dimension prose baseline derived from the source drives a quantified self-check that becomes a prioritised revision plan with original line numbers; across chapters it reports plot-thread spans, characters missing for too long and outline drift. Sentence, emotion and semantic analysis all run on a bundled 24MB Chinese model on-device — zero API cost, the manuscript never leaves the machine; 18 tools, and the same capabilities ship as an MCP server for Claude Desktop / Cursor.",
+      "repo": "https://github.com/siweina/dsh-novel-writer",
+      "npm": "dsh-novel-writer",
+      "category": "knowledge",
+      "subcategory": "reading"
+    },
+    {
+      "id": "dsh-screen-capture-record-desktop",
+      "name": "录屏与截图",
+      "rank": 129,
+      "nameEn": "Screen Capture & Record",
+      "author": "Link-h1j",
+      "description": "把「说不清」的界面问题变成能直接发给模型的视频 / 图片证据，减少人机沟通的来回损耗：在输入框工具条的「听写」左边加「录屏」「截图」两个按钮。截图：弹出选区浮层（拖动框选 / 单击整屏 / Enter 确认 / Esc 取消），选中的画面直接进附件，拖完框选手一松就能用画笔 / 矩形 / 箭头 / 文字标注，只在选区内生效。录屏：点一下先选「录哪一个」（整个桌面 / 某台显示器 / 某个窗口——跟着窗口移动改大小 / 自定义区域拖框，都带缩略图），再点一下结束（Esc 亦可），产出一个 .webm 视频并自动进附件；抽帧交给会话里的 agent 做。抓屏在宿主进程完成 —— 桌面壳禁用了 getDisplayMedia，浏览器端拿不到流。录屏需要本机 Python 3 + Pillow 与一个带 libvpx 的 ffmpeg（起录前会做能力预检，缺什么会直接说清怎么补，可用 DSH_CAPTURE_PYTHON / DSH_CAPTURE_FFMPEG 指定路径）；截图只需要 PowerShell。仅支持 Windows。",
+      "descriptionEn": "Turns a hard-to-describe UI problem into footage the model can actually look at, cutting the back-and-forth of human-agent communication: adds Record and Capture buttons to the composer toolbar, left of the dictation button. Capture opens a region overlay (drag to select, click for full screen, Enter to confirm, Esc to cancel) and attaches the selection to the message; the annotation toolbar (pen / rectangle / arrow / text) shows up the moment you release the drag and only paints inside the selection. Record first asks what to record (whole desktop / a monitor / a window that is followed as it moves or resizes / a custom region, each with a thumbnail), then stops on a second click (Esc also stops) and produces a single .webm attached to the message; frame extraction is left to the agent in the session. Screen grabbing runs in the host process because the desktop shell disables getDisplayMedia, so the renderer can never obtain a stream. Recording needs a local Python 3 with Pillow plus an ffmpeg built with libvpx; both are probed before recording starts and the error names exactly what to install, and DSH_CAPTURE_PYTHON / DSH_CAPTURE_FFMPEG can point at them explicitly. Capture needs only PowerShell. Windows only.",
+      "repo": "https://github.com/Link-h1j/dsh-screen-capture-record-desktop",
+      "npm": "dsh-screen-capture-record-desktop",
+      "category": "tools",
+      "subcategory": "dev"
+    },
+    {
+      "id": "dsh-as-aistudio",
+      "name": "AI Studio",
+      "rank": 130,
+      "nameEn": "AI Studio",
+      "author": "DDDMUC",
+      "description": "把一轮对话变成可以反复打磨的 prompt playground：就地改一句提示词并回滚重问、对某条回复原位重跑、把不该留下的一轮从模型上下文删掉、并让发出的提示词按 Markdown 渲染。自包含安装，一个包内置全部四个组件（编辑并重跑、原位重跑、删除该轮、Markdown 气泡），插件列表里只显示 AI Studio 一行；四个组件仍是各自独立的 npm 包，单独安装时各自出现在列表里。设置 > 插件 > AI Studio 面板如实报告每个组件的实际状态（已安装 / 已挂载 / 版本）。",
+      "descriptionEn": "Turn one turn into a prompt playground you can keep revising: rewrite a prompt in place and roll the conversation back to just before it, regenerate a reply from the same prompt while later turns survive, remove a turn from the model context, and render sent prompts as Markdown. Self-contained - one package bundles all four components (edit and re-run, re-run in place, delete this turn, Markdown bubble) and the plugin list shows a single AI Studio row; each component is still its own independent npm package and appears as its own row when installed standalone. The Settings > Plugins > AI Studio panel reports what each component is actually doing (installed / mounted / version).",
+      "repo": "https://github.com/DDDMUC/dsh-as-aistudio",
+      "npm": "dsh-as-aistudio",
+      "category": "tools",
+      "subcategory": "context"
+    },
+    {
+      "id": "dsh-wallpaper-engine",
+      "name": "壁纸引擎",
+      "rank": 131,
+      "nameEn": "Wallpaper Engine",
+      "author": "elysia395",
+      "description": "把本机 Wallpaper Engine 壁纸渲染到 DSH 聊天界面后方：Scene/Web 由内置 WebWallGL 实时渲染，Video 直接播放；附液态玻璃、壁纸属性面板、Now Playing 联动与主题随壁纸。与皮肤类插件互斥（二选一）。",
+      "descriptionEn": "Renders local Wallpaper Engine wallpapers behind the DSH chat UI: Scene/Web via the bundled WebWallGL renderer, Video plays directly, with liquid glass, a wallpaper properties panel, Now Playing integration and theme following. Mutually exclusive with skin plugins (choose one).",
+      "repo": "https://github.com/elysia395/dsh-wallpaper-engine",
+      "npm": "dsh-plugin-wallpaper-engine",
+      "category": "ui",
+      "subcategory": "render"
+    },
+    {
+      "id": "dsh-pet-quota",
+      "name": "宠物额度气泡",
+      "rank": 132,
+      "nameEn": "Pet Quota Bubble",
+      "author": "Daizhdd",
+      "description": "在 DSH 桌面宠物头上显示今日 token 用量：按输入+缓存读+缓存写+输出与侧边栏同口径统计，分轻度/中度/重度三档，档位只用一个彩色圆点表示，无进度条与百分比；另有任务完成、本轮失败、跨档三类事件气泡，全部通过宠物插件公开的 announce 接口推送，不改动任何第三方代码。",
+      "descriptionEn": "Shows today token usage as a bubble above the DSH desktop pet: counts input + cache-read + cache-write + output with the same convention as the sidebar, sorts the day into three tiers shown as a single coloured dot (no progress bar, no percentage), and adds completion / failure / tier-change bubbles through the pet plugin public announce API without patching any third-party code.",
+      "repo": "https://github.com/Daizhdd/dsh-pet-quota",
+      "category": "utility",
+      "subcategory": "stats"
     }
   ]
 }

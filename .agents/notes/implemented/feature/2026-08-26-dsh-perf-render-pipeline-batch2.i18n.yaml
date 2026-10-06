@@ -2,4 +2,4 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with git hash-object.
 2026-08-26-dsh-perf-render-pipeline-batch2.md: e7121fb953c29af5c8efba77c5499edafec78d93
-2026-08-26-dsh-perf-render-pipeline-batch2.zh.md: be534a32339a838b3155c4abe8be84ef3e790408
+2026-08-26-dsh-perf-render-pipeline-batch2.zh.md: 0b3bda4e4f5fe682dd7d520eff97da69b65d3450

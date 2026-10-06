@@ -2,4 +2,4 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with git hash-object.
 .agents/notes/implemented/bug-fix/2026-09-05-desktop-bundled-pnpm-toolchain.md: d50853e6d54aff6ee179abf46d70bb9614b56088
-.agents/notes/implemented/bug-fix/2026-09-05-desktop-bundled-pnpm-toolchain.zh.md: 9f9e4143f5237fbfc0e30755b6ae0e2eef516ac0
+.agents/notes/implemented/bug-fix/2026-09-05-desktop-bundled-pnpm-toolchain.zh.md: e0729ca6cbb6647517c506b8e881bdba3dd7af74

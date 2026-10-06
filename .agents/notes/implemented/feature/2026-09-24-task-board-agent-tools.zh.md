@@ -18,12 +18,12 @@ Status: implemented
 - `task_board_update`：修改内容、标签与执行目标；空字符串清除某个目标，空标签数组清除全部标签。
 - `task_board_set_parent`：把现有卡片挂到父任务下，或用空 parentId 解除关联。
 - `task_board_run`：立即执行一张卡片，或重跑已结算的卡片，并级联它整棵子任务树。
-- `task_board_manage`：在待办与待规划之间移动卡片，归档、恢复或删除。
+- `task_board_manage`：在手动列之间移动卡片——全部五列（自 [手工列切换](2026-09-29-task-board-manual-column-switching.zh.md) 起），其中 `done`/`failed` 声明工作在受追踪的运行之外结束、`running` 表示工作正在进行但没有会话——归档、恢复或删除。
 - `task_board_schedule`：启用、修改或关闭卡片的 cron 规则。
 
 ### Registration and failure tolerance
 
-- 注册跟随 `enabled` 主开关：看板关闭时不响应任何工具调用，关闭动作在切换公告的同一条提交路径上释放工具注册。
+- 注册跟随 `enabled` 主开关：看板关闭时不响应任何工具调用，关闭动作在切换公告的同一条提交路径上释放工具注册。公告本身由 `visibleToolText` 渲染，只有至少一个 `task_board_*` 工具可读时才非空——见[家族工具面约定](2026-10-02-family-tool-surface-conventions.zh.md)。
 - 工具注册表按可选服务解析而不写入 `inject`，与可选 `llm` 的解析方式一致：运行时不提供注册表的部署仍会挂载整个看板，只失去工具面。运行时提供作用域注入时，晚到的注册表会通过它被跟进。
 - 工具调用经进程内服务而非浏览器 HTTP 栅栏驱动 Host，因此不存在需要同步的第二条传输通道；服务自身的 active 标志与账本门禁仍是唯一权威。
 

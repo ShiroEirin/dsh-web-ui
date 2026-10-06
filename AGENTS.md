@@ -66,6 +66,11 @@ Market build order: build `market/shell` first (`npm run build` in `market/shell
 - 改动需要服务重启才生效时（例如 bundle 行或 `cordis.patch.yml` 变化），不要自行
   重启；改为在交付报告中明确标注「需要用户重启 DSH 服务后生效」，由用户自行
   重启验证。页面刷新、只读探测等不打扰服务的验证不受此限制。
+- 需要另起宿主来验证时（探针、QA 实例），让该实例使用自己的 `DSH_HOME`（约定
+  `/tmp/dsh-verify-<topic>`），并在本会话内停掉它启动的每个进程：任务看板账本只允许
+  一个写入者，残留实例会剥夺用户正在使用的看板。共享服务报告外来占用者时先归因
+  pid 再终止，只处理本探测可归因的进程。隔离与回收的完整理由见
+  [2026-10-02-shared-dsh-home-probe-isolation](.agents/notes/implemented/process/2026-10-02-shared-dsh-home-probe-isolation.md)。
 
 ## Branches, Commits, and PRs
 

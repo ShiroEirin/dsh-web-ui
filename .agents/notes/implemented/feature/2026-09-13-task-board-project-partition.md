@@ -12,7 +12,7 @@ The board header renders a project row (semantic part `project-filter`) built fr
 
 ## Alternatives considered
 
-Forcing a workspace selection whenever "all projects" is open, which is how the issue described it, was rejected: leaving the pin empty is the documented "most recent workspace" behaviour, and making it mandatory would add a step to every task for users who never open a project.
+Forcing a workspace selection whenever "all projects" is open, which is how the issue described it, was rejected: leaving the pin empty is the "most recent workspace" behaviour, and making it mandatory would add a step to every task for users who never open a project. That fallback was not implemented at the time — the runner passed no workspace at all and the run landed in the Host process working directory; [the workspace-inheritance note](../bug-fix/2026-09-30-task-board-workspace-inheritance.md) records what an empty pin means now.
 
 Filtering by workspace path instead of id was rejected: the ledger stores the id, and a renamed or moved project directory must not detach its tasks.
 

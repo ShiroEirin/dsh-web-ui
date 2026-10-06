@@ -23,7 +23,7 @@
  *
  * NEVER [class*=…] (hash-named, warns, breaks on rebuild) and NEVER a
  * self-written html[…]-rooted state selector: the loader prefixes blindly, so
- * `html[data-dsh-wallpaper-active] x` becomes `html[data-dsh-skin="claude"] html[…] x`
+ * `html[data-we-wallpaper] x` becomes `html[data-dsh-skin="claude"] html[…] x`
  * and never matches. Background state therefore uses the body:is([…]) idiom.
  *
  * All selectors are force-scoped under html[data-dsh-skin="claude"].
@@ -236,12 +236,12 @@ a {
  * 9. Glass state — when a wallpaper/backdrop is active the panels go frosted.
  * Idiom taken from the real skins: body:is([…]), never html[…].
  * ------------------------------------------------------------------------- */
-body:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) [data-composer-card] {
+body:is([data-dsh-backdrop-active], [data-we-wallpaper]) [data-composer-card] {
   backdrop-filter: blur(10px);
   background: color-mix(in srgb, var(--dsw-specific-input-major) 78%, transparent);
 }
 
-body:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) [data-dsh-surface="sidebar"] {
+body:is([data-dsh-backdrop-active], [data-we-wallpaper]) [data-dsh-surface="sidebar"] {
   backdrop-filter: blur(10px);
 }
 

@@ -20,6 +20,15 @@ packages/AGENTS.md 的全局/包级规则。
   `web-ui-model-capabilities`),两者都未命中时按表单 schema 形状兜底(仅含一个
   `disabled` any 字段;见 `src/core/provider-toggle.ts` 的 `resolveArchiveEntry`);
   解析不到时隐藏禁用/启用入口并报 unavailable,绝不猜写。
+- **provider-card 席位冲突必须可见且可自愈**:该插槽是 keyed 单元格,同一 key
+  同一 priority 只渲染一个扩展区,所以两个插件都扩展 pi-ai 提供方卡片时后者必然被注册表
+  拒绝。`src/client/provider-card-seat.ts` 独占这个结果:拒绝时 `console.error` 点名占用者
+  (registrant),并把 `conflict` 状态交给 `settings.models.footer` 渲染可见提示;单元格被
+  释放后(对方插件卸载)在 `slots` 订阅上重试认领,无需重启 DSH 即恢复。重试必须带
+  `claiming` 闩锁——注册表在 `register` 内同步发通知,没有闩锁会自撞自己刚写的条目。
+  **不要**改用不同 priority 绕开冲突:那样两条目虽共存于账本但只渲染最低优先级,等于把
+  响亮的冲突换成对另一个插件的静默遮蔽。footer 列表(`ui-model-capabilities`)的注册
+  失败同样要报错,不得静默返回空 disposer。
 - **写入粒度是整数组**:`src/core/capabilities.ts` 的 `buildModelsOp` 用一次 set 操作替换
   `providers.<route>.models` 整个数组(settings mutate 的 path op 不支持下标进数组);
   条目是结构开放对象,非本包编辑的字段(id/name/contextWindow/compat 等)原样保留。

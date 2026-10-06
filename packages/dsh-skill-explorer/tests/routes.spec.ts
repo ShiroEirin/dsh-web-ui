@@ -305,6 +305,18 @@ describe('create', () => {
     expect(status()).toBe(400)
   })
 
+  it('operator cannot create a skill under a name the panel grammar and the registry once disagreed on', async () => {
+    // Given names the panel's former grammar accepted and the official
+    // registry rejects (trailing, doubled and single-trailing hyphens)
+    for (const name of ['bad-', 'bad--name', 'a-']) {
+      const { res, status } = response()
+      // When the operator tries to create a skill under that name
+      await find(ROUTES.create)!.handler(request(ROUTES.create, 'POST', { body: { root: 'user', name, description: 'x', content: 'y', cwd: PROJ } }), res)
+      // Then it is refused, so the route cannot author a skill that never loads
+      expect(status()).toBe(400)
+    }
+  })
+
   it('rejects oversized content with 400', async () => {
     const { res, status } = response()
     await find(ROUTES.create)!.handler(request(ROUTES.create, 'POST', { body: { root: 'user', name: 'big-skill', description: 'x', content: 'x'.repeat(64 * 1024 + 1), cwd: PROJ } }), res)
@@ -555,6 +567,158 @@ describe('update', () => {
       expect(readFileSync(fixture.userFile, 'utf8')).toContain('user copy')
     } finally {
       rmSync(fixture.root, { recursive: true, force: true })
+    }
+  })
+})
+
+
+describe('custom provider row roots (#1801)', () => {
+  /** Isolated host whose skill-filesystem row owns a custom root. */
+  function customRowFixture(): {
+    root: string
+    file: string
+    find(path: string): ReturnType<typeof makeRoutes>[number] | undefined
+  } {
+    const root = mkdtempSync(join(tmpdir(), 'skill-explorer-row-custom-'))
+    const customRoot = join(root, 'custom-root')
+    const file = join(customRoot, 'demo-alpha', 'SKILL.md')
+    mkdirSync(join(customRoot, 'demo-alpha'), { recursive: true })
+    writeFileSync(file, '---\nname: demo-alpha\ndescription: 自定义目录技能\n---\n# 正文\n', 'utf8')
+    // The roots arrive through the resolver, exactly as the host reads them
+    // off the live skill-filesystem loader row.
+    const isolatedRoutes = makeRoutes(emptyCtx, {
+      ...deps,
+      dshHome: join(root, 'home'),
+      agentsHome: join(root, 'agents'),
+      customSkillDirs: () => [customRoot],
+    })
+    return { root, file, find: path => isolatedRoutes.find(route => route.path === path) }
+  }
+
+  it('operator sees a row-configured custom skill served with its editable path', async () => {
+    // Given a custom skill that only the provider row declares
+    const fixture = customRowFixture()
+    try {
+      // When the panel loads the list
+      const { res, status, body } = response()
+      await fixture.find(ROUTES.list)!.handler(request(ROUTES.list, 'GET'), res)
+
+      // Then the custom group carries the real path, not a pathless row
+      expect(status()).toBe(200)
+      const payload = JSON.parse(body())
+      const custom = payload.groups.find((g: { key: string }) => g.key === 'custom')
+      expect(custom.skills.map((s: { name: string }) => s.name)).toEqual(['demo-alpha'])
+      expect(custom.skills[0].path).toBe(fixture.file)
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  it('operator toggling a row-configured custom skill gets 200 instead of the 404 from the report', async () => {
+    // Given a custom skill declared only by the provider row
+    const fixture = customRowFixture()
+    try {
+      // When the row's switch posts the displayed path
+      const { res, status, body } = response()
+      await fixture.find(ROUTES.setEnabled)!.handler(request(ROUTES.setEnabled, 'POST', {
+        body: { name: 'demo-alpha', path: fixture.file, enabled: false },
+      }), res)
+
+      // Then it lands on disk instead of answering "has no editable file"
+      expect(status()).toBe(200)
+      expect(JSON.parse(body()).enabled).toBe(false)
+      expect(readFileSync(fixture.file, 'utf8')).toContain('disable-model-invocation: true')
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  it('operator deleting a row-configured custom skill moves it to .trash', async () => {
+    // Given a custom skill declared only by the provider row
+    const fixture = customRowFixture()
+    try {
+      // When the row's delete action posts the displayed path
+      const { res, status } = response()
+      await fixture.find(ROUTES.delete)!.handler(request(ROUTES.delete, 'POST', {
+        body: { name: 'demo-alpha', path: fixture.file },
+      }), res)
+
+      // Then the file is moved into .trash
+      expect(status()).toBe(200)
+      expect(existsSync(fixture.file)).toBe(false)
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  it('operator on a host with no loader-resolved roots still serves a list', async () => {
+    // Given a resolver that throws (a loader mid-reload)
+    const brokenRoutes = makeRoutes(emptyCtx, {
+      ...deps,
+      customSkillDirs: () => { throw new Error('loader mid-reload') },
+    })
+    // When the list route runs
+    const { res, status, body } = response()
+    await brokenRoutes.find(route => route.path === ROUTES.list)!.handler(request(ROUTES.list, 'GET'), res)
+
+    // Then the scan degrades to the other roots instead of failing the route
+    expect(status()).toBe(200)
+    const names = JSON.parse(body()).groups.flatMap((g: { skills: Array<{ name: string }> }) => g.skills.map(s => s.name))
+    expect(names).toContain('poc-first')
+  })
+})
+
+describe('write-route workspace resolution (#1801)', () => {
+  it('operator toggling a project skill from the served workspace is not misread as a stale path', async () => {
+    // Given an active session workspace and a DIFFERENT directory that happens
+    // to be the process cwd, each carrying a same-name project skill. The old
+    // write routes resolved DEFAULT_CWD() alone, so they scanned the process
+    // cwd's copy, saw a path mismatch, and answered 409 for a skill the list
+    // route had just served.
+    const root = mkdtempSync(join(tmpdir(), 'skill-explorer-cwd-'))
+    const sessionProject = join(root, 'session-project')
+    const foreignCwd = join(root, 'foreign-cwd')
+    const sessionFile = join(sessionProject, '.dsh', 'skills', 'proj-skill', 'SKILL.md')
+    const foreignFile = join(foreignCwd, '.dsh', 'skills', 'proj-skill', 'SKILL.md')
+    for (const [project, file] of [[sessionProject, sessionFile], [foreignCwd, foreignFile]] as const) {
+      mkdirSync(join(project, '.git'), { recursive: true })
+      mkdirSync(join(file, '..'), { recursive: true })
+      writeFileSync(file, '---\nname: proj-skill\ndescription: 项目技能\n---\n', 'utf8')
+    }
+    const realCwd = process.cwd()
+    try {
+      // Force the process cwd onto the foreign project, so the two routes can
+      // only agree if the write route honours the active session workspace.
+      process.chdir(foreignCwd)
+      const isolatedRoutes = makeRoutes(emptyCtx, {
+        ...deps,
+        dshHome: join(root, 'home'),
+        agentsHome: join(root, 'agents'),
+        activeSessionCwds: () => [sessionProject],
+      })
+
+      // When the list route serves the session project's skill
+      const listRes = response()
+      await isolatedRoutes.find(r => r.path === ROUTES.list)!.handler(request(ROUTES.list, 'GET'), listRes.res)
+      const listed = JSON.parse(listRes.body()).groups
+        .flatMap((g: { skills: Array<{ name: string; path?: string }> }) => g.skills)
+        .find((s: { name: string }) => s.name === 'proj-skill')
+      expect(listed.path).toBe(sessionFile)
+
+      // And the row's switch posts exactly the path the panel displayed
+      const { res, status } = response()
+      await isolatedRoutes.find(r => r.path === ROUTES.setEnabled)!.handler(request(ROUTES.setEnabled, 'POST', {
+        body: { name: 'proj-skill', path: listed.path, enabled: false },
+      }), res)
+
+      // Then it lands on the served skill rather than a 409/404, and the
+      // foreign same-name copy is untouched
+      expect(status()).toBe(200)
+      expect(readFileSync(sessionFile, 'utf8')).toContain('disable-model-invocation: true')
+      expect(readFileSync(foreignFile, 'utf8')).not.toContain('disable-model-invocation')
+    } finally {
+      process.chdir(realCwd)
+      rmSync(root, { recursive: true, force: true })
     }
   })
 })

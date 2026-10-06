@@ -149,7 +149,7 @@ describe('use-case: delete', () => {
 describe('use-case: schedule', () => {
   it('arms an enabled rule and computes the next run instant', () => {
     const before = seed(1)
-    const result = applySetSchedule(before, 'id-0', { enabled: true, cron: '* * * * *' }, NOW)
+    const result = applySetSchedule(before, 'id-0', { enabled: true, cron: '* * * * *' }, NOW, 'UTC')
     expect(result.applied).toBe(true)
     const schedule = result.tasks[0].schedule
     expect(schedule?.enabled).toBe(true)
@@ -159,9 +159,9 @@ describe('use-case: schedule', () => {
 
   it('rejects a blank or invalid cron without changing the ledger', () => {
     const before = seed(1)
-    const invalid = applySetSchedule(before, 'id-0', { enabled: true, cron: 'not a cron' }, NOW)
-    const blank = applySetSchedule(before, 'id-0', { enabled: true, cron: '   ' }, NOW)
-    const unknown = applySetSchedule(before, 'missing', { enabled: true, cron: '* * * * *' }, NOW)
+    const invalid = applySetSchedule(before, 'id-0', { enabled: true, cron: 'not a cron' }, NOW, 'UTC')
+    const blank = applySetSchedule(before, 'id-0', { enabled: true, cron: '   ' }, NOW, 'UTC')
+    const unknown = applySetSchedule(before, 'missing', { enabled: true, cron: '* * * * *' }, NOW, 'UTC')
     expect(invalid.applied).toBe(false)
     expect(blank.applied).toBe(false)
     expect(unknown.applied).toBe(false)
@@ -170,8 +170,8 @@ describe('use-case: schedule', () => {
   })
 
   it('disabling a rule clears nextRunAt but keeps the cron', () => {
-    const armed = applySetSchedule(seed(1), 'id-0', { enabled: true, cron: '* * * * *' }, NOW)
-    const disarmed = applySetSchedule(armed.tasks, 'id-0', { enabled: false }, NOW)
+    const armed = applySetSchedule(seed(1), 'id-0', { enabled: true, cron: '* * * * *' }, NOW, 'UTC')
+    const disarmed = applySetSchedule(armed.tasks, 'id-0', { enabled: false }, NOW, 'UTC')
     const schedule = disarmed.tasks[0].schedule!
     expect(schedule.enabled).toBe(false)
     expect(schedule.cron).toBe('* * * * *')
@@ -179,7 +179,7 @@ describe('use-case: schedule', () => {
   })
 
   it('rolls a ruler forward via applyScheduleNextRun', () => {
-    const armed = applySetSchedule(seed(1), 'id-0', { enabled: true, cron: '* * * * *' }, NOW)
+    const armed = applySetSchedule(seed(1), 'id-0', { enabled: true, cron: '* * * * *' }, NOW, 'UTC')
     const rolled = applyScheduleNextRun(armed.tasks, 'id-0', 1_000_002, 1_000_001, NOW)
     expect(rolled[0].schedule?.nextRunAt).toBe(1_000_002)
     expect(rolled[0].schedule?.lastTriggeredAt).toBe(1_000_001)

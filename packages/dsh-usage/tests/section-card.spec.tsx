@@ -14,7 +14,7 @@ import type { ComponentProps } from 'react'
 import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { UsageSectionCard, type UsageSettings } from '../src/client/UsageSectionCard.tsx'
 import { type UsageStoreInstance, type UsageUiState } from '../src/client/usage-store.ts'
-import { emptyTotals, type ProviderSnapshotView, type UsageOverviewView } from '../src/core/types.ts'
+import { emptyTotals, type ProviderSnapshotView, type UsageDayView, type UsageOverviewView } from '../src/core/types.ts'
 
 afterEach(cleanup)
 
@@ -90,11 +90,17 @@ function fakeForm(policy: {
   }
 }
 
-function cardProps(snapshot: UsageOverviewView): ComponentProps<typeof UsageSectionCard> {
+/** The day route double: answers the date it is asked for, zeroed by default. */
+function dayStub(day: Partial<UsageDayView> = {}): (date: string) => Promise<UsageDayView> {
+  return async (date: string) => ({ date, totals: emptyTotals(), providers: [], ...day })
+}
+
+function cardProps(snapshot: UsageOverviewView, loadDay: (date: string) => Promise<UsageDayView> = dayStub()): ComponentProps<typeof UsageSectionCard> {
   return {
     store: fakeStore({ snapshot, status: 'ready', error: null }),
     poll: () => {},
     refresh: () => {},
+    loadDay,
     settings,
     close: () => {},
   } as unknown as ComponentProps<typeof UsageSectionCard>
@@ -218,6 +224,108 @@ describe('Token 银行 tab', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Token 银行' }))
     expect(screen.getByText('统计窗口 2026-01-01 ~ 2026-01-01')).toBeTruthy()
     expect(screen.getByRole('button', { name: '保存图片' })).toBeTruthy()
+  })
+})
+
+describe('day pickers', () => {
+  it('user sees one recorded past day instead of today on the usage tab', async () => {
+    // Given an overview listing two recorded days and today's live totals
+    const snapshot = overview([provider({ provider: 'kimi-coding', displayName: 'Kimi For Coding', credential: 'api-key' })])
+    snapshot.usage.today = { date: '2026-01-02', totals: { ...emptyTotals(), inputTokens: 10, calls: 1 }, providers: [] }
+    snapshot.usage.availableDays = ['2026-01-01', '2026-01-02']
+    const loadDay = vi.fn(dayStub({
+      totals: { ...emptyTotals(), inputTokens: 4242, outputTokens: 8, calls: 3 },
+      providers: [{ provider: 'kimi-coding', totals: { ...emptyTotals(), inputTokens: 4242, outputTokens: 8, calls: 3 }, models: [] }],
+    }))
+    render(<UsageSectionCard {...cardProps(snapshot, loadDay)} />)
+    // When the user picks the older day
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('查看日期'), { target: { value: '2026-01-01' } })
+    })
+    // Then the card shows that day's own title, totals and provider row, and no longer today's
+    expect(loadDay).toHaveBeenCalledWith('2026-01-01')
+    expect(screen.getByText('2026-01-01 用量').textContent).toBe('2026-01-01 用量')
+    expect(screen.getByText('4.24k').textContent).toBe('4.24k')
+    expect(screen.getByText('4.25k · 3 次调用').textContent).toBe('4.25k · 3 次调用')
+    expect(screen.queryByText('今日用量')).toBeNull()
+    // And switching back to today is served by the live overview, with no second fetch
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('查看日期'), { target: { value: '2026-01-02' } })
+    })
+    expect(screen.getByText('今日用量').textContent).toBe('今日用量')
+    expect(loadDay).toHaveBeenCalledTimes(1)
+  })
+
+  it('user mints the whale-yuan voucher from one picked day instead of the whole ledger', async () => {
+    // Given a whole-ledger aggregate worth five whale yuan and a host day worth one
+    const snapshot = overview([])
+    snapshot.usage.today = { date: '2026-01-02', totals: emptyTotals(), providers: [] }
+    snapshot.usage.availableDays = ['2026-01-01', '2026-01-02']
+    snapshot.usage.all = {
+      from: '2025-12-01',
+      to: '2026-01-02',
+      totals: emptyTotals(),
+      providers: [{ provider: 'deepseek', totals: { ...emptyTotals(), inputTokens: 5_000_000, calls: 40 }, models: [] }],
+    }
+    snapshot.usage.observedSpend = { cny: 9.9, since: new Date(2025, 11, 1, 12).getTime() }
+    const loadDay = dayStub({
+      totals: { ...emptyTotals(), inputTokens: 1_000_000, calls: 4, cost: 1.25 },
+      providers: [{ provider: 'deepseek', totals: { ...emptyTotals(), inputTokens: 1_000_000, calls: 4, cost: 1.25 }, models: [] }],
+    })
+    render(<UsageSectionCard {...cardProps(snapshot, loadDay)} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Token 银行' }))
+    // The whole retained ledger is the default window
+    expect(screen.getByText('统计窗口 2025-12-01 ~ 2026-01-02').textContent).toBe('统计窗口 2025-12-01 ~ 2026-01-02')
+    expect(screen.getByText('累计铸造 5 鲸元（5M tokens）').textContent).toBe('累计铸造 5 鲸元（5M tokens）')
+    // When the user picks one day
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('查看日期'), { target: { value: '2026-01-01' } })
+    })
+    // Then the note mints that day alone, and the cumulative balance watch drops
+    // off the spend line because it never described a single day
+    expect(screen.getByText('统计窗口 2026-01-01 ~ 2026-01-01').textContent).toBe('统计窗口 2026-01-01 ~ 2026-01-01')
+    expect(screen.getByText('累计铸造 1 鲸元（1M tokens）').textContent).toBe('累计铸造 1 鲸元（1M tokens）')
+    expect(screen.getByText('消费估算：约 ¥1.25').textContent).toBe('消费估算：约 ¥1.25')
+    expect(screen.queryByText(/官方余额实测花费/)).toBeNull()
+  })
+
+  it('user falls back to today when the picked day ages out of the retention window', async () => {
+    // Given two recorded days and a section that has selected the older one
+    const snapshot = overview([])
+    snapshot.usage.today = { date: '2026-01-02', totals: { ...emptyTotals(), inputTokens: 7, calls: 1 }, providers: [] }
+    snapshot.usage.availableDays = ['2026-01-01', '2026-01-02']
+    let held: UsageUiState = { snapshot, status: 'ready', error: null }
+    const live = { subscribe: () => () => {}, getSnapshot: () => held } as unknown as UsageStoreInstance
+    const loadDay = vi.fn(dayStub({ totals: { ...emptyTotals(), inputTokens: 4242, calls: 3 } }))
+    const view = render(<UsageSectionCard {...cardProps(snapshot, loadDay)} store={live} />)
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('查看日期'), { target: { value: '2026-01-01' } })
+    })
+    expect(screen.getByText('2026-01-01 用量').textContent).toBe('2026-01-01 用量')
+    // When a retention shrink drops that day and the next poll republishes
+    const pruned = overview([])
+    pruned.usage.today = snapshot.usage.today
+    pruned.usage.availableDays = ['2026-01-02']
+    held = { snapshot: pruned, status: 'ready', error: null }
+    view.rerender(<UsageSectionCard {...cardProps(snapshot, loadDay)} store={live} />)
+    // Then the card is back on today rather than on a day the host no longer holds
+    expect(screen.getByText('今日用量').textContent).toBe('今日用量')
+  })
+
+  it('user sees a failed day load as its own error instead of a stale day', async () => {
+    // Given a host whose day route rejects
+    const snapshot = overview([])
+    snapshot.usage.today = { date: '2026-01-02', totals: { ...emptyTotals(), inputTokens: 7, calls: 1 }, providers: [] }
+    snapshot.usage.availableDays = ['2026-01-01', '2026-01-02']
+    const failing = vi.fn(async () => { throw new Error('usage day failed: 500') })
+    render(<UsageSectionCard {...cardProps(snapshot, failing)} />)
+    // When the user picks the older day
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('查看日期'), { target: { value: '2026-01-01' } })
+    })
+    // Then the card reports the failed load and shows no totals of any day
+    expect(screen.getByText('该日用量加载失败：usage day failed: 500').textContent).toBe('该日用量加载失败：usage day failed: 500')
+    expect(screen.queryByText('7')).toBeNull()
   })
 })
 

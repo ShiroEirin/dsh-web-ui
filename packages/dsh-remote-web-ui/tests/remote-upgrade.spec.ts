@@ -203,10 +203,12 @@ describe('remote desktop event-stream upgrades', () => {
     }
   })
 
-  it('maps the gated mux onto the inner /api/remote.mux and preserves the device query', async () => {
+  it('maps the gated mux onto the inner /api/remote.mux without forwarding the device credential', async () => {
     // The official client opens wss://…/api/remote.mux; the boot patch rewrites
-    // it to /remote/api/remote.mux?device=<id>, and the upgrade route must
-    // forward the mux path plus the query to the loopback gateway.
+    // it to /remote/api/remote.mux?device=<id>. The upgrade route authenticates
+    // that credential, then drops it: the inner leg is a plain HTTP request the
+    // origin logs, and a live session credential has no business in it. Other
+    // query parameters still ride through.
     const service = makeService()
     const cookie = pairedCookie(service)
     const upstream = await startUpstream()
@@ -223,7 +225,36 @@ describe('remote desktop event-stream upgrades', () => {
     driven.client.write('hi')
     await waiter
     try {
-      expect(upstream.seen[0].path).toBe('/api/remote.mux?device=dev-42')
+      expect(upstream.seen[0].path).toBe('/api/remote.mux')
+    } finally {
+      await driven.close()
+      await upstream.close()
+    }
+  })
+
+  it('user keeps their own query parameters on the inner leg while the device credential is dropped', async () => {
+    // Given a paired device opening the gated mux with both its device
+    // credential and a parameter of its own in the query.
+    const service = makeService()
+    const cookie = pairedCookie(service)
+    const upstream = await startUpstream()
+    const routes = makeRemoteApiUpgradeRoutes({ service, port: upstream.port })
+    const muxRoute = routes.find(route => route.path === REMOTE_API_PATHS.mux)
+
+    // When that handshake is re-issued to the loopback upstream.
+    const driven = await driveUpgrade(
+      muxRoute!.handler,
+      { cookie, 'sec-websocket-key': 'k', 'sec-websocket-version': '13' },
+      '/remote/api/remote.mux?device=dev-42&since=17',
+    )
+    const waiter = readAll(driven.client)
+    await waitFor101(driven.client)
+    driven.client.write('hi')
+    await waiter
+
+    // Then the upstream sees the caller's parameter and no session credential.
+    try {
+      expect(upstream.seen[0].path).toBe('/api/remote.mux?since=17')
     } finally {
       await driven.close()
       await upstream.close()

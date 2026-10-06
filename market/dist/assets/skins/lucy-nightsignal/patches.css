@@ -1,0 +1,245 @@
+/**
+ * Lucy · Night City Signal — L3 free-selector patches.
+ *
+ * Sections:
+ *   1. keep the declarative backgroundMedia layer paintable;
+ *   2. narrow the data column so the two characters own the outer wings;
+ *   3. the two portraits, tied to the shell's own sidebar / details columns;
+ *   4. neon chrome on the shell surfaces.
+ *
+ * The selector and variable names here are the desktop shell's real contract
+ * (frame grid + data-sidebar-collapsed / data-rightbar-collapsed,
+ * --dsh-windows-sidebar-width, --dsh-chat-user-width, [data-rightbar-col]).
+ *
+ * Note: the patch pipeline prefixes every selector with
+ * `html[data-dsh-skin="lucy-nightsignal"] `, so a `:root` rule here can never
+ * match. Palette work belongs in skin.css.
+ */
+
+/* 1 ---------------------------------------------------------------------- */
+
+/* The app root paints an opaque canvas, which turns the host's backgroundMedia
+   layer (z-index -2) into an ordinary element background painted after the
+   negative-z layers: the whole window goes flat and both the artwork and the
+   characters vanish. `background: none` puts the canvas step back on body so
+   the -2 layer paints again (the same fix maid-atelier carries). */
+[id="root"] {
+  background: none;
+  position: relative;
+}
+
+body {
+  isolation: isolate;
+  --lucy-wing-gap: clamp(6px, 1vw, 22px);
+}
+
+/* The Windows desktop host paints `--dsw-specific-sidebar-fill` on the
+   whole-window frame element, which is an ancestor of the conversation column
+   and would crush the background illustration. */
+[class*="_frame"] {
+  background: transparent !important;
+}
+
+/* 2 ---------------------------------------------------------------------- */
+
+/* Narrow the data column so the portraits get real wings. The shell derives its
+   own `--dsh-chat-content-width` from `--dsh-chat-user-width` on the chat body,
+   and that inner declaration beats anything inherited from an ancestor — hence
+   `!important` on both names (an important author declaration outranks the
+   inner normal declaration), which keeps the value identical on old and new
+   shells. */
+:is(
+  body,
+  [class*="_frame"],
+  [data-phase],
+  [data-slot="conversation"],
+  [data-dsh-surface="conversation"],
+  [class*="centerCol"]
+) {
+  --dsh-chat-user-width: min(clamp(420px, 38vw, 700px), calc(100% - 24px)) !important;
+  --dsh-chat-content-width: min(clamp(420px, 38vw, 700px), calc(100% - 24px)) !important;
+}
+
+/* 3 ---------------------------------------------------------------------- */
+
+/* The input card is the geometric anchor: [data-composer-card] carries
+   anchor-name --lucy-composer, the left portrait puts its right edge on the
+   card's left edge (`left: anchor(...)` plus `translate: -100%`), the right
+   portrait puts its left edge on the card's right edge. Both therefore follow
+   whatever the two drawers do to the centre column, with no measurement and no
+   per-state rules. z-index is deliberately huge: the shell's frame subtree
+   carries z-index 15 layers and swallowed z-index 5.
+   Each portrait's box is exactly its artwork's box (height + aspect-ratio +
+   width:auto), so "box edge" really is "drawing edge" - a wider box would leave
+   a gap and the edges could never be flush.
+   Without anchor positioning the same declarations fall back to the
+   sidebar-open geometry, where the input card spans roughly 40%-80% of a
+   1440px frame.
+
+   Two pitfalls that only measuring can catch (see docs/SKIN-TECHNIQUE.md):
+   `right: calc(100% - anchor(--x left))` does NOT mean "viewport minus anchor"
+   (Chrome 154 computed right = the anchor's own left value, dropping the drawing
+   ~314px inside the card), hence the left-edge + translate form; and a box wider
+   than the artwork leaves a gap under `background-size: contain`, hence
+   height + aspect-ratio + width:auto. */
+
+[data-composer-card],
+[data-composer-seat],
+[data-dsh-surface="composer"] {
+  anchor-name: --lucy-composer;
+}
+
+body:before,
+body:after {
+  content: "";
+  position: fixed;
+  /* Above every shell surface (the frame's own layers are 15-40) but below the
+     whale-widget root, which is fixed at z-index 9999 on <body>: an equal value
+     loses the tie to a pseudo-element (last child box), so the pet and its bubble
+     would be painted over. */
+  z-index: 900;
+  bottom: clamp(-30px, -2vh, -10px);
+  pointer-events: none;
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center bottom;
+  background-size: auto, contain;
+  opacity: 1;
+  filter: saturate(1.06) contrast(1.04) drop-shadow(0 22px 30px #04101f5c);
+  transition: left 0.3s cubic-bezier(0.22, 0.78, 0.2, 1), right 0.3s cubic-bezier(0.22, 0.78, 0.2, 1), height 0.6s cubic-bezier(0.22, 0.78, 0.2, 1);
+}
+
+/* Left portrait: back view, right edge on the card's left edge. */
+body:before {
+  left: 40vw;
+  left: anchor(--lucy-composer left, 40vw);
+  translate: -100% 0;
+  height: clamp(340px, 62vh, 780px);
+  aspect-ratio: 609 / 1800;
+  width: auto;
+  background-image:
+    radial-gradient(58% 46% at 55% 72%, #dfeaf459, #dfeaf400 72%),
+    url("assets/lucy-signal-left.webp");
+}
+
+/* Right portrait: front view, left edge on the card's right edge. Its height is
+   capped so the drawing ends at the window edge instead of being sliced by it. */
+body:after {
+  left: 80vw;
+  left: anchor(--lucy-composer right, 80vw);
+  height: clamp(460px, 76vh, 1040px);
+  aspect-ratio: 915 / 1800;
+  width: auto;
+  background-image:
+    radial-gradient(58% 46% at 45% 72%, #dfeaf459, #dfeaf400 72%),
+    url("assets/lucy-signal-right.webp");
+}
+
+/* No pane-aware hiding: an earlier revision hid the right portrait whenever the
+   details pane looked open, but the frame's `data-rightbar-collapsed` flag is not
+   a reliable signal across hosts, and a missing flag hid the portrait in every
+   drawer state. It is anchored to the input card's right edge, so with the pane
+   open it simply stands over the pane - visible, which is the point. */
+
+body[data-ds-dark-theme]:before {
+  background-image:
+    radial-gradient(58% 46% at 55% 72%, #0a1526a6, #0a152600 72%),
+    url("assets/lucy-signal-left.webp");
+}
+
+body[data-ds-dark-theme]:after {
+  background-image:
+    radial-gradient(58% 46% at 45% 72%, #0a1526a6, #0a152600 72%),
+    url("assets/lucy-signal-right.webp");
+}
+
+@media (width <= 900px) {
+  body:before,
+  body:after {
+    display: none;
+  }
+}
+
+/* 4 ---------------------------------------------------------------------- */
+
+/* Neon hairline across the top of the frame. */
+[data-slot="root"]:after {
+  content: "";
+  position: fixed;
+  z-index: 40;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg, #22d3ee00 0%, #22d3ee8c 22%, #e879f98c 68%, #22d3ee00 100%);
+}
+
+/* Sidebar: cyan edge + a faint inner glow so the glass reads as glass. */
+[data-dsh-surface="sidebar"],
+[class*="sidebarCol"] {
+  border-right: 1px solid #22d3ee3d;
+  box-shadow: inset -18px 0 32px -28px #22d3ee8c;
+}
+
+[data-ds-dark-theme] [data-dsh-surface="sidebar"],
+[data-ds-dark-theme] [class*="sidebarCol"] {
+  border-right-color: #22d3ee47;
+  box-shadow: inset -18px 0 36px -26px #22d3eea6;
+}
+
+/* Session header: a whisper of magenta under the title row. */
+:is([data-slot="conversation.session.header"], [data-dsh-surface="session-header"]) {
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, #22d3ee40, #e879f959, #22d3ee00) 1;
+}
+
+/* Composer: neon focus ring on the input card. */
+:is([data-composer-seat], [data-composer-card], [data-dsh-surface="composer"]) {
+  border-radius: 18px;
+  box-shadow: 0 0 0 1px #22d3ee3d, 0 14px 34px #04101f26;
+}
+
+[data-ds-dark-theme] :is([data-composer-seat], [data-composer-card], [data-dsh-surface="composer"]) {
+  box-shadow: 0 0 0 1px #22d3ee4d, 0 16px 40px #00000073;
+}
+
+:is([data-composer-seat], [data-composer-card], [data-dsh-surface="composer"]):focus-within {
+  box-shadow: 0 0 0 1px #22d3ee8c, 0 0 22px -4px #22d3ee59, 0 16px 40px #04101f33;
+}
+
+/* Scrollbars pick up the accent instead of the neutral grey. */
+:is([data-conversation-scroll], [data-dsh-part="scrollport"]) {
+  scrollbar-color: #22d3ee59 transparent;
+}
+
+/* --- 5. the details pane yields the space she stands in ---
+ *
+ * With the details pane open the input card's right edge sits only ~28px left of
+ * the pane, while the right portrait is about 352px wide: without help she
+ * lies across the pane's content. Measured on the live shell (viewport 1707x912):
+ * the pane host is 768px wide starting at x=939 and the pane's first card started
+ * at x=1134, i.e. under her. What is needed is only the *additional* clearance: at inset 0 the pane's own
+ * indent already puts its first card at x=1145 while her visible silhouette
+ * ends at x=1154, so ~80-90px of extra inset clears her with breathing room.
+ * (Her artwork's solid pixels occupy just 62.5% of the canvas width, so her box
+ * overstates her by a third.)
+ *
+ * The host inside the pane is the element that actually lays the content out
+ * (`[class*="_pane_"]` under `[data-rightbar-col]`); padding on the pane itself
+ * does nothing because the host is positioned against the pane's padding box.
+ */
+[class*="_frame"]:not([data-rightbar-collapsed]) [data-rightbar-col] [class*="_pane_"] {
+  padding-left: clamp(24px, calc(clamp(460px, 76vh, 1040px) * 0.13), 140px) !important;
+  box-sizing: border-box;
+}
+
+
+/* The in-GUI browser panel is the exception: its page surface (`<webview>`) is laid
+ * out inside the host, so the host inset already moves it, but that still leaves the
+ * page's left edge under her (measured: webview at x=1051 vs her visible edge 1132).
+ * The webview itself accepts a margin, so give it the last stretch. Nothing else in
+ * the pane is affected, which keeps the card panels from being pushed too far.
+ */
+[class*="_frame"]:not([data-rightbar-collapsed]) [data-rightbar-col] [class*="webview"] {
+  margin-left: clamp(48px, calc(clamp(460px, 76vh, 1040px) * 0.11), 118px) !important;
+}

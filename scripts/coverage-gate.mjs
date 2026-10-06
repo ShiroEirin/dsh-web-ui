@@ -2,12 +2,12 @@
 /**
  * Coverage ratchet for the dsh-web monorepo.
  *
- * The repository runs two vitest majors (3.x in the older plugin packages,
- * 4.x everywhere else), so the v8 coverage provider is declared per major: the
- * 3.x packages carry @vitest/coverage-v8@^3.2.7, and the root devDependency
- * serves every 4.x package through Node resolution. Bumping a package's vitest
- * major therefore means bumping its provider too; a missing or mismatched
- * provider fails this gate loudly instead of silently reporting nothing.
+ * Every package resolves vitest 4.x. The six packages that pin their own
+ * vitest also declare their own @vitest/coverage-v8 at the same major; the root
+ * devDependency serves the rest through Node resolution. Bumping a package's
+ * vitest major therefore means bumping its provider too; a missing or
+ * mismatched provider fails this gate loudly instead of silently reporting
+ * nothing.
  *
  * This is a Tier-2 gate: it runs in the nightly workflow and on demand, not on
  * every pull request, because instrumenting ~4,400 tests costs minutes and the
@@ -87,6 +87,29 @@ function round(value) {
   return typeof value === 'number' ? Math.round(value * 100) / 100 : 0
 }
 
+/**
+ * The vitest argv this gate runs for one package.
+ *
+ * excludeAfterRemap re-applies the exclusions after coverage is remapped to
+ * original sources. Without it a package whose built bundle inlines a
+ * third-party dependency also reports that dependency's own unmapped files:
+ * the aggregate's shell bundle carries @deepseek-ai/schemastery and cosmokit,
+ * and their 562 lines at about 23% pulled dsh-web-all from roughly 92% down to
+ * roughly 51% with no test change at all. Both files sit under the workspace's
+ * node_modules, which the default exclusions already cover, so turning the flag
+ * on cannot drop a file the default rules keep — it is a no-op for every
+ * package that only instruments files inside its own directory.
+ */
+export function coverageArgs(outDir) {
+  return [
+    'run',
+    '--coverage',
+    '--coverage.reporter=json-summary',
+    '--coverage.reportsDirectory=' + outDir,
+    '--coverage.excludeAfterRemap=true',
+  ]
+}
+
 /** Run one package's suite with coverage and return its metrics. */
 export function coverPackage(pkg) {
   const outDir = join(tmpdir(), 'dsh-coverage', pkg.name)
@@ -94,12 +117,7 @@ export function coverPackage(pkg) {
   mkdirSync(outDir, { recursive: true })
   const bin = join(pkg.dir, 'node_modules', '.bin', 'vitest')
   if (!existsSync(bin)) return { ok: false, error: 'vitest is not installed in ' + pkg.rel }
-  const result = spawnSync(bin, [
-    'run',
-    '--coverage',
-    '--coverage.reporter=json-summary',
-    '--coverage.reportsDirectory=' + outDir,
-  ], { cwd: pkg.dir, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 })
+  const result = spawnSync(bin, coverageArgs(outDir), { cwd: pkg.dir, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 })
   const output = (result.stdout ?? '') + (result.stderr ?? '')
   if (result.status !== 0) return { ok: false, error: 'vitest exited ' + result.status, output: tail(output) }
   const summaryPath = join(outDir, 'coverage-summary.json')

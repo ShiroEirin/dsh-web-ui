@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schemas.linxin666.org/dsh-skin/v2.json",
+  "skinManifestVersion": 2,
+  "id": "crt-phosphor",
+  "name": "磷光 CRT",
+  "nameEn": "Phosphor CRT",
+  "version": "0.1.0",
+  "author": "lemonhall",
+  "tagline": "P1 磷光绿 · 扫描线与余晖辉光 · 全界面等宽字体 · 电子管暗角",
+  "description": "把整个 DSH Web GUI 伪装成一台老式 CRT 磷光显示器：全界面换成等宽字体与 P1 绿字黑底，叠加扫描线、屏幕暗角、字面余晖辉光与轻微闪烁，标题带色差边缘；背景是同一座夜之城，经本地处理转成磷光绿双色调并烘焙了 halation 光晕与扫描线。",
+  "tags": [
+    "crt",
+    "terminal",
+    "phosphor",
+    "green",
+    "retro",
+    "monospace"
+  ],
+  "accent": "#3dff9e",
+  "order": 61,
+  "license": "CC BY-NC-SA 4.0",
+  "licenseUrl": "https://github.com/lemonhall/dsh-skin-crt/blob/main/LICENSE",
+  "sourceUrl": "https://github.com/lemonhall/dsh-skin-crt",
+  "attribution": "AI 生成素材：立绘与同仓 lucy-nightsignal 同源（volcengine/doubao-seedream-5.0-pro），背景由其场景经本地磷光管线处理；角色与作品权利归原权利人；非官方同人作品，仅供个人非商业使用。",
+  "preview": {
+    "light": "preview/light.jpg",
+    "dark": "preview/dark.jpg"
+  },
+  "contributes": {
+    "stylesheet": "skin.css",
+    "patches": "patches.css",
+    "backgroundMedia": {
+      "light": {
+        "type": "image",
+        "src": "assets/scene-light.webp",
+        "scrim": "linear-gradient(rgba(0, 22, 12, 0.10) 0%, rgba(0, 18, 10, 0.16) 60%, rgba(0, 14, 8, 0.24) 100%)"
+      },
+      "dark": {
+        "type": "image",
+        "src": "assets/scene-dark.webp",
+        "scrim": "linear-gradient(rgba(0, 10, 5, 0.26) 0%, rgba(0, 8, 4, 0.34) 60%, rgba(0, 6, 3, 0.44) 100%)"
+      }
+    }
+  }
+}

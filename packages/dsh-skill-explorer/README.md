@@ -1,16 +1,29 @@
-# @linxin666/dsh-client-ui-skill-explorer
+# dsh-skill-explorer · Visual Skill & Tool Explorer for DeepSeek Harness (DSH)
 
 English | [中文](README.zh.md)
 
-A **skill center** for the DSH web GUI: browse every loaded skill grouped by
-source, enable or disable model invocation, create new skills, and delete
-skills into a recoverable trash.
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-client-ui-skill-explorer?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>Visual Skill & Tool Explorer for DeepSeek Harness (DSH) Web GUI & Desktop</strong><br>
+  <em>Tiered Skill Catalog · Model Invocation Toggle · Visual SKILL.md Editor · Safe Trash · Zero Intrusion</em>
+</p>
+
+A visual Skill Explorer for DeepSeek Harness (DSH) Web GUI and desktop client: browse loaded skills tiered by source origin, toggle model invocation permissions, author new skills, and manage files through a safe trash mechanism.
 
 ## What it does
 
 - **Sidebar row** "Skill Center" opens a native center-column page — a row in
   the shell's own panel list, beside Plugins, Schedule and the task board —
-  with a tab bar and a back-to-chat control.
+  with a tab bar. The row opens the page, and opening any session (or a new
+  chat) returns the center column to the conversation, exactly like the shell's
+  own Plugins and Schedule pages; the page carries no back control of its own.
 - **Skills tab**: skills grouped by source (system bundled / project
   `.dsh/skills` / project `.agents/skills` / custom directories / user
   `~/.dsh/skills` / user `~/.agents/skills` / runtime registered), with a
@@ -30,8 +43,23 @@ skills into a recoverable trash.
   they are.
 - Data comes from a filesystem scan following the official
   dsh-skill-filesystem root conventions, merged with the `ctx.skills`
-  registry (bundled / runtime entries). The plugin never changes the
-  skill loading or injection semantics — it is a pure GUI management layer.
+  registry (bundled / runtime entries). The scan reads `customSkillDirs`
+  from this plugin's own config **and** from every live `skill-filesystem`
+  loader row, so the documented placement (the provider row in a profile
+  patch) is manageable too. The plugin never changes the skill loading or
+  injection semantics — it is a pure GUI management layer.
+- A skill with no local SKILL.md file (a bundled or runtime registration)
+  is listed with a "No local file" badge instead of silently missing its
+  controls, so it is clear why it cannot be toggled, edited, or deleted.
+- A skill is listed only when the official provider would load it: its
+  SKILL.md declares a non-empty `name` and `description`, and the name
+  satisfies the official skill-name grammar. A file the official provider
+  discards is absent from the panel too, so the panel never shows a skill the
+  model cannot receive.
+- A duplicate skill name resolves by the official source rank (project
+  `.dsh/skills` 100, project `.agents/skills` 200, runtime 250, custom 300,
+  user `~/.dsh/skills` 400, user `.agents/skills` 500, bundled 600), so
+  the row shown names the same skill the model receives.
 
 ## Install
 
@@ -80,7 +108,10 @@ sidebar.
   exact path. Arbitrary paths and stale same-name fallbacks are rejected, so a
   disappeared project skill cannot redirect a pending action to a user or
   custom skill with the same name. The read route applies the same resolution,
-  so it cannot be used to read an arbitrary path either.
+  so it cannot be used to read an arbitrary path either. The scan behind that
+  check resolves the workspace exactly as the list route does (explicit
+  override, then the active session workspace, then the process cwd), so a
+  write never re-scans a different project root than the one the panel served.
 - The edit route rewrites an existing SKILL.md in place and does not touch the
   skill name or location; it carries the current `disable-model-invocation`
   value over, so an edit can never silently re-enable a disabled skill. Linked
@@ -108,11 +139,22 @@ sidebar.
 - Project skills follow the workspace shown in the panel: the list route
   accepts an explicit `?cwd=` override, and the create form sends the
   displayed workspace; the project root is the nearest `.git` ancestor of
-  that workspace.
+  that workspace. The write routes resolve the same workspace the list route
+  serves, so a project skill stays manageable even when the host process cwd
+  is somewhere else.
 - Frontmatter parsing is a lightweight zero-dependency implementation
   (block scalars, booleans, input nested block); exotic YAML features are not
   supported — the official dsh-skill-filesystem provider remains the
   authoritative parser.
+- The panel covers the filesystem roots it scans plus the global layer of the
+  `ctx.skills` registry (bundled and runtime entries). `customSkillDirs`
+  declared on a host-plane `skill-filesystem` row are scanned, because the
+  host reads that row's config; a skill that reaches an agent only through an
+  **agent preset's** own `customSkillDirs` or a preset-scoped provider is
+  outside that coverage, because the panel reads the registry without a
+  viewing scope. A skill absent from the panel is therefore not necessarily
+  absent from the model: the official `skill` tool catalog is the authority on
+  what a session can load.
 - Linked skills cannot be deleted (see the security model); enable/disable works
   normally on them (rewriting the target's `SKILL.md` frontmatter). Both
   directory and single-file links list normally; a single-file link (pointing

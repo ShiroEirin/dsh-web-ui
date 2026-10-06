@@ -2,7 +2,7 @@
 
 Status: implemented
 
-Supersession check：没有活跃 Note 拥有 frames2d 的*播放机制*；[frames2d gameplay](../../feature/2026-08-25-frames2d-gameplay-miku.md) 拥有清单契约与玩法层，本次未触碰。证据来源：[dsh-perf attribution scoreboard](../../feature/2026-08-27-dsh-perf-plugin-attribution-scoreboard.md) 的测量会话。
+Supersession check：没有活跃 Note 拥有 frames2d 的*播放机制*；[frames2d gameplay](../feature/2026-08-25-frames2d-gameplay-miku.md) 拥有清单契约与玩法层，本次未触碰。证据来源：[dsh-perf attribution scoreboard](../feature/2026-08-27-dsh-perf-plugin-attribution-scoreboard.md) 的测量会话。
 
 ## Problem
 

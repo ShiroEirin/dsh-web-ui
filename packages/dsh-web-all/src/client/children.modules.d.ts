@@ -24,6 +24,11 @@ declare module '@linxin666/dsh-client-ui-task-board/client' {
   export const inject: readonly string[] | undefined
 }
 
+declare module '@linxin666/dsh-client-ui-task-board-github/client' {
+  export const apply: unknown
+  export const inject: readonly string[] | undefined
+}
+
 declare module '@linxin666/dsh-client-ui-git-graph/client' {
   export const apply: unknown
   export const inject: readonly string[] | undefined

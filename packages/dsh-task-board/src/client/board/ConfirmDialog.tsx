@@ -3,6 +3,7 @@
  */
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import { useDialog, type OverlayPhase } from './overlay.tsx'
 
 /** Confirm overlay props. */
 export interface ConfirmDialogProps {
@@ -11,15 +12,18 @@ export interface ConfirmDialogProps {
   confirmLabel: string
   /** Render the confirm button in the danger style. */
   danger?: boolean
+  /** Which leg of the enter/exit motion pair the surface is on. */
+  phase?: OverlayPhase
   onCancel: () => void
   onConfirm: () => void
 }
 
 /** Small confirm overlay. */
-export function ConfirmDialog({ title, message, confirmLabel, danger, onCancel, onConfirm }: ConfirmDialogProps) {
+export function ConfirmDialog({ title, message, confirmLabel, danger, phase = 'open', onCancel, onConfirm }: ConfirmDialogProps) {
+  const dialog = useDialog<HTMLDivElement>(onCancel, phase)
   return (
-    <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onCancel() }}>
-      <div className={css.modal} role="alertdialog" aria-label={title}>
+    <div className={css.modalBackdrop} data-state={phase} onMouseDown={dialog.onMouseDown}>
+      <div ref={dialog.attach} className={css.modal} role="alertdialog" aria-modal="true" aria-label={title} tabIndex={-1}>
         <h2 className={css.modalTitle}>{title}</h2>
         <p className={css.confirmMessage}>{message}</p>
         <footer className={css.modalFooter}>

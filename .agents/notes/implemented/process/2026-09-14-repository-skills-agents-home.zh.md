@@ -24,6 +24,7 @@ Status: implemented
 - 项目技能对感知 `.agents` 的工具与 DeepSeek Harness 都从唯一根 `.agents/skills/` 解析。
 - `.dsh/` 只保留本地未跟踪的探测与 perf 文件；其 `skills/` 根不再存在。
 - 发布流程改为暂存 `.agents/skills/` 而非 `.dsh/skills/`，发版提交会包含新位置的技能改动。
+- 两个内容开发者 skill 后来移入了拥有它们的卫星仓；见[卫星开发者 skill 留在拥有它们的仓库](2026-10-06-satellite-developer-skills.md)。
 
 ## Testing
 

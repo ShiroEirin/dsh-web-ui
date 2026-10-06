@@ -96,7 +96,7 @@ test('no aggregate deps entry resolves to a private workspace package', () => {
 test('web-ui-all leaves the unbundled dsh-better-sidebar out of the patch', () => {
   const patch = readFileSync(join(ROOT, 'packages/dsh-web-all/cordis.patch.yml'), 'utf8')
   // Alpha-branch decision (2026-09-17): the plugin's 0.19.1 peers declare
-  // ^0.1.5-rc.1, which does not cover this branch's 0.1.7-rc.2 cohort, so the
+  // ^0.1.5-rc.1, which does not cover this branch's 0.2.0-rc.2 cohort, so the
   // aggregate neither mounts nor depends on it. Re-add the row in aggregate.yml
   // together with this assertion when the branch bundles it again.
   assert.doesNotMatch(patch, /^ {4}- id: web-ui-better-sidebar$/m, 'dsh-better-sidebar must not be a bundled row on the alpha branch')
@@ -210,4 +210,60 @@ test('web-ui-all leaves the deprecated @morlay/better-session integration out', 
   assert.doesNotMatch(patch, /@morlay\//, 'the deprecated better-session integration must not reappear in the aggregate patch')
   assert.doesNotMatch(patch, /^- id: web-ui-(session-branch|session-rdb|conversation-message-actions)$/m, 'better-session sub-plugin rows must not mount')
   assert.doesNotMatch(patch, /@linxin666\/dsh-perf/, 'the removed dsh-perf plugin must not reappear in the aggregate patch')
+})
+
+test('familyIds overrides keep the aggregate row id off the child id derivation', () => {
+  // A child's OWN row id lives in the loader's global id space, so a child
+  // may have to change it to stop colliding with a row an official bundle
+  // already claims (#1794). The derived namespacing would drag the aggregate
+  // row id and its family subpath export along with it, moving two published
+  // identifiers; familyIds decouples them. Each entry must name a row this
+  // aggregate really mounts, stay inside the web-ui-* id space, and still
+  // differ from the child's own id (that difference IS the coexistence
+  // guarantee for a standalone install sitting beside the aggregate).
+  const yml = readFileSync(join(ROOT, 'packages/dsh-web-all/aggregate.yml'), 'utf8')
+  let section = null
+  const overrides = new Map()
+  for (const raw of yml.split(/\r?\n/)) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#')) continue
+    const sectionMatch = line.match(/^[A-Za-z0-9_-]+:\s*$/u)
+    if (sectionMatch) {
+      section = line.slice(0, -1)
+      continue
+    }
+    if (section === 'familyIds') {
+      const mapping = line.match(/^([A-Za-z0-9_.-]+):\s*(\S+)$/u)
+      assert.ok(mapping, 'familyIds entry must be "<child row id>: <aggregate row id>": ' + line)
+      overrides.set(mapping[1], mapping[2])
+    }
+  }
+  assert.ok(overrides.size > 0, 'the dsh-plugin-manager child pins its family row id')
+  const patch = readFileSync(join(ROOT, 'packages/dsh-web-all/cordis.patch.yml'), 'utf8')
+  const aggregateIds = new Set(idsOf('packages/dsh-web-all/cordis.patch.yml'))
+  for (const [childId, familyId] of overrides) {
+    assert.match(familyId, /^web-ui-[a-z0-9-]+$/, 'an override must stay in the aggregate id space: ' + familyId)
+    assert.ok(aggregateIds.has(familyId), 'an override must name a row this aggregate mounts: ' + familyId)
+    assert.notEqual(familyId, childId, 'an override that equals the child id would re-create the duplicate row it exists to avoid')
+    assert.match(patch, new RegExp('^ {4}- id: ' + familyId + '$', 'mu'), 'the aggregate patch must mount the overridden id: ' + familyId)
+  }
+})
+
+test('the plugin-manager family row id and subpath survive its standalone row rename', () => {
+  // Published identifiers: the aggregate row id `web-ui-plugin-manager`, the
+  // family subpath `@linxin666/dsh-web-all/plugin-manager` and the matching
+  // `./plugin-manager` export. The standalone child row id changed to avoid
+  // the official `ui-plugin-manager` row (#1794); these must not move with it,
+  // or every existing profile carrying an override for the family row would
+  // boot with a patch-not-found warning and a row that silently re-enables.
+  const patch = readFileSync(join(ROOT, 'packages/dsh-web-all/cordis.patch.yml'), 'utf8')
+  assert.match(
+    patch,
+    /- id: web-ui-plugin-manager\n {6}name: '@linxin666\/dsh-web-all\/plugin-manager'\n {6}config:\n {8}plugin: '@linxin666\/dsh-client-ui-plugin-manager'/u,
+    'the plugin-manager family row must keep its id, subpath and real plugin name',
+  )
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'packages/dsh-web-all/package.json'), 'utf8'))
+  assert.equal(pkg.exports['./plugin-manager'], './lib/shells/shell.js', 'the family subpath export must stay resolvable')
+  const childPatch = readFileSync(join(ROOT, 'packages/dsh-plugin-manager/cordis.patch.yml'), 'utf8')
+  assert.match(childPatch, /- id: ui-plugin-manager-update-check/u, 'the standalone row keeps its own id')
 })

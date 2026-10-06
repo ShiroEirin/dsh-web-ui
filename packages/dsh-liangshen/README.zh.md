@@ -1,6 +1,19 @@
-# dsh-liangshen — 梁神模式（极简 persona + 程序化工具传输）
+# dsh-liangshen · DeepSeek Harness (DSH) 极简梁神模式与低开销程序化工具传输插件
 
 [English](README.md) | 中文
+
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-liangshen?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>DeepSeek Harness（DSH）官方 Web GUI 与桌面客户端极简 Agent 预设与高效代码工具传输引擎</strong><br>
+  <em>极简 Persona 系统提示词 · 原生直调与 run_code 混合传输 · MCP 工具温和分页 · 运行时退化熔断 · 关键事实登记簿</em>
+</p>
 
 把梁神模式做成 DSH 全家桶里的一键安装插件：Host 半区在激活时把内置 preset 直接声明给 harness 的 agent-preset registry（声明即启用），新建会话即可在预设选择器中选择「梁神模式」，浏览器半区还在新建会话页的模型选择器旁提供一台老虎机拨杆来开关该模式。该 preset 让系统提示词保持极简 persona——外加本模式的固定工作纪律与会话工作区目录——AGENTS.md 类工作区指令交由 harness 以自己的 user 角色消息送达；工具面则从第一条用户消息起作为持久 user 消息注入在用户消息之后——形状与 harness 注入 skill 目录一致，且只宣告该次请求实际开放的工具。wire 在整个会话中保持由 `presentation` 选定的同一种呈现（出厂默认 `presentation: 'both'`）：原生清单与 `run_code` 传输工具同驻——日常单步工作走原生直调，程序化批处理、并发扇出与多步数据塑形走 `run_code`；未挂载 code runtime 的部署回退为原生呈现并一次性告警，而不是宣告一个该请求无法承载的传输工具。被分页扣留的匹配工具（默认 `mcp__*`）在激活前不可达：它们以命名空间摘要出现在目录里，`ptc` 下同时不出现在生成的 SDK 中——分页是注册表级限制，不只是 wire 过滤。`tool_activate` 把一个命名空间挂回整个可达面。全部通过官方 NPM SDK 实现，不修改 DSH 源码。
 
@@ -130,7 +143,7 @@ dsh plugin --profile web remove @linxin666/dsh-liangshen
 - preset 与 shell 访问具有相同信任等级，安装前可自行审阅 `presets/liangshen/`；
 - 插件不发起网络请求，也不增加遥测；
 - 不要在已经产生内容的会话中途切换 preset；
-- 需要 DSH 0.1.7-rc.2+（preset 机制、`system-prompt/assemble` 瀑布、persona 的 `prefix` schema，以及 PTC 呈现 API）。
+- 需要 DSH 0.2.0-rc.2+（preset 机制、`system-prompt/assemble` 瀑布、persona 的 `prefix` schema，以及 PTC 呈现 API）。
 
 ## 许可
 

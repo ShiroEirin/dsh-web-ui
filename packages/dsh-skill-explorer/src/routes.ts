@@ -14,7 +14,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { isSkillExplorerAllowed } from './access.ts'
-import { buildPayload, collectSkills, findProjectRoot, overwriteSkillFile, projectSkillRoot, trashSkillFile, userSkillRoot, writeSkillFile, type CollectOptions, type SkillEntry } from './collect.ts'
+import { buildPayload, collectSkills, findProjectRoot, isSkillName, overwriteSkillFile, projectSkillRoot, trashSkillFile, userSkillRoot, writeSkillFile, type CollectOptions, type SkillEntry } from './collect.ts'
 import { parseFrontmatter, setFrontmatterField, stripFrontmatter } from './frontmatter.ts'
 import { readJsonBody, writeJson } from './http.ts'
 
@@ -35,17 +35,18 @@ function queryParam(url: URL, name: string): string | undefined {
   return value === null ? undefined : value
 }
 
-/** Skill name pattern shared by the routes (kebab-case). */
-const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/
-
 /** Route family dependencies (tests inject fakes). */
 export interface SkillRoutesDeps {
   /** User dsh config root (~/.dsh). */
   dshHome: string
   /** User agents config root (~/.agents). */
   agentsHome: string
-  /** Extra custom skill roots from plugin config. */
-  customSkillDirs: string[]
+  /**
+   * Extra custom skill roots. A resolver rather than a fixed list because the
+   * host reads them off the live `skill-filesystem` loader rows, which a
+   * profile reload can replace between requests.
+   */
+  customSkillDirs: string[] | (() => string[])
   /** ctx.skills registry (snapshot). */
   registry: CollectOptions['registry']
   /** Active session cwd list (project root base). */
@@ -64,7 +65,17 @@ export const DEFAULT_CWD = (): string => process.cwd()
  * @returns the route list for ctx.webServer.register.
  */
 export function makeRoutes(ctx: Context, deps: SkillRoutesDeps): WebRoute[] {
-  const { dshHome, agentsHome, customSkillDirs, registry, activeSessionCwds, logger } = deps
+  const { dshHome, agentsHome, registry, activeSessionCwds, logger } = deps
+
+  /** Resolve the configured custom roots (degraded to [] when the resolver throws). */
+  const resolveCustomSkillDirs = (): string[] => {
+    try {
+      const dirs = typeof deps.customSkillDirs === 'function' ? deps.customSkillDirs() : deps.customSkillDirs
+      return Array.isArray(dirs) ? dirs : []
+    } catch {
+      return []
+    }
+  }
 
   /** Guard helper: fence + method check. */
   const guard = (req: IncomingMessage, res: ServerResponse, method: string): boolean => {
@@ -101,11 +112,24 @@ export function makeRoutes(ctx: Context, deps: SkillRoutesDeps): WebRoute[] {
   const collectOptions = (cwd: string): CollectOptions => ({
     cwd,
     projectRoots: sessionProjectRoots(),
-    customSkillDirs,
+    customSkillDirs: resolveCustomSkillDirs(),
     dshHome,
     agentsHome,
     registry,
   })
+
+  /**
+   * The workspace the panel is showing, resolved exactly like the list route:
+   * an explicit override, then the active session workspace, then the process
+   * cwd. The write routes used the process cwd alone, so on a host whose cwd
+   * is the DSH install directory they scanned a different project root than
+   * the list route had just served and reported 409 for a skill the panel was
+   * displaying.
+   */
+  const panelCwd = (override?: string): string =>
+    (override !== undefined && override.trim() !== '' ? override : undefined)
+    ?? safeSessionCwds()[0]
+    ?? DEFAULT_CWD()
 
   /** Find a skill by name from a fresh collection pass (trusts scanned paths only). */
   const findSkill = async (name: string, cwd: string): Promise<SkillEntry | undefined> => {
@@ -141,9 +165,9 @@ export function makeRoutes(ctx: Context, deps: SkillRoutesDeps): WebRoute[] {
         try {
           const url = new URL(req.url ?? '/', 'http://x')
           // Project root base: explicit ?cwd= first, then active session
-          // workspaces, process.cwd() last.
-          const sessionCwds = safeSessionCwds()
-          const cwd = queryParam(url, 'cwd') ?? sessionCwds[0] ?? DEFAULT_CWD()
+          // workspaces, process.cwd() last (panelCwd owns that order, and the
+          // write routes resolve their workspace through the same helper).
+          const cwd = panelCwd(queryParam(url, 'cwd'))
           const projectRoots = sessionProjectRoots()
           const { skills, complete } = await collectSkills(collectOptions(cwd))
           writeJson(res, 200, buildPayload(skills, complete, cwd, [...new Set(projectRoots)]))
@@ -162,14 +186,14 @@ export function makeRoutes(ctx: Context, deps: SkillRoutesDeps): WebRoute[] {
           const url = new URL(req.url ?? '/', 'http://x')
           const name = queryParam(url, 'name')
           const path = queryParam(url, 'path')
-          if (name === undefined || !NAME_PATTERN.test(name) || path === undefined || path.trim() === '') {
+          if (name === undefined || !isSkillName(name) || path === undefined || path.trim() === '') {
             writeJson(res, 400, { error: 'expected ?name=<kebab-case>&path=<absolute SKILL.md>' })
             return
           }
           // The submitted path is only an identity claim: a fresh scan must
           // resolve the same file the panel showed, so no request can read an
           // arbitrary path.
-          const skill = await resolveScannedSkill(name, path, DEFAULT_CWD(), res)
+          const skill = await resolveScannedSkill(name, path, panelCwd(), res)
           if (skill === undefined) return
           const raw = readFileSync(skill.path, 'utf8')
           const frontmatter = parseFrontmatter(raw)
@@ -199,13 +223,13 @@ export function makeRoutes(ctx: Context, deps: SkillRoutesDeps): WebRoute[] {
           }
           const payload = body as Record<string, unknown>
           const { name, path, enabled } = payload
-          if (typeof name !== 'string' || !NAME_PATTERN.test(name) || typeof path !== 'string' || path.trim() === '' || typeof enabled !== 'boolean') {
+          if (typeof name !== 'string' || !isSkillName(name) || typeof path !== 'string' || path.trim() === '' || typeof enabled !== 'boolean') {
             writeJson(res, 400, { error: 'expected { name, path, enabled }' })
             return
           }
           // The client path is only an identity claim: a fresh scan must
           // resolve the same effective skill before any file is touched.
-          const skill = await resolveScannedSkill(name, path, DEFAULT_CWD(), res)
+          const skill = await resolveScannedSkill(name, path, panelCwd(), res)
           if (skill === undefined) return
           // Disabled = disable-model-invocation: true; enabled = false.
           const frontmatter = setFrontmatterField(skill.path, 'disable-model-invocation', enabled ? false : true)
@@ -242,7 +266,7 @@ export function makeRoutes(ctx: Context, deps: SkillRoutesDeps): WebRoute[] {
             writeJson(res, 400, { error: 'cwd is required (the workspace shown by the panel)' })
             return
           }
-          if (typeof name !== 'string' || !NAME_PATTERN.test(name)) {
+          if (typeof name !== 'string' || !isSkillName(name)) {
             writeJson(res, 400, { error: 'name must be kebab-case (lowercase letters/digits first)' })
             return
           }
@@ -286,7 +310,7 @@ export function makeRoutes(ctx: Context, deps: SkillRoutesDeps): WebRoute[] {
           }
           const payload = body as Record<string, unknown>
           const { name, path, description, whenToUse, content } = payload
-          if (typeof name !== 'string' || !NAME_PATTERN.test(name) || typeof path !== 'string' || path.trim() === '') {
+          if (typeof name !== 'string' || !isSkillName(name) || typeof path !== 'string' || path.trim() === '') {
             writeJson(res, 400, { error: 'expected { name, path, description, content }' })
             return
           }
@@ -302,7 +326,7 @@ export function makeRoutes(ctx: Context, deps: SkillRoutesDeps): WebRoute[] {
             writeJson(res, 400, { error: 'content exceeds 64KB limit' })
             return
           }
-          const skill = await resolveScannedSkill(name, path, DEFAULT_CWD(), res)
+          const skill = await resolveScannedSkill(name, path, panelCwd(), res)
           if (skill === undefined) return
           // A linked skill lives behind a symlink: rewriting it would edit a
           // file outside this skill root, so the panel must not offer it.
@@ -334,11 +358,11 @@ export function makeRoutes(ctx: Context, deps: SkillRoutesDeps): WebRoute[] {
           }
           const payload = body as Record<string, unknown>
           const { name, path } = payload
-          if (typeof name !== 'string' || !NAME_PATTERN.test(name) || typeof path !== 'string' || path.trim() === '') {
+          if (typeof name !== 'string' || !isSkillName(name) || typeof path !== 'string' || path.trim() === '') {
             writeJson(res, 400, { error: 'expected { name, path }' })
             return
           }
-          const skill = await resolveScannedSkill(name, path, DEFAULT_CWD(), res)
+          const skill = await resolveScannedSkill(name, path, panelCwd(), res)
           if (skill === undefined) return
           // A linked skill lives behind a symlink (mount-of-intent content, not
           // created under this root). Deleting it would move the target's real
@@ -361,7 +385,7 @@ export function makeRoutes(ctx: Context, deps: SkillRoutesDeps): WebRoute[] {
       handler: async (req: IncomingMessage, res: ServerResponse) => {
         if (!guard(req, res, 'GET')) return
         try {
-          const { skills } = await collectSkills(collectOptions(DEFAULT_CWD()))
+          const { skills } = await collectSkills(collectOptions(panelCwd()))
           writeJson(res, 200, { ok: true, plugin: 'skill-explorer', skills: skills.length })
         } catch (error) {
           logger.warn(error)

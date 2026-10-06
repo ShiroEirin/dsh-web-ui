@@ -1,0 +1,36 @@
+tbgh-pre-fix-defect-transcript.txt
+状态：修复前（baseline 8fc552c6，不含 e2e50678 的挂载竞态修复）。
+用途：记录第二轮修复前的缺陷复现证据。修复后这些现象不再出现，请勿当作当前行为证据。
+采集：scratch profile 真实 dsh web（--port 0，独立 DSH_HOME），--family-dir 全量本地化 17 个 workspace tarball，Playwright 无头 Chromium。
+缺陷：扩展浏览器半区一次性 ctx.get('taskBoard') 拿到 undefined 后永久放弃，三个席位与可见性谓词从未注册。
+关键证据行：P1_BADGE_COUNT 0 / P1_DETAIL_GITHUB_SECTION false / P1_DEACTIVATED true（失效卡未隐藏）。
+
+==================== 原始输出 ====================
+P1_ACTIVE true
+P1_DEACTIVATED true
+P1_PLAIN true
+P1_BADGE_COUNT 0
+P1_PARTS ["new-session","sidebar-entry","entry","foot-card","foot-card-main","foot-card-usage","foot-card-toggle","project-filter","column","column","card","card","card","column","column","column","resize-handle"]
+SHOT 10-board.png
+P1_DETAIL_GITHUB_SECTION false
+SHOT 11-detail.png
+P2_CARD 1
+SHOT 12-extension-toggle-initial.png
+STAGE_FAIL set-on Error: locator.click: Element is not visible
+Call log:
+  - waiting for locator('#settings-task-board-github-enabled').getByText('On', { exact: true }).first()
+    - locator resolve
+P2_ON_STATE Inherit (deployment default) / On / Off
+SHOT 13-extension-on.png
+STAGE_FAIL set-off Error: locator.click: Element is not visible
+Call log:
+  - waiting for locator('#settings-task-board-github-enabled').getByText('Off', { exact: true }).first()
+    - locator resolv
+P2_OFF_STATE Inherit (deployment default) / On / Off
+P2_CARD_STILL_PRESENT 1
+SHOT 14-extension-off.png
+P3_ACTIVE true
+P3_DEACTIVATED true
+P3_PLAIN true
+SHOT 15-board-after-off.png
+CONSOLE ["warning: [dsh-task-board-github] the task board client service is not served; the GitHub seats stay unregistered","warning: [dsh-task-board-github] the task board client service is not served; the GitHub seats stay unregistered","warning: [dsh-task-board-github] the task board client service is not served; the GitHub seats stay unregistered"]

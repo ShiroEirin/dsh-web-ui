@@ -21,7 +21,7 @@ Root volatility also moves the edit to the live path: the Loader commits a new c
 
 The wrapped plugin's own `Config` still governs the value: the shell hands the family fields to `ctx.plugin()`, where that schema validates them, so an invalid write leaves that one row degraded (ledger and log) while the rest of the family keeps running.
 
-Complementing the boot-time shell, `shared/host/run-guarded.ts` (synced to the four packages with in-process HTTP/poll faces) converts fire-and-forget rejections into logged errors: the host's `installFailLoud` turns ANY unhandled rejection into a whole-process exit, so family code must never let one escape.
+Complementing the boot-time shell, `shared/host/run-guarded.ts` converts fire-and-forget rejections into logged errors: the host's `installFailLoud` turns ANY unhandled rejection into a whole-process exit, so family code must never let one escape.
 
 ## Alternatives considered
 
@@ -31,7 +31,7 @@ For the settings surface, three shapes were considered and rejected. Importing t
 
 ## Consequences
 
-A family plugin can no longer take the Web down at boot: the blast radius of a broken plugin is a degraded entry plus a log line. The costs: a plugin failure surfaces only through logs/degraded-route instead of failing the boot, and every future family package needs its aggregate row generated through `scripts/aggregate.mjs` (which is already the only sanctioned path). The original "every inventory card shows the same shell package name" display cost was later removed by the per-family subpath row names (see [aggregate family row display names](2026-09-02-aggregate-family-row-display-names.md)). The runGuarded discipline is opt-in per package and synced by `scripts/sync-shared.mjs`.
+A family plugin can no longer take the Web down at boot: the blast radius of a broken plugin is a degraded entry plus a log line. The costs: a plugin failure surfaces only through logs/degraded-route instead of failing the boot, and every future family package needs its aggregate row generated through `scripts/aggregate.mjs` (which is already the only sanctioned path). The original "every inventory card shows the same shell package name" display cost was later removed by the per-family subpath row names (see [aggregate family row display names](2026-09-02-aggregate-family-row-display-names.md)). The runGuarded discipline is opt-in per package; no package in this repository adopts it, so `shared/host/run-guarded.ts` stays the shared source (with its spec) without generated copies here.
 
 The config surface costs three things. The Host cannot validate family fields at write time (it has no schema for them), so a value the family schema refuses degrades that one row instead of being refused with a message. A row config edit re-mounts the family plugin rather than committing in place, because the shell hands a plain config to `ctx.plugin()`. And the settings write persists the whole effective row config — the shell's `plugin` key included, which is what keeps the row mounting the right module — so a hand-written override must carry `plugin` too; a config without it leaves the row mounting nothing, loudly for any other shape and silently for the bare-override shape the loader's whole-config replacement produces.
 

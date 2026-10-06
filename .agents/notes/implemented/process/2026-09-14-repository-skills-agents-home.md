@@ -24,6 +24,7 @@ The four repository-owned skills - `dsh-web-skin-developer`, `dsh-web-pet-develo
 - Project skills resolve from one root, `.agents/skills/`, for `.agents`-aware tooling and for DeepSeek Harness.
 - `.dsh/` keeps only local, untracked probe and perf files; its `skills/` root no longer exists.
 - The release workflow stages `.agents/skills/` instead of `.dsh/skills/`, so release commits include skill edits from the new location.
+- The two content-developer skills have since moved into their owning satellite repositories; see [satellite developer skills live in their owning repositories](2026-10-06-satellite-developer-skills.md).
 
 ## Testing
 

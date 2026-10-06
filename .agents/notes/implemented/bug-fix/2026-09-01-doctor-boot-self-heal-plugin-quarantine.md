@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-The aggregate shell (see [aggregate-plugin-fault-isolation-shell](2026-09-01-aggregate-plugin-fault-isolation-shell.md)) contains one plugin's boot failure inside the family, but failures outside the shell's reach — a broken external plugin, a host-level fault, a profile patch hand-edited into a bad state — still kill the boot, and recovery stayed manual: read the boot error, work out which row broke, edit `cordis.patch.yml` by hand. The doctor Supervisor already watched boots (the launcher reports `launcher-exit` with a 32 KiB stderr tail and a `started` flag) and already had per-profile failure recording and a 2-strikes circuit breaker, but nothing in the loop mapped a failure to a plugin row or disabled one.
+The aggregate shell (see [aggregate-plugin-fault-isolation-shell](../architecture/2026-09-01-aggregate-plugin-fault-isolation-shell.md)) contains one plugin's boot failure inside the family, but failures outside the shell's reach — a broken external plugin, a host-level fault, a profile patch hand-edited into a bad state — still kill the boot, and recovery stayed manual: read the boot error, work out which row broke, edit `cordis.patch.yml` by hand. The doctor Supervisor already watched boots (the launcher reports `launcher-exit` with a 32 KiB stderr tail and a `started` flag) and already had per-profile failure recording and a 2-strikes circuit breaker, but nothing in the loop mapped a failure to a plugin row or disabled one.
 
 ## Decision
 

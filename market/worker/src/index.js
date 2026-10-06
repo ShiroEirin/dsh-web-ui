@@ -23,6 +23,9 @@ const HOME_LINK = '</.well-known/api-catalog>; rel="api-catalog", </openapi.json
 const ASSET_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 /** Anonymous write bodies are tiny; cap them to bound parse cost and abuse. */
 const WRITE_BODY_MAX_BYTES = 4 * 1024
+/** Most assets one bulk install gesture may report. The store publishes ~60
+ *  skins, so this covers a full catalog while keeping the D1 batch bounded. */
+const MAX_INSTALL_BATCH = 128
 const MARKDOWN_TTL_MS = 5 * 60 * 1000
 
 /** True when the Accept header prefers text/markdown with q > 0. */
@@ -231,6 +234,50 @@ async function mutateInstall(env, kind, assetId, hash, installId) {
   return Number(rows && rows[0] && rows[0].installs) || 0
 }
 
+/**
+ * Record a batch of Workshop install events in ONE D1 batch and return the
+ * refreshed count for each asset.
+ *
+ * The bulk install action installs many assets in one user gesture, so it must
+ * not cost one Turnstile challenge or one round trip per asset. The per-asset
+ * rows and the per-asset counts are unchanged from mutateInstall - this only
+ * folds N of them into a single batch - so a bulk install and N single
+ * installs are indistinguishable in the data, and a retry with the same
+ * install_id still collapses through the same deterministic event id.
+ *
+ * @param env worker env
+ * @param kind asset kind
+ * @param assetIds validated, published asset ids
+ * @param hash device fingerprint hash
+ * @param installId one id for the whole batch
+ * @returns the refreshed count per asset id
+ */
+async function mutateInstallBatch(env, kind, assetIds, hash, installId) {
+  const now = Date.now()
+  const statements = []
+  for (const assetId of assetIds) {
+    const eventId = await sha256(['v1', kind, assetId, hash, installId].join('|'))
+    statements.push(env.DB.prepare(
+      'INSERT OR IGNORE INTO install_events (id, kind, asset_id, device_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5)'
+    ).bind(eventId, kind, assetId, hash, now))
+  }
+  for (const assetId of assetIds) {
+    statements.push(env.DB.prepare(
+      'INSERT INTO install_counts (kind, asset_id, installs) SELECT ?1, ?2, COUNT(*) FROM install_events WHERE kind = ?1 AND asset_id = ?2 ON CONFLICT(kind, asset_id) DO UPDATE SET installs = excluded.installs'
+    ).bind(kind, assetId))
+    statements.push(env.DB.prepare(
+      'SELECT installs FROM install_counts WHERE kind = ?1 AND asset_id = ?2'
+    ).bind(kind, assetId))
+  }
+  const results = await env.DB.batch(statements)
+  const out = {}
+  for (let index = 0; index < assetIds.length; index++) {
+    const row = results[assetIds.length + index * 2 + 1] && results[assetIds.length + index * 2 + 1].results
+    out[assetIds[index]] = Number(row && row[0] && row[0].installs) || 0
+  }
+  return out
+}
+
 /** Read per-asset cumulative install counts. */
 async function readInstalls(env) {
   try {
@@ -313,7 +360,7 @@ export default {
     // now-captured path.
     if (path === '/app.js') return env.ASSETS.fetch(request)
 
-    if (request.method === 'OPTIONS' && (path === '/api/like' || path === '/api/install' || path === '/api/stats' || path === '/api/telemetry/event')) return preflight(request)
+    if (request.method === 'OPTIONS' && (path === '/api/like' || path === '/api/install' || path === '/api/install-batch' || path === '/api/stats' || path === '/api/telemetry/event')) return preflight(request)
     if (path === '/api/health') return json({ ok: true })
     if (path === '/api/asset-attest') return handleAssetAttest(request, env, json)
     if (path === '/api/npm-badge/downloads' && request.method === 'GET') return handleNpmBadge('downloads', json)
@@ -381,6 +428,40 @@ export default {
         return json({ ok: false, error: token ? 'captcha-invalid' : 'captcha-required', captcha_error_codes: turnstile.codes }, 403)
       }
       const installs = await mutateInstall(env, kind, assetId, hash, installId)
+      return json({ ok: true, installs })
+    }
+
+    if (path === '/api/install-batch' && request.method === 'POST') {
+      const read = await readJsonCapped(request, WRITE_BODY_MAX_BYTES)
+      if (!read.ok) return json({ ok: false, error: read.error }, read.error === 'payload-too-large' ? 413 : 400)
+      const body = read.value
+      const kind = typeof body.kind === 'string' ? body.kind : ''
+      const fp = typeof body.device_fp === 'string' ? body.device_fp : ''
+      const installId = typeof body.install_id === 'string' ? body.install_id : ''
+      const ids = Array.isArray(body.asset_ids) ? body.asset_ids : []
+      // One gesture covers a bounded set of assets; the cap keeps a single
+      // request inside the D1 batch limit and the body cap above.
+      if (!KINDS.has(kind) || !FP_RE.test(fp) || !/^[A-Za-z0-9_-]{16,64}$/.test(installId)
+        || ids.length === 0 || ids.length > MAX_INSTALL_BATCH
+        || ids.some((id) => typeof id !== 'string' || !ASSET_RE.test(id))) {
+        return json({ ok: false, error: 'invalid-params' }, 400)
+      }
+      const unique = [...new Set(ids)]
+      const known = []
+      for (const assetId of unique) {
+        if (await isKnownAsset(env, kind, assetId)) known.push(assetId)
+      }
+      if (known.length === 0) return json({ ok: false, error: 'unknown-asset' }, 400)
+      const hash = await sha256(fp)
+      const token = typeof body.turnstile_token === 'string' ? body.turnstile_token : ''
+      // One challenge for the whole batch: the writes below are the same
+      // per-asset rows a single install would write, so a solved challenge
+      // covers exactly this set and nothing else.
+      const turnstile = await verifyTurnstile(request, env, token)
+      if (!turnstile.ok) {
+        return json({ ok: false, error: token ? 'captcha-invalid' : 'captcha-required', captcha_error_codes: turnstile.codes }, 403)
+      }
+      const installs = await mutateInstallBatch(env, kind, known, hash, installId)
       return json({ ok: true, installs })
     }
 

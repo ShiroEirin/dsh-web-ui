@@ -1,8 +1,21 @@
-# dsh-ssh — 远程 SSH 运维插件（DSH 版 ssh-skill）
+# dsh-ssh · DeepSeek Harness (DSH) 网页版 SSH 终端、SFTP 文件传输与集群运维插件
 
 [English](README.md) | 中文
 
-基于 [badseal/ssh-skill](https://github.com/badseal/ssh-skill) 的能力清单，为 DeepSeek Harness（DSH）定制的远程 SSH 插件：Host 进程内的持久连接池 + Web GUI 主机管理面板 + Web 终端 + Agent 工具，全部通过官方 NPM SDK 实现，不修改 DSH 源码。
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-ssh?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>DeepSeek Harness（DSH）官方 Web GUI 与桌面客户端专属远程 Linux 服务器运维套件</strong><br>
+  <em>xterm.js Web 终端 · 可视化 SFTP 传输 · 本地端口转发隧道 · 集群并发命令 · 6 大 Agent 工具</em>
+</p>
+
+专为 DeepSeek Harness（DSH）Web GUI 与官方桌面客户端定制的远程 Linux 服务器运维与集群管理插件：Host 进程内的持久连接池 + Web GUI 主机管理面板 + 基于 xterm.js 的 Web 终端 + 可视化 SFTP 传输 + 6 大专用 Agent 工具，全部通过官方 NPM SDK 实现，零修改侵入 DSH 官方源码。
 
 ## 能力
 

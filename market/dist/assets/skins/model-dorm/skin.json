@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schemas.linxin666.org/dsh-skin/v2.json",
+  "skinManifestVersion": 2,
+  "id": "model-dorm",
+  "name": "居家模型娘",
+  "nameEn": "Home Model Girls",
+  "version": "0.1.0",
+  "author": "Daizhdd",
+  "tagline": "夕阳下的大模型群像 · 暖紫褐玻璃界面 · 奶油金与赭石点缀",
+  "description": "一间被夕阳灌满的房间：白板上列着 Z.ai / GLM、DeepSeek、Qwen、Gemini 的能力对照，笔记本、相机、马克杯和鲸鱼玩偶散了一地，大模型的拟人形象们各自窝着。配色不是选出来的，是从画面上量出来的——先量到整幅画的中位亮度只有 0.145、一半以上的像素落在 L<0.15 的暗部，所以暗色是它的主场：面板做成暖紫褐的薄玻璃（#1a1114 → #3a2c30），让房间始终在背后发着暖光。亮色则反过来，用夕阳奶油金（#fbd9b3）和玫瑰褐（#d19989）把同一张画罩成一层暖纱，需要更实的遮挡才读得清。强调色取饱和像素里占八成的那一族的峰值—赭石 #903f12 提亮成 #b4551a；画里的深蓝 #0e4d76 与紫 #472b65 不做点缀，留给信息和选中态。一整幅画里唯一的实色，是新会话那颗赭石按钮。",
+  "tags": [
+    "anime",
+    "illustration",
+    "llm",
+    "persona",
+    "sunset",
+    "dusk",
+    "warm",
+    "plum",
+    "amber",
+    "translucent",
+    "gpt-art",
+    "local"
+  ],
+  "accent": "#b4551a",
+  "order": 49,
+  "attribution": "背景插画由作者使用 OpenAI GPT 图像生成后自行编排；画中人物为作者为各大语言模型设计的拟人形象。皮肤工程（skin.css 的 token 重映射、调色板与纱层规则）为作者原创。",
+  "contributes": {
+    "stylesheet": "skin.css",
+    "backgroundMedia": {
+      "light": {
+        "type": "image",
+        "src": "assets/model-dorm-room-day.webp",
+        "scrim": "linear-gradient(180deg, rgba(255, 248, 240, 0.05) 0%, rgba(255, 245, 235, 0.03) 55%, rgba(252, 238, 226, 0.16) 100%)"
+      },
+      "dark": {
+        "type": "image",
+        "src": "assets/model-dorm-room-night.webp",
+        "scrim": "linear-gradient(180deg, rgba(18, 12, 14, 0) 0%, rgba(20, 13, 16, 0.03) 58%, rgba(14, 9, 11, 0.20) 100%)"
+      }
+    }
+  },
+  "preview": {
+    "light": "preview/light.jpg",
+    "dark": "preview/dark.jpg"
+  },
+  "license": "MIT",
+  "licenseUrl": "https://github.com/zhu1090093659/dsh-skins/blob/main/skins/model-dorm/LICENSE"
+}

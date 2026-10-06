@@ -102,6 +102,50 @@
   opacity: 0.6;
 }
 
+/* Day picker: a label plus the native select, sized to the card and
+   inheriting the section's currentColor chrome. */
+.dayPicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dayPickerLabel {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.daySelect {
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.daySelect:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 45%, transparent);
+}
+
+/* A native select paints its option list itself: it does NOT inherit the
+   control's background, so an unset option background falls back to the
+   browser's own (light) list surface while the option text still inherits the
+   section's light text color — light text on a light list, unreadable on a
+   dark skin. Both the day picker and the settings-row select therefore give
+   their option list one explicit surface/label pair, read from the tokens the
+   platform and the skins ship (a skin that omits the surface token falls back
+   to the platform's, a host with no theme layer to Canvas). Text and
+   background always travel together, per theme half. */
+.daySelect option,
+.settingItem select option {
+  background-color: var(--dsw-alias-bg-multi-select, Canvas);
+  color: var(--dsw-alias-label-primary, CanvasText);
+}
+
 .statRow {
   display: flex;
   flex-wrap: wrap;
@@ -129,6 +173,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* A long per-day figure (tokens · calls · cost) drops to its own line in a
+     narrow panel instead of running into the provider name. */
+  flex-wrap: wrap;
   gap: 12px;
   padding: 6px 0;
   border-top: 1px solid color-mix(in srgb, currentColor 8%, transparent);

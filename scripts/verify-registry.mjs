@@ -17,13 +17,21 @@
  * inside the budget; a genuinely missing version fails the release run before
  * the mount smoke and the GitHub Release.
  *
+ * The budget has to cover a version the registry accepts into its staging area
+ * before promoting it into the public packument. Promotion is usually seconds,
+ * but v0.4.4 showed the aggregate unreadable for about sixteen minutes after
+ * the publish step reported it published, and a second publish of that same
+ * version answers HTTP 409 "Cannot publish over previously staged version":
+ * the version is queued, not lost. The default window is therefore about
+ * thirty minutes, and the failure message names the staging state.
+ *
  * Usage:
  *   node scripts/verify-registry.mjs <x.y.z|vX.Y.Z> [--registry URL]
  *     [--attempts N] [--delay-ms M] [--timeout-ms M]
  *
- * Defaults: registry.npmjs.org, 20 attempts, 30s between attempts, 15s per
- * request. Exit 0 when every version resolves, 1 when any is still missing,
- * 2 on usage errors.
+ * Defaults: registry.npmjs.org, 60 attempts, 30s between attempts (~30 min),
+ * 15s per request. Exit 0 when every version resolves, 1 when any is still
+ * missing, 2 on usage errors.
  */
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -34,7 +42,7 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(SCRIPT_DIR, '..')
 
 export const DEFAULT_REGISTRY = 'https://registry.npmjs.org'
-export const DEFAULT_ATTEMPTS = 20
+export const DEFAULT_ATTEMPTS = 60
 export const DEFAULT_DELAY_MS = 30_000
 export const DEFAULT_TIMEOUT_MS = 15_000
 
@@ -180,6 +188,11 @@ async function main() {
   }
   if (failed) {
     console.error('[verify-registry] FAILED: the registry does not serve every ' + version + ' family version')
+    console.error('[verify-registry] A publish the registry has staged but not yet promoted reads as a miss for'
+      + ' longer than this window. Confirm before assuming a lost publish: a re-publish of the same version answers'
+      + ' HTTP 409 "Cannot publish over previously staged version", and the version document starts answering 200'
+      + ' once promotion lands. Do not re-push the release tag; if the version resolves later, complete the skipped'
+      + ' mount smoke and GitHub Release for the existing tag instead.')
     process.exit(1)
   }
   console.log('[verify-registry] all ' + packages.length + ' family packages resolve at ' + version + ' on ' + options.registry)

@@ -5,13 +5,14 @@ import { ruDictionaries } from '../src/client/ru/index.ts'
 const CJK_RE = /[\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/
 
 describe('ru dictionaries internal consistency', () => {
-  it('covers sixteen non-empty namespaces with string values', () => {
-    // 16 = one per family package that ships a client locale namespace;
-    // doctor and describe-image left the family on 2026-09-23, and the
+  it('covers seventeen non-empty namespaces with string values', () => {
+    // 17 = one per family package that ships a client locale namespace;
+    // doctor and describe-image left the family on 2026-09-23, the
     // self-update surface split out of remote-web-ui into dsh-update
-    // (namespace update) on 2026-09-25.
+    // (namespace update) on 2026-09-25, and the task-board GitHub provider
+    // extension added the task-board-github namespace on 2026-09-30.
     const namespaces = Object.keys(ruDictionaries)
-    expect(namespaces).toHaveLength(16)
+    expect(namespaces).toHaveLength(17)
     for (const [ns, dict] of Object.entries(ruDictionaries)) {
       const keys = Object.keys(dict)
       expect(keys.length, ns).toBeGreaterThan(0)

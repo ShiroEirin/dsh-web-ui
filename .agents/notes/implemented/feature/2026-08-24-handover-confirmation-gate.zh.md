@@ -10,7 +10,7 @@ ADR 0001 的第二项能力：续接卡片须能携带交接包（钉住三元�
 
 - `TaskRecord` 新增 `handover?: TaskHandover`（workspaceId/mode/permission + 有界 `references`，打点 `bundledAt`）与 `permissionConfirmedAt?: number`。领域逻辑集中在 `core/handover.ts`：`sanitizeHandover`（精确键、字符串目标、已知权限、32 条引用 / 每条 512 B / 总量 8 KiB）、`effectivePermission`（交接包覆盖普通钉住）、`requiresPermissionConfirmation`（既高权又未确认）、以及相对 `DEFAULT_SESSION_PERMISSION = 'read-only'` 的 `PERMISSION_RANK` 高权序。
 - `protocol.ts` 在 create 输入与 update patch 上接受 `handover`（null 清除，与 freeze 一致），新增 `confirm-permission` 动作；脱敏后的包原地替换线上值。导入白名单经 `parseLedger` 归一化放行交接包，但剥除 `permissionConfirmedAt`——import 不是人工确认动作，高权绑定导入后重新武装确认门（审查加固见 `2026-08-24-review-hardening.zh.md`）。
-- Host 账本对未确认高权卡拒绝 `run`/`rerun`（`confirmation-required`）；`openScheduled`（cron）跳过该卡并滚动 `nextRunAt`（与已运行拒绝同路径）；新增 `confirm-permission` 分支打 `permissionConfirmedAt` 戳。比较基线是账本的 `sessionDefaultPermission` 选项，由新插件配置键（schema 默认 `read-only`，fail-safe）经 `TaskBoardHostService` 接线，并随每个 snapshot 下发给 UI 侧门控。
+- Host 账本对未确认高权卡拒绝 `run`/`rerun`（`confirmation-required`）；`openScheduled`（cron）跳过该卡并滚动 `nextRunAt`（与已运行拒绝同路径）；新增 `confirm-permission` 分支打 `permissionConfirmedAt` 戳。比较基线是账本的 `sessionDefaultPermission` 选项，并随每个 snapshot 下发给 UI 侧门控：部署显式钉住时取该配置键，否则跟随宿主自己的默认权限预设（新会话的起始权限，经 `TaskBoardHostService` 从官方 `permissionPresets` 服务实时读取）；目录读不到时由 fail-safe 的 `DEFAULT_SESSION_PERMISSION = 'read-only'` 兜底。
 - 重新武装语义：确认绑定的是确切的权限值。`applyUpdateTask` 在权限真实变化或交接包任何变化（含清除）时清掉 `permissionConfirmedAt`——先确认后换权无法把旧确认带到新的更高权限上。
 - `HostExecutionRunner.launch` 先解析有效三元组（交接包优先于钉住）再校验；交接包携带引用时在 Prompt 前拼接交接前言（引用 + 打包时间）。
 - UI：新建弹窗增加引用文本域（有行则把所选三元组作为包附上）；任务详情展示交接包区块（三元组 + 引用 + bundledAt）、带确认按钮的待确认横幅（`controller.confirmPermission`）与已确认戳。store 归一化只丢畸形包或戳，绝不丢任务行。
@@ -19,14 +19,14 @@ ADR 0001 的第二项能力：续接卡片须能携带交接包（钉住三元�
 
 - 仿 remote-web-ui approval 事件的独立待审批队列——本工单否决：Host 账本事务模型已提供幂等、持久的状态；任务行上的戳加一个显式人工动作就是同构的"待确认事务"，且只有一个事实源。
 - 写入时拦截高权卡片——否决：需求是确认后执行而非拒绝；建卡必须保持可行（交接包正是把工作交给更高权限操作者的方式）。
-- 从运行时 API 读取会话默认权限——暂缓：当前 SDK 无此接口；配置键让门控保持保守（read-only 默认意味着任何写权限提升都需确认一次）。
+- 从运行时 API 读取会话默认权限——落地确认门时暂缓，因为当时 SDK 没有这个接口：配置键让门控保持保守（read-only 默认意味着任何写权限提升都需确认一次）。官方 `permissionPresets` 服务现在会发布该值，因此未设置的配置键跟随宿主默认，保守默认只作为不提供该目录的部署的回退。
 
 ## 后果
 
 - cron 拒绝复用滚动路径：待确认的定时卡保持排程武装但确认前绝不触发——不执行、不排队。
-- `sessionDefaultPermission` 是部署声明的值；部署把它设得高于真实会话默认时，差值区间的门控会变弱（已在 README 配置表说明）。
+- `sessionDefaultPermission` 是部署显式覆盖值；部署把它设得高于真实会话默认时，差值区间的门控会变弱（已在 README 配置表说明）。未设置时基线在每次门控判定时重新读取宿主自己的默认预设，因此只有运维钉住了比宿主更宽的值时才会出现该差值。
 - 会话内冻结生成入口（agent 产出 `<<<FREEZE` 块）仍开放；当前交接包经 UI/协议附上。
 
 ## 验证
 
-`pnpm --filter @linxin666/dsh-client-ui-task-board typecheck/test/build` 通过（274 项测试；新增 `tests/handover-confirm.spec.ts` 覆盖协议门、用例打点/重新武装、store 归一化、未确认拒绝执行、确认后执行、默认权限放行、cron 拒绝 + 滚动、确认后 cron 触发、runner 覆盖/前言；`tests/handover-ui.spec.tsx` 覆盖详情横幅、确认按钮与已确认戳）。README 配对更新后 `pnpm docs:check` 通过。
+`pnpm --filter @linxin666/dsh-client-ui-task-board typecheck/test/build` 通过（274 项测试；新增 `tests/handover-confirm.spec.ts` 覆盖协议门、用例打点/重新武装、store 归一化、未确认拒绝执行、确认后执行、默认权限放行、cron 拒绝 + 滚动、确认后 cron 触发、runner 覆盖/前言；`tests/handover-ui.spec.tsx` 覆盖详情横幅、确认按钮与已确认戳；后来加入的基线由 `tests/host-apply.spec.ts` 的 `host permission baseline` 用例覆盖，它们挂载真实的 Host 半区：跟随宿主默认、尊重显式钉住、无目录时回退，以及看板运行中宿主默认被下调后跟随）。README 配对更新后 `pnpm docs:check` 通过。

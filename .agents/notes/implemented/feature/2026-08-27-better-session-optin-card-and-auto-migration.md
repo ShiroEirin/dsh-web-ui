@@ -2,7 +2,7 @@
 
 Status: implemented
 
-Supersession check: [better-session-default-off-and-jsonl-import](2026-08-27-better-session-default-off-and-jsonl-import.md) owns the inactive-by-default rollout and the migration semantics; nothing there changes. This Note adds the user-facing surface for that decision — the opt-in section — and moves the import core into a package so that surface and the CLI share one implementation.
+Supersession check: [better-session-default-off-and-jsonl-import](../architecture/2026-08-27-better-session-default-off-and-jsonl-import.md) owns the inactive-by-default rollout and the migration semantics; nothing there changes. This Note adds the user-facing surface for that decision — the opt-in section — and moves the import core into a package so that surface and the CLI share one implementation.
 
 ## Problem
 

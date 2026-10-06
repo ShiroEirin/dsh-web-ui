@@ -37,7 +37,9 @@ jobs:
   publish:
     name: Build, test, gated npm publish
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Gates, publish, then the registry assertion, which waits out a registry
+    # staging promotion (about thirty minutes worst case, v0.4.4).
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -190,7 +192,7 @@ jobs:
       # Pin the DSH CLI the lane mounts into (same pin as ci.yml's
       # plugin-mount lane).
       - name: Install dsh CLI (pinned)
-        run: npm install -g @deepseek-ai/dsh@0.1.7-rc.2
+        run: npm install -g @deepseek-ai/dsh@0.2.0-rc.2
 
       # The aggregate tarball must be produced from a fresh build.
       - name: Build

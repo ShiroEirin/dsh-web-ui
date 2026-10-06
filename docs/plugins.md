@@ -31,7 +31,7 @@ packages/<name>/
 
 - host 半区 `src/index.ts`：导出 cordis 插件，运行在 dsh host 进程（例如系统提示词公告、真实任务执行等）。
 - browser 半区 `src/client.ts`：Web GUI 侧的 UI 逻辑，经 package.json 的 `dsh.client` 声明注入运行时。
-- 形态参照 `packages/dsh-task-board/`：`dsh.bundle.patch` 指向包内 `cordis.patch.yml`；`dsh.client` 声明 `inject: ["@deepseek-ai/dsh-client-runtime"]` 与 `platform: "web"`。
+- 形态参照 `packages/dsh-task-board/`：`dsh.bundle.patch` 指向包内 `cordis.patch.yml`；`dsh.client` 声明 `inject`（所需官方运行时服务，如 `@deepseek-ai/dsh-client-connection`、`@deepseek-ai/dsh-client-ui-layout` 等）与 `platform: "web"`。
 
 ### 3. 注册进聚合包
 
@@ -88,6 +88,8 @@ dsh plugin --profile web add link:<dsh-web>/packages/dsh-web-all
 > 会回退拉取 npm 已发布的版本——若 npm 版本滞后或损坏（如历史上的 dsh-pet 0.1.1 缺 chunk），
 > 会出现「宿主已挂载但 UI 不显示」的现象。此时用 `node scripts/link-profile.mjs` 把仓库构建产物
 > 链接进 `~/.dsh/profiles/node_modules/@linxin666/`，即可让全部子包走本地代码。
+>
+> 卫星包（`satellites/*`）只有在自己的检出里执行过 `pnpm install` 之后才可链接：随仓库提交的 `lib/` 不证明依赖可解析，链接一个未安装的检出会让宿主启动报 `ERR_MODULE_NOT_FOUND`（dsh-skins 缺 `jpeg-js`，dsh-pet 缺 `clsx`）。脚本只链接可加载的检出，未安装时链接聚合包解析到的已安装副本，插件照常工作；在该卫星仓库执行 `pnpm install` 后重跑脚本即可让本地检出生效。
 
 ## 第三方插件准入原则
 
@@ -125,7 +127,7 @@ dsh plugin --profile web add link:<dsh-web>/packages/dsh-web-all
 ```
 
 - **类型来源（只能基于官方 NPM SDK）**：各包把用到的 `@deepseek-ai/*` 包声明为 `devDependencies`
-  （`^0.1.7-rc.2`；cordis 用 `^4.0.4`），TS 从 node_modules 自动解析类型
+  （`^0.2.0-rc.2`；cordis 用 `^4.0.4`），TS 从 node_modules 自动解析类型
   （SDK 包的 `exports["."].types` 统一指向 `lib/types/index.d.ts`，client 半区子路径
   `./client` 同理）。**禁止** tsconfig `extends` / `paths` / `references` 指向任何 DSH 源码
   checkout（历史形态：`../../../test-zhu1090093659` 相对路径、`~/.dsh/source/current` 绝对

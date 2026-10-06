@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Partially superseded by [mobile compact picker buttons removed](../simplification/2026-10-03-mobile-compact-picker-removed.md): the two synthesized model/effort icon buttons of Decision 3, their drill-through behaviour, the `dsh-remote-compact-picker` body class, and the `mobile.composer.pickModel` / `mobile.composer.pickEffort` locale keys are removed. The other three fixes recorded here still stand.
+
 ## Problem
 
 Four defects on the portrait phone surface of `dsh-remote-web-ui` (reproduced in the live GUI at 390x844 with touch emulation):

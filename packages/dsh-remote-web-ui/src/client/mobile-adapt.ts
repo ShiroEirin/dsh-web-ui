@@ -32,8 +32,8 @@ export interface RemoteAdaptGlobal {
   closeDetails: (() => void) | null
   /**
    * Wired by the plugin apply once the `remote` locale namespace is bound:
-   * the translate seat the injected surfaces (whale, compact picker) read
-   * their labels from. Null until then; label reads fall back to English
+   * the translate seat the injected surface (the whale) reads its label
+   * from. Null until then; label reads fall back to English
    * (the SDK's universal fallback) and the 600ms sync tick re-renders the
    * labels once the seat is wired.
    */
@@ -54,14 +54,19 @@ const ADAPT_CSS_ID = 'dsh-remote-web-ui/mobile-adapt.css'
 const ACTIVE_CLASS = 'dsh-remote-portrait'
 /** Body class while the collapsed rail is hidden behind the whale. */
 const RAIL_HIDDEN_CLASS = 'dsh-remote-rail-hidden'
+/**
+ * The official sidebar column root. Also the scope of the row sweep: every row
+ * the drag suppression covers is a descendant of it, so the document-wide scan
+ * it replaces only ever returned these.
+ */
+const SIDEBAR_SELECTOR = '[class*="_sidebarCol"]'
+/** The official draggable session/project rows (see disableRowDrag). */
+const ROW_SELECTOR = '[class*="_sessionRow"], [class*="_projectRow"]'
+/** The injected stylesheet, addressed through the same cached lookup. */
+const STYLE_SELECTOR = `style[data-plugin-css="${ADAPT_CSS_ID}"]`
+
 /** Whale button id. */
 const WHALE_ID = 'dshRemoteWhale'
-/** Compact picker: synthesized model button id. */
-const MODEL_BTN_ID = 'dshRemoteModelPick'
-/** Compact picker: synthesized effort button id. */
-const EFFORT_BTN_ID = 'dshRemoteEffortPick'
-/** Body class while the compact picker buttons are wired. */
-const COMPACT_CLASS = 'dsh-remote-compact-picker'
 /** Body class while the header actions are seated in the tabs row. */
 const HEADER_SEATED_CLASS = 'dsh-remote-header-seated'
 /**
@@ -70,15 +75,6 @@ const HEADER_SEATED_CLASS = 'dsh-remote-header-seated'
  * reserving the space with padding.
  */
 const HEADER_RESERVE_VAR = '--dsh-remote-header-actions-reserve'
-/** The two composer picker entries the compact buttons drill into. */
-type PickerKind = 'model' | 'effort'
-/** Locale-dependent fast path for the official picker cells (zh/en). */
-const PICKER_CELL_PATTERN: Record<PickerKind, RegExp> = {
-  model: /模型|Model/, // i18n-allow: matches official picker cell text, not plugin copy
-  effort: /推理等级|Reasoning|Effort/i, // i18n-allow: matches official picker cell text, not plugin copy
-}
-/** Position of each drill cell among the sheet's chevron cells. */
-const DRILL_INDEX: Record<PickerKind, number> = { model: 0, effort: 1 }
 /**
  * The official application frame. The layout column classes are the anchor:
  * `_frame` is shared by unrelated official components (the chat turn rail,
@@ -184,7 +180,16 @@ const ADAPT_CSS: readonly string[] = [
   '[class$="_composerSeat"] [class$="_modes"]{min-width:0;padding-left:38px}',
   // Model line left-aligned with the permission line (same command-button
   // clearance), rows stay tightly stacked.
-  '[class$="_composerSeat"] [class$="_trailing"]{flex-basis:100%;position:relative;min-height:32px;justify-content:flex-start;padding-left:38px;padding-right:78px}',
+  // The trailing line is forced onto its own row at flex-basis:100% and carries
+  // 116px of side padding (38 left for the command button, 78 right for the
+  // send button). Under the default content-box that padding is ADDED to the
+  // 100% basis, so the line's own box overflowed the card by exactly 116px and
+  // dragged the absolutely-positioned send button out with it: on a 393px phone
+  // the card ended at x=367 while the button sat at x=433..467, past the
+  // viewport's right edge, which is the unreachable button the reporter
+  // measured (#1818). border-box contains the padding inside the basis, so the
+  // line stays within the card and the button lands back inside it.
+  '[class$="_composerSeat"] [class$="_trailing"]{box-sizing:border-box;flex-basis:100%;position:relative;min-height:32px;justify-content:flex-start;padding-left:38px;padding-right:78px}',
   '[class$="_composerSeat"] [class$="_trailing"] *{font-size:12px}',
   // v54: smaller permission/model buttons (font + height). v79: the
   // permission trigger collapses to its shield icon on phones — the label
@@ -207,26 +212,12 @@ const ADAPT_CSS: readonly string[] = [
   '[class$="_composerSeat"]{transform:none !important}',
   '[class$="_composerSeat"] [class$="_menu"]{position:fixed !important;left:8px !important;right:8px !important;top:auto !important;bottom:calc(8px + env(safe-area-inset-bottom)) !important;width:auto !important;max-width:none !important;max-height:70dvh !important;overflow-y:auto !important;z-index:2147482000}',
   '[class$="_composerSeat"] [class$="_menu"] [class$="_cell"]{height:44px;min-height:44px;font-size:13px}',
-  // v79 (compact picker): when the row is too narrow for the desktop text
-  // triggers, the phone falls back to icon entries — the context ring stays
-  // official, and two synthesized buttons open the picker sheet straight on
-  // the model list and the effort list (drill-through, so one tap lands on
-  // the same list the user's mock shows). The original text trigger hides
-  // only while the wired buttons exist (body class): a failed wiring
-  // degrades back to the usable text trigger instead of no picker.
-  `body.${COMPACT_CLASS} [class$="_composerSeat"] [class$="_trailing"] [class$="_trigger"]:has([class$="_triggerEffort"]){display:none}`,
-  // The icon buttons sit inline in the tools row (parallel to the
-  // permission trigger), so the trailing line collapses to zero and the
-  // context ring + send re-anchor to the row itself. The ring shifts a
-  // few px right: at its desktop offset its hit box kisses the effort
-  // button.
-  `body.${COMPACT_CLASS} [class$="_composerSeat"] [class$="_trailing"]{flex-basis:auto;position:static;min-height:0;padding:0;width:0}`,
-  `body.${COMPACT_CLASS} [class$="_composerSeat"] [class$="_trailing"] > [class$="_root"]:has([class$="_track"]){right:44px}`,
-  `#${MODEL_BTN_ID},#${EFFORT_BTN_ID}{width:26px;height:32px;min-width:26px;padding:0;border-radius:9px;background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;margin-left:4px}`,
-
-
-  `#${MODEL_BTN_ID} svg,#${EFFORT_BTN_ID} svg{width:16px;height:16px;display:block}`,
-  `#${MODEL_BTN_ID}:active,#${EFFORT_BTN_ID}:active{opacity:.7}`,
+  // v79's compact picker (two synthesized model/effort icon buttons in the
+  // tools row, the trailing text trigger hidden behind a body class, and the
+  // trailing line collapsed to zero width) was removed at the user's request.
+  // The portrait composer keeps the official text trigger with the trailing
+  // line rules above; the bottom-sheet rules immediately above still apply to
+  // the official menu.
   // Bottom stats line (N rounds / M steps) two sizes below the tabs; v55
   // wraps freely but clamps at two lines (the official rule is nowrap +
   // single-line ellipsis); v60 drops the official 32px right padding.
@@ -300,19 +291,22 @@ const ADAPT_CSS: readonly string[] = [
   // v68: settings modal on mobile — the official panel is a fixed 800px
   // two-column layout (nav + content); switch to a column layout: the
   // section nav becomes a horizontal scrollable row on top.
-  '[class$="_overlay"] [class$="_panel"]{flex-direction:column;max-height:calc(100dvh - 32px)}',
-  '[class$="_overlay"] [class$="_panel"] [class$="_nav"]{flex-direction:row;gap:4px;width:100%;padding:12px 12px 0;overflow-x:auto;overflow-y:hidden}',
-  '[class$="_overlay"] [class$="_panel"] [class$="_navTitle"]{display:none}',
-  '[class$="_overlay"] [class$="_panel"] [class$="_navList"]{flex-direction:row;gap:4px}',
-  '[class$="_overlay"] [class$="_panel"] [class$="_navCell"]{height:34px;padding:0 12px;gap:6px;flex:none;border-radius:10px}',
-  '[class$="_overlay"] [class$="_panel"] [class$="_navLabel"]{font-size:13px}',
-  '[class$="_overlay"] [class$="_panel"] [class$="_content"]{flex:1;min-height:0}',
+  // Scoped to the portrait body class like the suppressions above: these
+  // are the only rules in this array that reshape an official two-column
+  // surface, and the overlay portal is shared with every other dialog.
+  // Unscoped, the tag — which lives in <head> for as long as the layer
+  // is active and is restored by the sync tick after a revert —
+  // collapsed the DESKTOP settings panel into a stacked column (measured
+  // on a real 1440px host: panel flex-direction row -> column, nav 800px
+  // tall -> 236px, content 612px -> 800px wide and pushed below the nav).
+  `body.${ACTIVE_CLASS} [class$="_overlay"] [class$="_panel"]{flex-direction:column;max-height:calc(100dvh - 32px)}`,
+  `body.${ACTIVE_CLASS} [class$="_overlay"] [class$="_panel"] [class$="_nav"]{flex-direction:row;gap:4px;width:100%;padding:12px 12px 0;overflow-x:auto;overflow-y:hidden}`,
+  `body.${ACTIVE_CLASS} [class$="_overlay"] [class$="_panel"] [class$="_navTitle"]{display:none}`,
+  `body.${ACTIVE_CLASS} [class$="_overlay"] [class$="_panel"] [class$="_navList"]{flex-direction:row;gap:4px}`,
+  `body.${ACTIVE_CLASS} [class$="_overlay"] [class$="_panel"] [class$="_navCell"]{height:34px;padding:0 12px;gap:6px;flex:none;border-radius:10px}`,
+  `body.${ACTIVE_CLASS} [class$="_overlay"] [class$="_panel"] [class$="_navLabel"]{font-size:13px}`,
+  `body.${ACTIVE_CLASS} [class$="_overlay"] [class$="_panel"] [class$="_content"]{flex:1;min-height:0}`,
 ]
-
-/** Cube glyph for the compact model button (a plain box outline). */
-const CUBE_ICON = '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>'
-/** Level glyph for the compact effort button (three rising bars). */
-const LEVELS_ICON = '<path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/>'
 
 /** The DeepSeek fish glyph (the official brand mark path). */
 const FISH_PATH = 'M22.9168 1.43018C22.6713 1.31018 22.5658 1.53918 22.4223 1.65519C22.3733 1.69269 22.3318 1.74169 22.2903 1.78669C21.9317 2.1697 21.5127 2.42121 20.9657 2.39121C20.1657 2.34621 19.4827 2.59771 18.8787 3.20973C18.7502 2.45521 18.3236 2.0047 17.6746 1.71569C17.3351 1.56568 16.9916 1.41518 16.7536 1.08867C16.5876 0.856163 16.5421 0.597155 16.4591 0.341647C16.4061 0.187643 16.3536 0.0301382 16.1761 0.00363739C15.9836 -0.0263635 15.9081 0.135141 15.8326 0.270145C15.5306 0.822162 15.4136 1.43018 15.4251 2.0462C15.4516 3.43174 16.0366 4.53527 17.1991 5.3203C17.3311 5.4103 17.3651 5.5003 17.3236 5.63181C17.2441 5.90231 17.1501 6.16482 17.0671 6.43533C17.0141 6.60784 16.9351 6.64584 16.7501 6.57033C16.1121 6.30383 15.5611 5.90931 15.074 5.4328C14.2475 4.63328 13.5 3.75075 12.568 3.05973C12.349 2.89822 12.13 2.74822 11.9034 2.60522C10.9524 1.68169 12.028 0.923165 12.277 0.833162C12.5375 0.739159 12.3675 0.41615 11.5259 0.42015C10.6844 0.42365 9.91439 0.705658 8.93286 1.08117C8.78935 1.13767 8.63835 1.17867 8.48384 1.21267C7.59332 1.04367 6.66829 1.00617 5.70226 1.11517C3.88321 1.31768 2.43016 2.1777 1.36213 3.64575C0.0790928 5.4103 -0.222916 7.41536 0.146595 9.50642C0.535106 11.7105 1.66014 13.535 3.38869 14.9616C5.18125 16.4406 7.24581 17.1657 9.60138 17.0266C11.0319 16.9441 12.6245 16.7526 14.421 15.2321C14.874 15.4576 15.3496 15.5476 16.1381 15.6151C16.7456 15.6716 17.3306 15.5851 17.7836 15.4911C18.4931 15.3411 18.4441 14.6841 18.1876 14.5636C16.1081 13.595 16.5646 13.9891 16.1496 13.67C17.2061 12.42 18.8202 10.1979 19.3182 7.17235C19.3672 6.83834 19.4297 6.36783 19.4222 6.09732C19.4182 5.93231 19.4562 5.86831 19.6447 5.84931C20.1657 5.78931 20.6712 5.64681 21.1357 5.3913C22.4833 4.65528 23.0268 3.44624 23.1548 1.9972C23.1738 1.77569 23.1508 1.54668 22.9168 1.43018Z'
@@ -346,6 +340,8 @@ export function startMobileAdapt(): void {
   let whaleObserver: MutationObserver | null = null
   /** Header subtree observer: marks the geometry measurement dirty on re-render. */
   let headerObserver: MutationObserver | null = null
+  /** Document child-list observer: invalidates the cached-absent selector set. */
+  let domObserver: MutationObserver | null = null
   let observedHeader: Element | null = null
   /** Whether the seated-actions geometry needs re-measuring (see alignActionsText). */
   let headerGeometryDirty = true
@@ -368,17 +364,28 @@ export function startMobileAdapt(): void {
    * rail compaction) while the body class stays.
    */
   function ensureAdaptStyle(): void {
-    if (nodeOf(`style[data-plugin-css="${ADAPT_CSS_ID}"]`) !== null) return
+    if (nodeOf(STYLE_SELECTOR) !== null) return
     const tag = document.createElement('style')
     tag.dataset.plugin = 'remote-web-ui'
     tag.dataset.pluginCss = ADAPT_CSS_ID
     tag.textContent = ADAPT_CSS.join('')
     document.head.appendChild(tag)
+    // Seed the lookup cache: the tag is created here, outside nodeOf, so the
+    // negative cache could otherwise report it missing for one more tick and
+    // stack a duplicate stylesheet.
+    nodeCache.set(STYLE_SELECTOR, tag)
+    nodeMissCache.delete(STYLE_SELECTOR)
   }
 
   function apply(): void {
     if (active) return
     active = true
+    // First statement of the activation, before any lookup: nothing observed the
+    // document while the layer was reverted (the observer is created below), so
+    // no "absent" verdict recorded earlier may be served now. Clearing here
+    // rather than beside the observer also covers the lookups this path runs
+    // before that point.
+    forgetAbsentSelectors()
     document.body.classList.add(ACTIVE_CLASS)
     // A details panel opened before the viewport rotated into portrait (or
     // restored across reloads) would sit behind the display:none above;
@@ -397,6 +404,7 @@ export function startMobileAdapt(): void {
       meta.setAttribute('content', `${savedViewportContent}, viewport-fit=cover`)
     }
     ensureWhale()
+    ensureDomObserver()
     syncWhale()
     // React builds nodes with attributes before inserting them, so
     // attribute observers miss the initial collapsed state — a light
@@ -410,7 +418,6 @@ export function startMobileAdapt(): void {
     active = false
     unseatHeaderActions()
     restoreRowDrag()
-    removeCompactPicker()
     document.body.classList.remove(ACTIVE_CLASS)
     document.body.classList.remove(RAIL_HIDDEN_CLASS)
     const tag = document.querySelector(`style[data-plugin-css="${ADAPT_CSS_ID}"]`)
@@ -429,6 +436,45 @@ export function startMobileAdapt(): void {
       whaleObserver.disconnect()
       whaleObserver = null
     }
+    if (domObserver !== null) {
+      domObserver.disconnect()
+      domObserver = null
+    }
+    // Nothing observes the document from here on; a verdict recorded now could
+    // not be trusted after the next apply().
+    forgetAbsentSelectors()
+  }
+
+  /**
+   * Observe the document for the two kinds of change that can make a cached-absent
+   * target discoverable again (see nodeOf): node insertion/removal, and the
+   * class / compat-stamp attributes the cached selectors match on.
+   *
+   * Body class writes are excluded by target: the layer toggles three body
+   * classes every tick, and counting those would invalidate the negative cache
+   * on every tick and restore the very scan this cache removes. They cannot
+   * create a target either — every cached selector matches an element other
+   * than <body>.
+   *
+   * The record queue is drained on a microtask, so this stays off the layout
+   * path; a chat turn's insertions are a handful per second, not per element.
+   */
+  function ensureDomObserver(): void {
+    if (domObserver !== null || typeof MutationObserver === 'undefined' || !document.body) return
+    domObserver = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === 'childList' || record.target !== document.body) {
+          noteDomChange()
+          return
+        }
+      }
+    })
+    domObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'data-dsh-frame'],
+    })
   }
 
   /** Start/stop the 600ms sync tick; a no-op when already in the asked state. */
@@ -441,88 +487,6 @@ export function startMobileAdapt(): void {
     }
   }
 
-  /**
-   * Compact picker (v79): a phone row cannot fit the desktop text triggers,
-   * so the model/effort entries become two icon buttons in the trailing
-   * row. Both forward to the official picker trigger (its menu renders as
-   * the bottom sheet) and then drill straight into the asked cell — model
-   * list or effort list — so one tap lands on the list, matching the
-   * cube-model / brain-effort mapping. The official context ring next to
-   * the send button keeps its own semantics untouched.
-   */
-  function removeCompactPicker(): void {
-    document.body.classList.remove(COMPACT_CLASS)
-    document.getElementById(MODEL_BTN_ID)?.remove()
-    document.getElementById(EFFORT_BTN_ID)?.remove()
-  }
-
-  function drillIntoPicker(kind: PickerKind): void {
-    const trigger = document.querySelector('[class$="_composerSeat"] [class$="_trailing"] [class$="_trigger"]:has([class$="_triggerEffort"])') as HTMLElement | null
-    if (trigger === null) return
-    trigger.click()
-    // The sheet mount takes a beat (observed ~0.2-0.6s on a cold phone
-    // mirror); poll until the asked cell exists instead of a fixed delay.
-    let tries = 0
-    const tapCell = (): void => {
-      tries += 1
-      const cells = Array.from(document.querySelectorAll('[class$="_composerSeat"] [class$="_menu"] [class$="_cell"]'))
-      // The official cell copy is localized (zh/en/ru), so the label match is
-      // only the fast path; the sheet's drill cells (label + value + chevron)
-      // are the structural anchor: model first, effort second, on every locale.
-      const byLabel = cells.find((c) => PICKER_CELL_PATTERN[kind].test(c.textContent ?? ''))
-      const drillable = cells.filter((c) => c.querySelector('[class*="_cellChevron"], [class*="_chevron"]'))
-      const cell = byLabel ?? drillable[DRILL_INDEX[kind]]
-      if (cell !== undefined) {
-        ;(cell as HTMLElement).click()
-        return
-      }
-      if (tries < 8) window.setTimeout(tapCell, 150)
-    }
-    window.setTimeout(tapCell, 150)
-  }
-
-  function makeCompactButton(id: string, title: string, icon: string, kind: PickerKind): HTMLButtonElement {
-    const btn = document.createElement('button')
-    btn.id = id
-    btn.type = 'button'
-    btn.dataset.dshPlugin = 'remote-web-ui'
-    btn.title = title
-    btn.setAttribute('aria-label', title)
-    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg>`
-    btn.addEventListener('click', () => { drillIntoPicker(kind) })
-    return btn
-  }
-
-  function syncCompactPicker(): void {
-    if (!active) return
-    const tools = nodeOf('[class$="_composerSeat"] [class$="_tools"]')
-    const trigger = tools?.parentElement?.querySelector('[class$="_triggerEffort"]')?.parentElement
-    if (tools === null || trigger === null) {
-      removeCompactPicker()
-      return
-    }
-    if (document.getElementById(MODEL_BTN_ID) === null) {
-      // The cell pattern matches the OFFICIAL picker cell text (the official
-      // client's own zh/en copy), not plugin-owned text.
-      tools.appendChild(makeCompactButton(MODEL_BTN_ID, surfaceText('mobile.composer.pickModel', 'Pick model'), CUBE_ICON, 'model'))
-    }
-    if (document.getElementById(EFFORT_BTN_ID) === null) {
-      tools.appendChild(makeCompactButton(EFFORT_BTN_ID, surfaceText('mobile.composer.pickEffort', 'Pick reasoning effort'), LEVELS_ICON, 'effort'))
-    }
-    // Titles re-read every tick so a locale switch (or the translate seat
-    // arriving after this layer installed) is picked up without a reload.
-    for (const [id, key, fallback] of [
-      [MODEL_BTN_ID, 'mobile.composer.pickModel', 'Pick model'],
-      [EFFORT_BTN_ID, 'mobile.composer.pickEffort', 'Pick reasoning effort'],
-    ] as const) {
-      const btn = document.getElementById(id)
-      if (btn === null) continue
-      const label = surfaceText(key, fallback)
-      btn.title = label
-      btn.setAttribute('aria-label', label)
-    }
-    document.body.classList.add(COMPACT_CLASS)
-  }
   /**
    * The official sidebar toggle in the logo row. The row's own `_toggle` class
    * is the precise anchor; the row's last button is the fallback for cohorts
@@ -702,7 +666,7 @@ export function startMobileAdapt(): void {
   const dragOverridden = new Map<Element, string | null>()
   function disableRowDrag(): void {
     if (!active) return
-    const rows = document.querySelectorAll('[class*="_sidebarCol"] [class*="_sessionRow"], [class*="_sidebarCol"] [class*="_projectRow"]')
+    const rows = sidebarRows()
     for (const row of rows) {
       if (row.getAttribute('draggable') !== 'false') {
         if (!dragOverridden.has(row)) dragOverridden.set(row, row.getAttribute('draggable'))
@@ -731,13 +695,88 @@ export function startMobileAdapt(): void {
    * node on a major re-render, which the isConnected guard detects.
    */
   const nodeCache = new Map<string, Element>()
+  /**
+   * Selectors known to be absent as of {@link domGeneration}. A miss is the
+   * common case, not the exception: the layer holds no overlay of its own, and
+   * several official surfaces it looks for (tabs row, tools row, sidebar rows)
+   * legitimately do not exist at once. Re-walking a conversation-sized document
+   * for the same absent selector on every 600ms tick was waste that almost
+   * always resolved to null: five document-wide lookups per tick on the measured
+   * fixture, zero after this cache. That is a lookup count — the wall-clock
+   * saving is real while the mounted content is quiet and shrinks to the
+   * row-scope saving when a turn streams (see the Agent Note for the harness and
+   * the before/after numbers).
+   *
+   * A miss is trusted only while the observed content has not changed, so a
+   * surface that appears is still found on the very next tick — the same
+   * discovery latency the unconditional probe had. The cache is never aged by a
+   * clock: it is cleared by {@link noteDomChange} while the observer is live and
+   * by {@link forgetAbsentSelectors} across the windows where it is not (apply
+   * and revert). One blind spot is deliberate and load-bearing: the observer
+   * watches <body>, so a head-resident target is not covered by that signal —
+   * the one such target is seeded into the cache where it is created (see
+   * ensureAdaptStyle).
+   */
+  const nodeMissCache = new Set<string>()
+  /**
+   * Bumped whenever a cached target may have appeared or disappeared. A surface
+   * qualifies on a class token or on the aggregate compat stamp
+   * (`data-dsh-frame`), so both insertions/removals AND those two attributes
+   * can change the answer. Nothing the layer writes per tick lands here: its own
+   * class writes are all on <body>, and its row/transform/label writes touch
+   * other attributes entirely (see ensureDomObserver).
+   */
+  let domGeneration = 0
+  /** The generation the negative cache was recorded against. */
+  let missGeneration = -1
+
+  function noteDomChange(): void {
+    domGeneration += 1
+  }
+
+  /**
+   * Drop every cached "absent" verdict. Called on apply and revert: while the
+   * observer is disconnected the layer is blind to insertions, so a verdict
+   * recorded before the gap could otherwise outlive the change that falsified
+   * it and be served without a probe. The positive cache needs no equivalent —
+   * its `isConnected` guard already re-resolves a replaced node.
+   */
+  function forgetAbsentSelectors(): void {
+    nodeMissCache.clear()
+    domGeneration += 1
+  }
+
   function nodeOf(selector: string): Element | null {
     const cached = nodeCache.get(selector)
-    if (cached !== undefined && cached.isConnected) return cached
+    if (cached !== undefined) {
+      // A node React replaced is no longer connected; drop it and fall through
+      // so the lookup below can find its replacement.
+      if (cached.isConnected) return cached
+      nodeCache.delete(selector)
+    }
+    if (missGeneration !== domGeneration) {
+      nodeMissCache.clear()
+      missGeneration = domGeneration
+    }
+    if (nodeMissCache.has(selector)) return null
     const found = document.querySelector(selector)
-    if (found === null) nodeCache.delete(selector)
-    else nodeCache.set(selector, found)
+    if (found === null) {
+      nodeMissCache.add(selector)
+      return null
+    }
+    nodeCache.set(selector, found)
     return found
+  }
+
+  /**
+   * The session/project rows the drag suppression covers, scoped to the cached
+   * sidebar root. Each row carries the sidebar column class as an ancestor, so
+   * the document-wide scan this replaces only ever returned rows from here.
+   */
+  function sidebarRows(): Element[] {
+    const sidebar = nodeOf(SIDEBAR_SELECTOR)
+    if (sidebar === null) return []
+    return Array.from(sidebar.querySelectorAll(ROW_SELECTOR))
   }
 
   /** The official application frame, through the same cached lookup. */
@@ -772,7 +811,6 @@ export function startMobileAdapt(): void {
     disableRowDrag()
     seatHeaderActions()
     alignActionsText()
-    syncCompactPicker()
   }
 
   // v67: on mobile the header actions (agent-preset mode label + background

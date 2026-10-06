@@ -67,6 +67,26 @@ export interface UsageDaySummary {
   totals: UsageTokenTotals
 }
 
+/**
+ * One local day aggregated per provider and model. The overview serves today
+ * through this shape and the day route serves any retained day with it, so a
+ * day the user picks in the browser and the live today card are the same
+ * document.
+ */
+export interface UsageDayView {
+  /** Local-date key `YYYY-MM-DD`. */
+  date: string
+  totals: UsageTokenTotals
+  /** Per-provider rows, heaviest by total tokens first. */
+  providers: UsageProviderSummary[]
+}
+
+/** The day route's response body. */
+export interface UsageDayResponse {
+  ok: true
+  day: UsageDayView
+}
+
 /** A balance fact normalized from a provider probe. */
 export interface BalanceView {
   /** ISO 4217 code the provider bills in (`CNY`, `USD`, ...). */
@@ -161,9 +181,16 @@ export interface UsageOverviewView {
     today?: UsageTokenTotals
   }
   usage: {
-    today: { date: string; totals: UsageTokenTotals; providers: UsageProviderSummary[] }
+    today: UsageDayView
     /** Last N local days ascending, including today. */
     days: UsageDaySummary[]
+    /**
+     * Every retained local day that recorded usage, ascending — the day
+     * picker's option list, reaching past the trend cap to the whole
+     * retention window. Optional so an older host document still renders
+     * (the section then offers no picker).
+     */
+    availableDays?: string[]
     /**
      * The same window aggregated per provider and model — the trend card's
      * bar-chart data. Optional so an older host document still renders.

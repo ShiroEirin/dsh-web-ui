@@ -52,7 +52,7 @@ const t: MarketCardProps['t'] = (key, params) => {
   return text.replace(/\{(\w+)\}/g, (match, name: string) => String(params[name] ?? match))
 }
 
-class FakeScope implements ConfigForm<MarketSettings> {
+export class FakeScope implements ConfigForm<MarketSettings> {
   value: MarketSettings
   base: MarketSettings
   user: Partial<MarketSettings> = {}
@@ -122,7 +122,7 @@ class FakeScope implements ConfigForm<MarketSettings> {
   }
 }
 
-function cardProps(
+export function cardProps(
   scope: ConfigForm<MarketSettings>,
   overrides: Partial<MarketCardProps> = {},
 ): ComponentProps<typeof MarketCard> {
@@ -270,6 +270,74 @@ describe('MarketCard', () => {
     await waitFor(() => expect(install).toHaveBeenCalledWith('dsh-tui'))
   })
 
+  it('user installs a plugin through the official in-process manager when the host publishes it', async () => {
+    // Given a loopback card whose host publishes the official manager's remote face
+    const install = vi.fn(async () => ({ id: 'dsh-tui', name: 'dsh-TUI', version: '1.0.0', source: { kind: 'npm', spec: 'dsh-tui' }, installedAt: '', enabled: true }))
+    const list = vi.fn(async () => [])
+    const face = { isLoopback: true, install, list, uninstall: vi.fn(), status: vi.fn(), onChange: vi.fn((): (() => void) => () => {}), failures: vi.fn(), setEnabled: vi.fn() }
+    const installBundle = vi.fn(async (_spec: string, _options?: { enabled?: boolean; requestId?: string }) => ({ ok: true as const, value: {} }))
+    render(<MarketCard {...cardProps(new FakeScope({}), {
+      remote: REMOTE,
+      gateway: null,
+      pluginManager: face as unknown as import('../src/client/plugin-manager-bridge.ts').PluginManagerService,
+      nativePluginManager: { installBundle },
+    })} />)
+
+    // When the user installs a plugin
+    fireEvent.click(screen.getByRole('tab', { name: /插件/ }))
+    fireEvent.click(screen.getByRole('button', { name: /一键安装/ }))
+
+    // Then the official manager performed it, activated for the next start, and
+    // the family writer was never asked
+    await waitFor(() => expect(installBundle).toHaveBeenCalledTimes(1))
+    expect(installBundle.mock.calls[0]?.[0]).toBe('dsh-tui')
+    expect(installBundle.mock.calls[0]?.[1]).toMatchObject({ enabled: true })
+    expect(install).not.toHaveBeenCalled()
+  })
+
+  it('user sees the official manager refusal as the install error', async () => {
+    // Given the official manager refuses the spec
+    const install = vi.fn(async () => ({ id: 'dsh-tui', name: 'dsh-TUI', version: '1.0.0', source: { kind: 'npm', spec: 'dsh-tui' }, installedAt: '', enabled: true }))
+    const list = vi.fn(async () => [])
+    const face = { isLoopback: true, install, list, uninstall: vi.fn(), status: vi.fn(), onChange: vi.fn((): (() => void) => () => {}), failures: vi.fn(), setEnabled: vi.fn() }
+    const installBundle = vi.fn(async (_spec: string, _options?: { enabled?: boolean; requestId?: string }) => ({ ok: false as const, error: { code: 'not-a-bundle', message: 'plugin-manager: not a bundle' } }))
+    render(<MarketCard {...cardProps(new FakeScope({}), {
+      remote: REMOTE,
+      gateway: null,
+      pluginManager: face as unknown as import('../src/client/plugin-manager-bridge.ts').PluginManagerService,
+      nativePluginManager: { installBundle },
+    })} />)
+
+    // When the user installs a plugin
+    fireEvent.click(screen.getByRole('tab', { name: /插件/ }))
+    fireEvent.click(screen.getByRole('button', { name: /一键安装/ }))
+
+    // Then the manager's own refusal is what the card reports
+    await waitFor(() => expect(screen.getByText(/安装失败：plugin-manager: not a bundle/).textContent).toBe('安装失败：plugin-manager: not a bundle'))
+    expect(install).not.toHaveBeenCalled()
+  })
+
+  it('user manages an installed plugin in the official Plugins page instead of here', async () => {
+    // Given an installed plugin and the official page's navigation face
+    const rows = [{ id: 'dsh-tui', name: 'dsh-tui', version: '1.0.0', source: { kind: 'npm' as const, spec: 'dsh-tui' }, installedAt: '', enabled: true }]
+    const face = { isLoopback: true, install: vi.fn(), list: vi.fn(async () => rows), uninstall: vi.fn(), status: vi.fn(), onChange: vi.fn((): (() => void) => () => {}), failures: vi.fn(), setEnabled: vi.fn() }
+    const openBundle = vi.fn()
+    render(<MarketCard {...cardProps(new FakeScope({}), {
+      remote: REMOTE,
+      gateway: null,
+      pluginManager: face as unknown as import('../src/client/plugin-manager-bridge.ts').PluginManagerService,
+      pluginNavigation: { openBundle },
+    })} />)
+
+    // When the user opens the plugins tab and uses the manage action
+    fireEvent.click(screen.getByRole('tab', { name: /插件/ }))
+    const manage = await screen.findByRole('button', { name: /在插件页管理/ })
+    fireEvent.click(manage)
+
+    // Then the official container is addressed with the installed package name
+    expect(openBundle).toHaveBeenCalledWith('dsh-tui')
+  })
+
   it('refuses an invalid manifest spec: shows an error and never calls pluginManager.install', async () => {
     const install = vi.fn(async () => ({ id: 'evil-plugin', name: 'evil', version: '1.0.0', source: { kind: 'git' as const, spec: '' }, installedAt: '', enabled: true }))
     const list = vi.fn(async () => [])
@@ -320,8 +388,10 @@ describe('MarketCard', () => {
       turnstileToken: async () => 'verified-token',
     })} />)
     fireEvent.click(screen.getByRole('button', { name: /赞 3/ }))
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    // The card also probes the installed snapshot on mount, so the like is the
+    // call that carries a Turnstile token, not simply the first one.
+    await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/api/like'))).toBe(true))
+    const [url, init] = fetchMock.mock.calls.find(([u]) => String(u).includes('/api/like')) as [string, RequestInit]
     expect(String(url)).toContain('/api/like')
     const headers = new Headers(init.headers)
     expect(headers.has('x-dsh-market-client')).toBe(false)

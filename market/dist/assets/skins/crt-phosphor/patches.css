@@ -1,0 +1,239 @@
+/**
+ * Phosphor CRT — L3 free selectors.
+ *
+ * Layer plan (bottom to top):
+ *   1. the scene is the lit phosphor: scanlines, halation and vignette are baked
+ *      into the artwork, so they scale with the image instead of beating against
+ *      the device pixel ratio (drawn scanlines in CSS produced an obvious moire
+ *      band that read as "a few thick lines sweeping around");
+ *   2. #root::before is the glass: vignette plus a slow breathing luminance;
+ *   3. #root::after is the bloom: a faint screen-wide phosphor wash with a rare,
+ *      shallow flicker;
+ *   4. body::before / body::after are the two portraits, still pinned to the
+ *      input card's left and right edges so they follow both drawers.
+ *
+ * `--crt-portrait-filter` is the one knob for the girls: leave it as is for
+ * natural colour with a phosphor rim, or switch it to a duotone for ghosts.
+ */
+
+/* --- keep the declarative backgroundMedia layer paintable --- */
+[id="root"] {
+  background: none;
+  position: relative;
+}
+
+body {
+  isolation: isolate;
+  letter-spacing: 0.02em;
+  caret-color: #3dff9e;
+  /* one knob for the portraits: natural colour + rim, or full phosphor ghost */
+  --crt-portrait-filter: saturate(0.95) contrast(1.04) brightness(1.02);
+}
+
+[class*="_frame"] {
+  background: transparent !important;
+  box-shadow: inset 0 0 0 1px #3dff9e2b, inset 0 0 120px #0000008c;
+}
+
+/* --- 2. the glass: vignette + breathing --- */
+#root:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background: radial-gradient(128% 108% at 50% 50%, #00000000 56%, #0000008a 100%);
+  mix-blend-mode: multiply;
+  animation: crt-breathe 7.5s ease-in-out infinite;
+}
+
+@keyframes crt-breathe {
+  0%, 100% { opacity: 0.94; }
+  50% { opacity: 1; }
+}
+
+/* --- 3. the bloom: faint wash + a rare, shallow flicker --- */
+#root:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 61;
+  pointer-events: none;
+  background: radial-gradient(120% 92% at 50% 46%, #3dff9e14 0%, #3dff9e00 68%);
+  mix-blend-mode: screen;
+  animation: crt-flicker 9s ease-in-out infinite;
+}
+
+@keyframes crt-flicker {
+  0%, 100% { opacity: 0.97; }
+  38% { opacity: 1; }
+  39.4% { opacity: 0.9; }
+  40.6% { opacity: 1; }
+  77% { opacity: 0.95; }
+  78% { opacity: 1; }
+}
+
+/* --- 4. the portraits, anchored to the input card --- */
+[data-composer-card],
+[data-composer-seat],
+[data-dsh-surface="composer"] {
+  anchor-name: --crt-composer;
+}
+
+body:before,
+body:after {
+  content: "";
+  position: fixed;
+  z-index: 900; /* above every shell surface, below the whale widget at 9999 */
+  bottom: clamp(-30px, -2vh, -10px);
+  /* click-through: the click is hit-tested in hooks.mjs, so the portraits must
+     not swallow pointer events */
+  pointer-events: none;
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center bottom;
+  background-size: auto, contain;
+  opacity: 1;
+  filter: var(--crt-portrait-filter) drop-shadow(0 0 16px #3dff9e4d) drop-shadow(0 22px 30px #00000073);
+  transition: left 0.3s cubic-bezier(0.22, 0.78, 0.2, 1), right 0.3s cubic-bezier(0.22, 0.78, 0.2, 1), height 0.6s cubic-bezier(0.22, 0.78, 0.2, 1), filter 0.25s linear;
+}
+
+body:before {
+  left: 40vw;
+  left: anchor(--crt-composer left, 40vw);
+  translate: -100% 0;
+  height: clamp(340px, 62vh, 780px);
+  aspect-ratio: 609 / 1800;
+  width: auto;
+  background-image:
+    radial-gradient(58% 46% at 55% 72%, #3dff9e26, #3dff9e00 72%),
+    url("assets/lucy-signal-left.webp");
+}
+
+body:after {
+  left: 80vw;
+  left: anchor(--crt-composer right, 80vw);
+  height: clamp(460px, 76vh, 1040px);
+  aspect-ratio: 915 / 1800;
+  width: auto;
+  background-image:
+    radial-gradient(58% 46% at 45% 72%, #3dff9e26, #3dff9e00 72%),
+    url("assets/lucy-signal-right.webp");
+}
+
+/* --- 5. phosphor bloom on text --- */
+body :is(
+  p, span, div, a, button, label, li, code, pre, kbd, samp, small, strong, em,
+  h1, h2, h3, h4, h5, h6, td, th, blockquote, input, textarea, summary, time
+) {
+  text-shadow: 0 0 1px #3dff9e59, 0 0 6px #3dff9e26;
+}
+
+/* --- headings: a hair of chromatic fringe, like a slightly mis-converged tube --- */
+:is(h1, h2, h3, [class*="headline"], [class*="Headline"]) {
+  text-shadow:
+    0 0 2px #3dff9e8c,
+    0 0 14px #3dff9e40,
+    -0.4px 0 #ff4d8d40,
+    0.4px 0 #24ffe059;
+  letter-spacing: 0.04em;
+}
+
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: #3dff9e;
+  color: #02150c;
+  text-shadow: none;
+}
+
+:focus-visible {
+  outline: 1px solid #3dff9e99;
+  outline-offset: 1px;
+}
+
+/* --- the composer is the command line --- */
+:is([data-composer-card], [data-composer-seat], [data-dsh-surface="composer"]) {
+  box-shadow: 0 0 0 1px #3dff9e40, 0 0 26px #3dff9e1a inset;
+}
+
+:is([data-composer-card], [data-composer-seat]) textarea,
+:is([data-composer-card], [data-composer-seat]) [contenteditable] {
+  font-family: var(--dsw-font-family);
+  letter-spacing: 0.03em;
+}
+
+:is([data-conversation-scroll], [data-dsh-part="scrollport"]) {
+  scrollbar-color: #3dff9e57 transparent;
+  scrollbar-width: thin;
+}
+
+/* --- accessibility: no moving tube at all --- */
+@media (prefers-reduced-motion: reduce) {
+  #root:before,
+  #root:after {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* --- narrow windows: the left portrait has no wing, like the other skins --- */
+@media (width <= 900px) {
+  body:before,
+  body:after {
+    display: none;
+  }
+}
+
+
+/* --- 6. no interaction in the published skin ---
+ *
+ * The repository's optional hooks.mjs lets a click on either portrait answer with
+ * a random line. This submitted variant is declare-only on purpose: the skin
+ * contract reserves `facets.client` for built-in skins ("not - and will not
+ * evolve into - the default entry for out-of-repo executable extensions").
+ *
+ * Two measured reasons the same feature cannot be done in CSS alone:
+ *   1. `body::before:hover` / `::after:active` are invalid selectors in Chromium,
+ *      and one invalid member drops the whole selector list it appears in;
+ *   2. a pseudo-element is never the hover/click target - the pointer lands on the
+ *      originating element's box.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  body:before,
+  body:after {
+    transition: none;
+  }
+}
+
+
+/* --- 7. the details pane yields the space she stands in ---
+ *
+ * With the pane open the input card's right edge sits about 28px left of it while
+ * the right portrait is roughly 352px wide, so she lies across the pane content.
+ * The element that actually lays that content out is the pane host
+ * (`[class*="_pane_"]` under `[data-rightbar-col]`); padding on the pane itself
+ * does nothing. Insetting the host by her width moves its first card clear of her
+ * band (measured on the live shell: card left 1134 -> 1326, her band 911..1263).
+ */
+[class*="_frame"]:not([data-rightbar-collapsed]) [data-rightbar-col] [class*="_pane_"] {
+  padding-left: calc(clamp(460px, 76vh, 1040px) * 0.5083333 + 14px) !important;
+  box-sizing: border-box;
+}
+
+[class*="_frame"]:not([data-rightbar-collapsed]) [data-rightbar-col] [class*="webview"] {
+  margin-left: clamp(48px, calc(clamp(460px, 76vh, 1040px) * 0.11), 118px) !important;
+}
+
+/* --- the details pane yields the space she stands in ---
+ * With the pane open the input card's right edge sits only ~28px left of it while
+ * the right portrait reaches ~220px into it; inset the pane host (which lays the
+ * content out) and give the embedded browser's page surface its own margin so she
+ * rests a hair over the page instead of burying it.
+ */
+[class*="_frame"]:not([data-rightbar-collapsed]) [data-rightbar-col] [class*="_pane_"] {
+  padding-left: clamp(24px, calc(clamp(460px, 76vh, 1040px) * 0.13), 140px) !important;
+  box-sizing: border-box;
+}

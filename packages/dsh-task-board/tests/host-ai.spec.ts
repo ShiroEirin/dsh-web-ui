@@ -8,29 +8,44 @@ import {
   TaskParseError,
 } from '../src/host-ai.ts'
 
-/** An llm service that yields the supplied text and records the request. */
+/**
+ * An llm service in the shape the board dispatches through.
+ *
+ * Production reaches the adapter via the registration-bound
+ * `prepareCall(config).stream(request)` handle (see src/host/llm-dispatch.ts),
+ * so the double offers that pair and records the merged request in `calls`. A
+ * double that only stubbed the public `stream` would hide a regression onto
+ * the mutable public method.
+ */
 function fakeLlm(chunks: readonly string[], calls: GenerateOptions[] = []): LlmRuntime {
+  const text = (): AsyncIterable<StreamChunk> => (async function * () {
+    for (const piece of chunks) yield { type: 'text-delta', index: 0, text: piece }
+  })()
   return {
-    stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-      calls.push(options)
-      return (async function * () {
-        for (const text of chunks) yield { type: 'text-delta', index: 0, text }
-      })()
-    },
+    prepareCall: async (config: GenerateOptions) => ({
+      config,
+      stream: (request: GenerateOptions) => {
+        // What the adapter would see: the resolved config with the assembled
+        // request layered over it.
+        calls.push({ ...config, ...request })
+        return text()
+      },
+    }),
   } as unknown as LlmRuntime
 }
 
 /** An llm service that only settles when the caller aborts. */
 function stallingLlm(): LlmRuntime {
   return {
-    stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-      return (async function * () {
+    prepareCall: async (config: GenerateOptions) => ({
+      config,
+      stream: (request: GenerateOptions): AsyncIterable<StreamChunk> => (async function * () {
         await new Promise((_resolve, reject) => {
-          options.signal?.addEventListener('abort', () => { reject(new Error('aborted')) }, { once: true })
+          request.signal?.addEventListener('abort', () => { reject(new Error('aborted')) }, { once: true })
         })
         yield { type: 'text-delta', index: 0, text: 'never' }
-      })()
-    },
+      })(),
+    }),
   } as unknown as LlmRuntime
 }
 
@@ -91,12 +106,47 @@ describe('task parse through the llm service', () => {
     expect(calls[0]!.messages[0]!.content).toEqual([{ type: 'text', text: 'ship the release' }])
   })
 
+  it('user pasting text still gets a draft when a provider plugin replaced the public llm stream', async () => {
+    // Given: a provider plugin that replaced the public single-argument
+    // stream() with its llm/stream listener signature (the shape that raised
+    // "next(...) is not a function or its return value is not async iterable").
+    const calls: GenerateOptions[] = []
+    const runtime = fakeLlm(['{"title":"Ship it","description":"","prompt":"ship"}'], calls) as unknown as {
+      stream: () => never
+    }
+    runtime.stream = () => { throw new TypeError('next(...) is not a function or its return value is not async iterable') }
+    // When: the paste is parsed against that runtime
+    const draft = await parseTaskDraft(runtime as unknown as LlmRuntime, { text: 'ship it', model: 'deepseek/deepseek-chat' })
+    // Then: the parse still succeeds and the request went to the prepared path.
+    expect(draft.title).toBe('Ship it')
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.provider).toBe('deepseek')
+  })
+
+  it('user on a runtime that exposes no prepareCall still gets a draft from the public stream', async () => {
+    // Given: a runtime that only offers the historical public stream(options)
+    const calls: GenerateOptions[] = []
+    const llm = {
+      stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+        calls.push(options)
+        return (async function * () {
+          yield { type: 'text-delta', index: 0, text: '{"title":"Old","description":"","prompt":"old"}' }
+        })()
+      },
+    } as unknown as LlmRuntime
+    // When: the paste is parsed
+    const draft = await parseTaskDraft(llm, { text: 'old note', model: 'deepseek/deepseek-chat' })
+    // Then: an older or proxied service keeps working.
+    expect(draft.title).toBe('Old')
+    expect(calls).toHaveLength(1)
+  })
+
   it('fails with no-model when no route was selected', async () => {
     await expect(parseTaskDraft(fakeLlm([]), { text: 'hello' })).rejects.toMatchObject({ code: 'no-model' })
   })
 
   it('reports an adapter failure as a model error', async () => {
-    const llm = { stream: () => { throw new Error('NO_ADAPTER') } } as unknown as LlmRuntime
+    const llm = { prepareCall: async () => { throw new Error('NO_ADAPTER') } } as unknown as LlmRuntime
     const failure = await parseTaskDraft(llm, { text: 'hello', model: 'p/m' }).catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(TaskParseError)
     expect((failure as TaskParseError).code).toBe('model-error')

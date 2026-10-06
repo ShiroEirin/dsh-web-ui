@@ -56,8 +56,9 @@ for (const file of files) {
 
 // The root alias bundle is part of the released contract: its own version is
 // what a git or link install reports, and its aggregate dependency must be the
-// exact tag version, or an install keeping an older lockfile entry mounts patch
-// rows the installed aggregate cannot export (issue #1442).
+// release-line caret whose base is the tag version; a spec that keeps resolving
+// an aggregate older than the shipped patch mounts rows the installed aggregate
+// cannot export (issue #1442).
 try {
   const rootManifest = JSON.parse(readFileSync(resolve(REPO_ROOT, 'package.json'), 'utf8'))
   const rootMismatches = [rootVersionMismatch(rootManifest, version), rootAggregatePinMismatch(rootManifest, version)]
@@ -73,4 +74,6 @@ try {
 }
 
 if (mismatch) process.exit(1)
-console.log(`[verify-version] all ${files.length} packages, the root version and the root aggregate pin match v${version}`)
+console.log(
+  `[verify-version] all ${files.length} packages, the root version and the root aggregate caret ^${version} match v${version}`,
+)

@@ -10,7 +10,7 @@ issue #1540 希望看板能把粘贴进来的文本（例如从聊天软件复�
 
 新建任务表单带了粘贴框、模型下拉和一个动作按钮。下拉用的是任务自身「模型」下拉那份 `executionOptions.models` 列表，默认选中第一项。`POST {TASK_BOARD_API_PREFIX}/parse` 挂在看板既有的回环与同源围栏之后，接收 `{ text, model }`，返回 `{ ok: true, draft }` 或带类型的失败；失败码对应状态码：`no-model` 503，`parse-failed` 与 `model-error` 502，`timeout` 504。客户端把每个码翻成当前语言，表单里不会出现状态码。
 
-宿主在每次请求时按需取 `llm` 服务，并且刻意不把它写进插件的 `inject`：没有模型的部署也必须能挂载整个看板，此时路由回 `no-model`，而不是插件加载失败。解析用一次 `llm.stream` 调用，路由取自限定的 `provider/model`，system 提示要求只回一个 JSON 对象，预算 45 秒，并接入「客户端断开即中止」。提取会去掉代码围栏、读取第一个 JSON 对象；回复不可用时标题与 Prompt 回退到用户粘贴的原文，用户写的东西不会丢。
+宿主在每次请求时按需取 `llm` 服务，并且刻意不把它写进插件的 `inject`：没有模型的部署也必须能挂载整个看板，此时路由回 `no-model`，而不是插件加载失败。解析用一次单次调用（经 `src/host/llm-dispatch.ts` 以官方 agent loop 使用的、绑定注册代的 `prepareCall(config).stream(request)` 派发，仅在运行时根本不提供 `prepareCall` 时回退到公开的 `llm.stream(options)`——公开方法只是一个可被第三方 provider 插件替换成其 `llm/stream` 监听器签名的可变实例属性），路由取自限定的 `provider/model`，system 提示要求只回一个 JSON 对象，预算 45 秒，并接入「客户端断开即中止」。提取会去掉代码围栏、读取第一个 JSON 对象；回复不可用时标题与 Prompt 回退到用户粘贴的原文，用户写的东西不会丢。
 
 解析结果只填标题、描述和执行 Prompt 三个字段。在用户提交之前不会有任何内容进入账本，因此模型无法自行创建或执行任务。
 

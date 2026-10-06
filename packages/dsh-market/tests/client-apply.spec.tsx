@@ -65,6 +65,11 @@ function makeCtx() {
       bind: () => (key: string) => key,
     },
     get: () => undefined,
+    // cordis ctx.inject, as the optional official-face bridges use it: the
+    // callback gets this same context, and since this host publishes neither
+    // face both bridges settle to null. The injections are not counted, because
+    // the assertion below is about the settings.section slot injection.
+    inject: (_name: string, fn: (inner: unknown) => unknown) => { fn(fakeCtx); return () => {} },
     configForms: {
       get: (entryId: string) => { requested.push(entryId); return marketForm },
       // The describe mirror names the profile rows this Host serves. It answers
@@ -165,6 +170,7 @@ describe('dsh-web-ui-market client store registration', () => {
         bind: () => (key: string) => key,
       },
       get: () => undefined,
+      inject: (_name: string, fn: (inner: unknown) => unknown) => { fn(fakeCtx); return () => {} },
       configForms: { get: () => marketForm },
       slots: {
         inject: (_name: string, fn: () => unknown) => { fn(); return () => {} },

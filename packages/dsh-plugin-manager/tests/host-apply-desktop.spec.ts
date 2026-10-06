@@ -30,6 +30,7 @@ const ROUTES = [
   '/api/plugin-manager/list',
   '/api/plugin-manager/mode',
   '/api/plugin-manager/remove',
+  '/api/plugin-manager/restart',
   '/api/plugin-manager/set-enabled',
   '/api/plugin-manager/status',
   '/api/plugin-manager/update',

@@ -248,6 +248,62 @@ describe('bridge describe', () => {
     }
   })
 
+  it('serves every sub-namespace one entry declares, not only the first (#1755)', async () => {
+    // The skin center registers ONE profile row whose Config nests three
+    // sub-namespaces. The Host serves one descriptor for that row, keyed by the
+    // entry id, so the family cards addressing 'skin-wallpaper' and
+    // 'skin-custom-theme' must resolve through the same entry id — otherwise
+    // the allowlist could never intersect them in and every write to them was
+    // refused as settings-not-exposed.
+    const { seam } = fakeSettings({
+      'web-ui-skin-center': {
+        value: {
+          'skin-background': { enabled: true, backgroundOpacity: 0 },
+          'skin-custom-theme': { version: 1, applied: false },
+          'skin-wallpaper': { enabled: true, selection: '2907017628' },
+        },
+        revision: 1,
+      },
+    })
+    const handlers = makeBridgeHandlers(deps(seam, AGGREGATE_ROWS))
+    const result = await handlers.describe()
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value.namespaces.map(view => [view.ns, view.entryId])).toEqual([
+      ['skin-background', 'web-ui-skin-center'],
+      ['skin-custom-theme', 'web-ui-skin-center'],
+      ['skin-wallpaper', 'web-ui-skin-center'],
+    ])
+  })
+
+  it('writes a declared sub-namespace through its own entry id (#1755)', async () => {
+    const { seam, writes } = fakeSettings({
+      'web-ui-skin-center': {
+        value: {
+          'skin-background': { enabled: true },
+          'skin-wallpaper': { enabled: true, selection: '2907017628' },
+        },
+        revision: 2,
+      },
+    })
+    const handlers = makeBridgeHandlers(deps(seam, AGGREGATE_ROWS))
+    const result = await handlers.mutate({
+      ns: 'skin-wallpaper',
+      ops: [{ op: 'set', path: ['skin-wallpaper', 'enabled'], value: false }],
+      expectedRevision: 2,
+    })
+    // The Host knows only the entry id; the bridge owns the namespace prefix.
+    expect(writes).toEqual([{
+      ns: 'web-ui-skin-center',
+      ops: [{ op: 'set', path: ['skin-wallpaper', 'enabled'], value: false }],
+      expectedRevision: 2,
+    }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value.ns).toBe('skin-wallpaper')
+    expect(result.value.entryId).toBe('web-ui-skin-center')
+  })
+
   it('returns an empty list when nothing on the allowlist is registered', async () => {
     const { seam } = fakeSettings({ 'web-search-deepseek': { value: {}, revision: 1 } })
     const handlers = makeBridgeHandlers(deps(seam, []))

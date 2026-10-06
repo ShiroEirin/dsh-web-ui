@@ -119,3 +119,17 @@ function isRowMatch(entry: PluginEntryLike, item: InstalledPluginItem): boolean 
 export function entryInstalled(entry: PluginEntryLike, installed: readonly InstalledPluginItem[]): InstalledPluginItem | null {
   return installed.find((item) => isRowMatch(entry, item)) ?? null
 }
+
+/**
+ * The installed dependency name the official Plugins page addresses for one
+ * entry: the installed row's own id when the entry is installed, else the
+ * entry's npm package name without its version/tag suffix, else its id.
+ * @param entry - one store plugin entry.
+ * @param installed - the installed-row snapshot (may be empty).
+ * @returns the package name to hand to `pluginNavigation.openBundle`.
+ */
+export function managePackageName(entry: PluginEntryLike, installed: readonly InstalledPluginItem[]): string {
+  const row = entryInstalled(entry, installed)
+  if (row !== null) return row.id
+  return entry.npm === undefined ? entry.id : stripVersion(entry.npm)
+}

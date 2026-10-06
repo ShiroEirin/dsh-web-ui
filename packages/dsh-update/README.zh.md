@@ -1,15 +1,25 @@
-# dsh-update
+# dsh-update · DeepSeek Harness (DSH) 插件生态版本检查与自动更新提醒
 
 [English](README.md) | 中文
-> dsh web GUI 家族自更新插件：侧边栏设置席位旁的下载触发器，探测 npm 上更新的
-> `@linxin666/dsh-web-*` 版本，并在当前 profile 内执行 `pnpm update --latest`。
 
-本仓库是 DeepSeek Harness（DSH）的外部插件包，双半区结构：host 半区挂载
-`/api/update` 路由族，browser 半区渲染侧边栏触发器与更新面板。
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-update?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
 
-该能力刻意做成**独立插件行**（行 id `update`，聚合行 `web-ui-update`），而不是
-`dsh-remote-web-ui` 的一个席位：关闭远程访问、甚至整体禁用远程访问插件，都不
-应该把更新入口一起带走。
+<p align="center">
+  <strong>DeepSeek Harness（DSH）官方 Web GUI 与桌面客户端插件版本检查与一键更新套件</strong><br>
+  <em>侧边栏底栏下载按钮 · npm 自动探测 · 聚合包与独立包更新 · Release 说明拉取 · 重启生效提醒</em>
+</p>
+
+> dsh web GUI 家族自更新插件：侧边栏设置席位旁的下载触发器，探测 npm 上更新的 `@linxin666/dsh-web-*` 版本，并在当前 profile 内执行 `pnpm update --latest`。
+
+本仓库是 DeepSeek Harness（DSH）的外部插件包，双半区结构：host 半区挂载 `/api/update` 路由族，browser 半区渲染侧边栏触发器与更新面板。
+
+该能力刻意做成**独立插件行**（行 id `update`，聚合行 `web-ui-update`），而不是 `dsh-remote-web-ui` 的一个席位：关闭远程访问、甚至整体禁用远程访问插件，都不应该把更新入口一起带走。
 
 ## 功能
 
@@ -26,7 +36,7 @@
 
 ## 环境要求
 
-- DSH `>= 0.1.7-rc.2`。
+- DSH `>= 0.2.0-rc.2`。
 - profile 需通过 npm 持有家族包：聚合包 `@linxin666/dsh-web-all`，或直接安装的
   家族包。家族包以本地 `link:` 方式安装的 profile 会报告为**本地开发模式**并拒绝
   更新（请改为同步本地仓库）。

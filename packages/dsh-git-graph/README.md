@@ -1,32 +1,38 @@
-# dsh-git-graph
+# dsh-git-graph · Visual Git Commit Graph & Multi-Agent Worktree Isolation for DeepSeek Harness (DSH)
 
 English | [中文](README.zh.md)
 
-External dsh Web GUI plugin: a **git branch selector** and **Git graph** panel. The selector appears only in blank sessions, in the context hole of the official input selector row (`conversation.input.selector.context`, a session-maybe list slot) next to the official workspace selector pill. If the running shell does not declare that slot (the npm SDK rc.6 removed it), it waits `CONTEXT_FALLBACK_MS` then falls back to `conversation.input.dock`; in its blank-session hero phase the chip lifts into the official hero row immediately after the agent-preset seat, using the same transparent 28px pill recipe and `--dsw-*` theme tokens as the official workspace and preset chips. Active sessions expose no branch-selection control. Git capabilities run in the host process (checkout-tree `git switch`) and the UI is browser React; workspace selection remains the official entry.
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-git-graph?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
 
-Behavior aligns with ZCode's `GitBranchSwitcher`: searchable popover, a checkmark on the current item, bottom actions "创建并检出新分支… / Git 图谱" (Create and check out new branch… / Git graph), a switch guard (unresolved conflicts / an operation in progress / the target branch checked out by another worktree) and readable errors.
+<p align="center">
+  <strong>Visual Git Commit Graph & Multi-Agent Worktree Isolation for DeepSeek Harness (DSH)</strong><br>
+  <em>Interactive Commit Graph · Blank-Session Branch Switcher · Worktree Isolation · Conflict Prevention · Security Guards</em>
+</p>
+
+An external plugin for DeepSeek Harness (DSH) Web GUI and official desktop client: featuring an **interactive Git branch switcher** and a **visual Git commit graph** panel. The branch switcher appears exclusively on blank conversations, mounting into the shell's context slot (`conversation.input.selector.context`) alongside the workspace chip. If the running shell does not declare that slot, it falls back to `conversation.input.dock` after `CONTEXT_FALLBACK_MS`. In blank conversation hero state, the chip elevates into the hero row directly right of the agent-preset chip, styled with authentic 28px pill layout and `--dsw-*` theme tokens. Active sessions hide the switcher. Git operations run in the host process (`git switch`) while the UI renders via React.
+
+Mirrors ZCode's `GitBranchSwitcher` behavior: searchable dropdown, active checkmark, "Create and switch branch... / Git Graph" footer actions, safety guards (unresolved merge conflicts, operations in progress, branch locked by other worktrees), and clear error diagnostics.
 
 ## Repository layout and build
 
-Kept as a sibling of the DeepSeek Harness main repo (sibling checkout, same turtle-ui layout; the path is arbitrary, below is only an example):
-
-```text
-~/code/deepseek-harness   # deepseek-harness checkout (sibling)
-~/code/dsh-git-graph      # this repository
-```
-
-All peer APIs come from the sibling checkout's source (tsconfig resolves via the paths of `../deepseek-harness/tsconfig.base.json`; when the sibling directory has a different name, replace the `../deepseek-harness` relative path in the tsconfig files with the actual directory). The type gate is `pnpm run typecheck` (`tsc -b`, which also builds the sibling packages referenced by `references`, writing declaration artifacts into the sibling's `lib/` — the same design as turtle-ui).
+The plugin is a self-contained cordis plugin package inside the dsh-web family monorepo (see "Generic install" below); no DeepSeek Harness source checkout is involved. All peer APIs come from the official `@deepseek-ai/*` npm SDK declared in `devDependencies`, resolved from `node_modules`, and the type gate is `pnpm run typecheck` (`tsc -b` over the package's own host and client programs).
 
 ```sh
 pnpm install
-pnpm run typecheck   # tsc -b (including sibling referenced projects)
+pnpm run typecheck   # tsc -b (host + client programs)
 pnpm test            # vitest (core pure functions / real git service / jsdom components)
 pnpm run build       # tsc -b && tsdown (lib/index.js + lib/invariant.js + lib/client.js)
 ```
 
-`lib/client.js` is the browser bundle (a closure-factory artifact, `window.__ModuleLoader__.load`), served by the host's client-modules at `/plugins/<id>/client.js`; the build presets `build/tsdown.client.ts` + `build/web/src/platform.ts` are copies taken from the main repo's `packages/client/tsdown.client.ts` / `packages/client/web/src/platform.ts`, and must be kept in sync when the main repo changes.
+`lib/client.js` is the browser bundle (a closure-factory artifact, `window.__ModuleLoader__.load`), served by the host's client-modules at `/plugins/<id>/client.js`; both `tsdown.config.ts` and `tsdown.prepare.config.ts` import the one shared client preset at `shared/tsdown.client.ts` (with the browser platform seed table it reads), and the package keeps no copy of either.
 
-Git installs (consumer machines without a sibling checkout) go through the `prepare` script: `tsdown --config tsdown.prepare.config.ts` transpiles directly from src without type checking (`tsconfig.prepare.json` is self-contained).
+Git installs go through the `prepare` script: `tsdown --config tsdown.prepare.config.ts` transpiles directly from src without type checking (`tsconfig.prepare.json` is self-contained).
 
 ## Activation
 

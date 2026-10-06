@@ -14,10 +14,12 @@ import { readJsonBody, withIdentityEncoding, writeJson } from './http.ts'
 import { isLoopbackRequest } from './loopback.ts'
 import { detectOfficialChannels, findDshBinary, spawnDsh, unsafeSpecReason, type CliGateway } from './gateway.ts'
 import { dshRequirementOf, meetsMinimumDsh, parseDshVersion } from '../core/version.ts'
-import { readPatchText, readProfileManifest, type ProfileFacts } from './profile.ts'
+import { readManifestVersion, readPatchText, readProfileManifest, type ProfileFacts } from './profile.ts'
 import { legacyMigrationFor, targetSpecForLegacy } from './legacy-migration.ts'
 import { setRowEnabled, writePatchAtomic } from './rows.ts'
+import { runDetached } from './detached-work.ts'
 import { buildPluginRow, claimedEntryRowsOf, findRowOwner, LOCKED_ENTRY_IDS, snapshotGateway } from './state.ts'
+import { performRestart, planRestart, type RestartFacts, type RestartRuntime } from './restart.ts'
 import { createOutputCapture, type OutputCapture } from './console-output.ts'
 
 /** Route prefix the browser half mirrors. */
@@ -47,15 +49,33 @@ const VERSION_PROBE_COOLDOWN_MS = 60_000
 export interface GatewayRouteDeps {
   facts: ProfileFacts
   gateway: CliGateway
-  /** Resolve the dsh binary presence (the CLI is the write path). */
+  /**
+   * Resolve the dsh binary presence. Only the CLI-backed writer needs it: an
+   * application-owned profile writes through the official in-process manager
+   * (`gateway.usesNativeWriter()`), so its routes must not demand a binary.
+   */
   cliAvailable: () => boolean
   /** Registry fetch seam for update checks (test seam); the default reads the
    * `/<name>/latest` manifest including the `dsh` / `engines` metadata. */
   fetchManifest?: (name: string) => Promise<RegistryVersionManifest | undefined>
-  /** Running DSH host version seam (test seam); the default probes `dsh --version`. */
+  /**
+   * Running DSH host version seam (test seam). The default reads the version of
+   * the running installation in process, then falls back to `dsh --version`.
+   */
   dshVersion?: () => Promise<string | undefined>
+  /**
+   * The running installation's own `@deepseek-ai/dsh` package.json, when the
+   * launcher published one. It is the primary version source: the file belongs
+   * to the runtime this process booted, so reading it needs no subprocess and no
+   * PATH — which a packaged Desktop host does not have (issue #1819).
+   */
+  installAnchor?: string
   /** Official-channel detection seam (test seam); defaults to the boot dump probe. */
   officialChannels?: () => Promise<boolean>
+  /** Launch-fact seam for the restart route (test seam); defaults to this process. */
+  restartFacts?: () => RestartFacts
+  /** Restart effect seam (test seam); defaults to the detached helper plus a real exit. */
+  restartRuntime?: RestartRuntime
 }
 
 /** Error text for a caught request or lifecycle failure. */
@@ -94,11 +114,35 @@ async function fetchRegistryManifest(name: string): Promise<RegistryVersionManif
 }
 
 /**
- * Read the running DSH host version through `dsh --version` (the CLI is the
- * gateway's write path already; this package has no in-process source).
- * Returns undefined when the binary is unavailable or the output is not a
- * plain semver; callers treat an unknown host version as a fail-closed
- * verdict for declared requirements (issue #754).
+ * Read the running DSH host version out of the installation's own manifest.
+ *
+ * The launcher publishes the `@deepseek-ai/dsh` package.json it booted from on
+ * `profileContext.installAnchor`; that manifest's `version` is by construction
+ * the version of the DSH this host is running. It is the primary source because
+ * it is the only one a packaged Desktop install can answer: there the CLI is not
+ * on PATH, every `.bin` shim is stripped from the installer, and the private
+ * host package ships no `lib/bin.js` to run (issue #1819). A runtime that
+ * publishes no anchor (or one whose manifest cannot be read) falls through to
+ * {@link probeDshVersion}.
+ * @param installAnchor - the published anchor path, when there is one.
+ * @returns the running version, or undefined when it cannot be read.
+ */
+function readInstalledDshVersion(installAnchor: string | undefined): string | undefined {
+  if (installAnchor === undefined) return undefined
+  return readManifestVersion(installAnchor)
+}
+
+/**
+ * Read the running DSH host version through `dsh --version`.
+ *
+ * This is the FALLBACK source, used only when the installation's own manifest
+ * could not be read. It costs a subprocess and needs a CLI this host can reach,
+ * which a packaged Desktop host cannot: the launcher puts only `node` on its
+ * PATH, the installer strips every `node_modules/.bin`, and the private host
+ * package ships no `lib/bin.js` (issue #1819). Returns undefined when the
+ * binary is unavailable or the output is not a plain semver; callers treat an
+ * unknown host version as a fail-closed verdict for declared requirements
+ * (issue #754).
  */
 async function probeDshVersion(cliAvailable: () => boolean): Promise<string | undefined> {
   if (!cliAvailable()) return undefined
@@ -140,6 +184,22 @@ function isDirectRegistrySpec(spec: string): boolean {
 }
 
 /**
+ * The package name of a spec that names no version, or undefined when the
+ * caller already chose one.
+ *
+ * A scoped name's `@` opens the scope, so only a `@` after the scope counts as
+ * a version separator; every other separator form (`name@1.2.3`, `name@next`,
+ * `name@^1`) yields undefined and is passed through untouched.
+ * @param spec - the install spec the caller supplied.
+ * @returns the bare package name when the spec is unversioned.
+ */
+function barePackageName(spec: string): string | undefined {
+  if (spec === '') return undefined
+  const separator = spec.startsWith('@') ? spec.indexOf('@', 1) : spec.indexOf('@')
+  return separator < 0 ? spec : undefined
+}
+
+/**
  * Build the gateway routes.
  * @param deps - profile facts, the CLI gateway, and seams.
  * @returns the web-server routes to register.
@@ -148,16 +208,24 @@ export function makeGatewayRoutes(deps: GatewayRouteDeps): WebRoute[] {
   const { facts, gateway } = deps
   const fetchManifest = deps.fetchManifest ?? fetchRegistryManifest
   /**
-   * Cached `dsh --version`: successful verdicts refresh after a TTL (the CLI
-   * update path is the gateway itself, so a stale success is wrong long-term),
-   * failed probes are retried after a cooldown instead of being cached forever,
-   * and concurrent requests share one in-flight probe.
+   * Cached host version: successful verdicts refresh after a TTL (the CLI update
+   * path is the gateway itself, so a stale success is wrong long-term), failed
+   * probes are retried after a cooldown instead of being cached forever, and
+   * concurrent requests share one in-flight probe.
+   *
+   * The running installation's own manifest is read first. That is a local file
+   * read with no process to spawn and nothing to fall out of date mid-run, so it
+   * is re-read per resolution and never cached: a packaged Desktop host, where
+   * the CLI fallback is unreachable, would otherwise spend its first request on
+   * a probe that cannot succeed.
    */
   let dshVersion: string | undefined
   let dshVersionAt = 0
   let dshVersionPending: Promise<string | undefined> | undefined
   const resolveDshVersion = (): Promise<string | undefined> => {
     if (deps.dshVersion !== undefined) return deps.dshVersion()
+    const installed = readInstalledDshVersion(deps.installAnchor)
+    if (installed !== undefined) return Promise.resolve(installed)
     const now = Date.now()
     if (dshVersion !== undefined && now - dshVersionAt < VERSION_PROBE_TTL_MS) return Promise.resolve(dshVersion)
     if (dshVersionAt !== 0 && now - dshVersionAt < VERSION_PROBE_COOLDOWN_MS) return Promise.resolve(undefined)
@@ -221,11 +289,32 @@ export function makeGatewayRoutes(deps: GatewayRouteDeps): WebRoute[] {
       writeJson(res, 400, { error: unsafeSpec })
       return
     }
-    if (!deps.cliAvailable()) {
+    if (!deps.cliAvailable() && !gateway.usesNativeWriter()) {
       writeJson(res, 500, { error: 'plugin-manager: dsh CLI not found on PATH' })
       return
     }
-    writeJson(res, 200, gateway.install(spec.trim()))
+    // A bare package name must be pinned to the registry's current latest
+    // before it reaches the installer (#1759). pnpm 11 applies a supply-chain
+    // gate that silently skips releases younger than `minimumReleaseAge`
+    // (24 h by default), so an unpinned spec resolves to the newest release OLDER
+    // than the cutoff — the same-day version the panel just advertised was
+    // silently skipped and the install landed one release behind with no error.
+    // An explicit version or range the caller chose is honored as given.
+    let installSpec = spec.trim()
+    const name = barePackageName(installSpec)
+    if (name !== undefined && isDirectRegistrySpec(installSpec)) {
+      const manifest = await fetchManifest(name).catch(() => undefined)
+      if (manifest?.version !== undefined && manifest.version !== '') {
+        const pinned = `${name}@${manifest.version}`
+        const unsafePinned = unsafeSpecReason(pinned)
+        if (unsafePinned !== undefined) {
+          writeJson(res, 400, { error: unsafePinned })
+          return
+        }
+        installSpec = pinned
+      }
+    }
+    writeJson(res, 200, gateway.install(installSpec))
   }
 
   const updateHandler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -241,7 +330,7 @@ export function makeGatewayRoutes(deps: GatewayRouteDeps): WebRoute[] {
       writeJson(res, 400, { error: unsafe })
       return
     }
-    if (!deps.cliAvailable()) {
+    if (!deps.cliAvailable() && !gateway.usesNativeWriter()) {
       writeJson(res, 500, { error: 'plugin-manager: dsh CLI not found on PATH' })
       return
     }
@@ -268,7 +357,7 @@ export function makeGatewayRoutes(deps: GatewayRouteDeps): WebRoute[] {
             return {
               status: 412,
               error: hostVersion === undefined
-                ? `plugin-manager: cannot verify the DSH version for ${migration.to} (dsh --version failed); upgrade DSH before migrating`
+                ? `plugin-manager: cannot verify the running DSH version for ${migration.to}; check the DSH runtime before migrating`
                 : `plugin-manager: ${migration.to} requires DSH ${requiresDsh} (current DSH ${hostVersion}); upgrade DSH before migrating`,
             }
           }
@@ -292,7 +381,7 @@ export function makeGatewayRoutes(deps: GatewayRouteDeps): WebRoute[] {
           return {
             status: 412,
             error: hostVersion === undefined
-              ? `plugin-manager: cannot verify the DSH version for ${target} (dsh --version failed); upgrade DSH before updating`
+              ? `plugin-manager: cannot verify the running DSH version for ${target}; check the DSH runtime before updating`
               : `plugin-manager: ${target} requires DSH ${requiresDsh} (current DSH ${hostVersion}); upgrade DSH before updating`,
           }
         }
@@ -318,7 +407,7 @@ export function makeGatewayRoutes(deps: GatewayRouteDeps): WebRoute[] {
       writeJson(res, 400, { error: unsafeId })
       return
     }
-    if (!deps.cliAvailable()) {
+    if (!deps.cliAvailable() && !gateway.usesNativeWriter()) {
       writeJson(res, 500, { error: 'plugin-manager: dsh CLI not found on PATH' })
       return
     }
@@ -390,7 +479,21 @@ export function makeGatewayRoutes(deps: GatewayRouteDeps): WebRoute[] {
         next = setRowEnabled(next, facts.patchPath, entry.id, entry.name, entryEnabled, entry.baseEnabled)
       }
       if (next !== patchText) {
-        await writePatchAtomic(facts.patchPath, next)
+        // The write must leave this handler's async context. The toggle can
+        // arrive inside the Host's hmr.runExclusive transaction, and
+        // cordis.patch.yml is exactly the file the HMR config watcher refreshes
+        // from: a write issued on the transaction's context makes the watcher's
+        // refresh re-enter runExclusive, which rejects with "HMR transactions
+        // cannot be nested" and fails the toggle (#1816). A bare deferral would
+        // NOT help - setImmediate inherits the transaction mark (measured; see
+        // shared/host/detached-work.ts) - so the write is scheduled through the
+        // module-scope AsyncResource. It is still awaited, so the response
+        // reports the real write outcome and the snapshot below stays ordered.
+        await runDetached(() => new Promise<void>((resolve, reject) => {
+          setImmediate(() => {
+            writePatchAtomic(facts.patchPath, next).then(resolve, reject)
+          })
+        }))
       }
       const snapshot = await snapshotGateway(facts, next)
       const plugin = snapshot.plugins.find(item => item.id === ownerName)
@@ -437,7 +540,7 @@ export function makeGatewayRoutes(deps: GatewayRouteDeps): WebRoute[] {
   const checkUpdatesHandler = async (_req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const patchText = await readPatchText(facts.patchPath)
     const snapshot = await snapshotGateway(facts, patchText)
-    const updates: Array<{ id: string; current: string; latest: string; kind?: 'update' | 'migrate'; target?: string; targetVersion?: string; requiresDsh?: string; compatible?: boolean }> = []
+    const updates: Array<{ id: string; current: string; latest: string; kind?: 'update' | 'migrate'; target?: string; targetVersion?: string; requiresDsh?: string; compatible?: boolean; hostVersion?: string }> = []
     for (const plugin of snapshot.plugins) {
       const migration = legacyMigrationFor(plugin.id)
       if (migration !== undefined) {
@@ -452,6 +555,7 @@ export function makeGatewayRoutes(deps: GatewayRouteDeps): WebRoute[] {
           targetVersion: string
           requiresDsh?: string
           compatible?: boolean
+          hostVersion?: string
         } = {
           id: plugin.id,
           current: plugin.version,
@@ -463,7 +567,13 @@ export function makeGatewayRoutes(deps: GatewayRouteDeps): WebRoute[] {
         const requiresDsh = dshRequirementOf(targetManifest)
         if (requiresDsh !== undefined) {
           update.requiresDsh = requiresDsh
-          update.compatible = (await compatibleVerdict(requiresDsh)).compatible
+          const verdict = await compatibleVerdict(requiresDsh)
+          update.compatible = verdict.compatible
+          // An unknown host version is reported as such instead of being
+          // flattened into "incompatible": the row is equally blocked, but the
+          // user is told to check the runtime rather than to upgrade a DSH that
+          // may already satisfy the requirement (issue #1819).
+          if (verdict.hostVersion !== undefined) update.hostVersion = verdict.hostVersion
         }
         updates.push(update)
         continue
@@ -471,16 +581,56 @@ export function makeGatewayRoutes(deps: GatewayRouteDeps): WebRoute[] {
       if (plugin.source.kind !== 'npm' || !isDirectRegistrySpec(plugin.source.spec)) continue
       const manifest = await fetchManifest(plugin.id).catch(() => undefined)
       if (manifest === undefined || manifest.version === plugin.version) continue
-      const update: { id: string; current: string; latest: string; requiresDsh?: string; compatible?: boolean } =
+      const update: { id: string; current: string; latest: string; requiresDsh?: string; compatible?: boolean; hostVersion?: string } =
         { id: plugin.id, current: plugin.version, latest: manifest.version }
       const requiresDsh = dshRequirementOf(manifest)
       if (requiresDsh !== undefined) {
         update.requiresDsh = requiresDsh
-        update.compatible = (await compatibleVerdict(requiresDsh)).compatible
+        const verdict = await compatibleVerdict(requiresDsh)
+        update.compatible = verdict.compatible
+        if (verdict.hostVersion !== undefined) update.hostVersion = verdict.hostVersion
       }
       updates.push(update)
     }
     writeJson(res, 200, { updates })
+  }
+
+  /**
+   * The running process's own launch facts, read once per request: the desktop
+   * verdict comes from the profile facts (packaged Desktop launcher), the rest
+   * from this process.
+   */
+  const liveRestartFacts = (): RestartFacts => ({
+    desktop: facts.desktop,
+    env: process.env,
+    execPath: process.execPath,
+    argv: process.argv.slice(1),
+    execArgv: process.execArgv,
+    cwd: process.cwd(),
+    interactive: process.stdin.isTTY === true || process.stdout.isTTY === true,
+  })
+
+  /**
+   * Restart the host so an applied plugin update is loaded. The route answers
+   * with the mode it actually used (see host/restart.ts): 'relaunch' when this
+   * process re-executes itself, 'shell' when the packaged Desktop shell owns
+   * the process tree and runs its own restart, 'manual' when neither is safe.
+   */
+  const restartHandler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    const plan = planRestart((deps.restartFacts ?? liveRestartFacts)())
+    // Reading the plan is side-effect free. The toolbar asks for it before it
+    // tells the user what a restart will do, and no GET-shaped request (a
+    // prefetch, a typed URL, a link scanner) may ever stop a running host.
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      writeJson(res, 200, { restart: { mode: plan.mode } })
+      return
+    }
+    if (req.method !== 'POST') {
+      writeJson(res, 405, { error: 'plugin-manager: restart needs GET (plan) or POST (execute)' })
+      return
+    }
+    const mode = performRestart(plan, deps.restartRuntime ?? {})
+    writeJson(res, 202, { restart: { mode } })
   }
 
   return [
@@ -493,6 +643,7 @@ export function makeGatewayRoutes(deps: GatewayRouteDeps): WebRoute[] {
     { kind: 'exact', path: `${GATEWAY_PREFIX}/failures`, handler: guard(failuresHandler) },
     { kind: 'exact', path: `${GATEWAY_PREFIX}/mode`, handler: guard(modeHandler) },
     { kind: 'exact', path: `${GATEWAY_PREFIX}/check-updates`, handler: guard(checkUpdatesHandler) },
+    { kind: 'exact', path: `${GATEWAY_PREFIX}/restart`, handler: guard(restartHandler) },
   ]
 }
 

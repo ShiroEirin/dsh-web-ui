@@ -24,6 +24,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-models/client'
 import { CapabilitiesPanel } from './CapabilitiesPanel.tsx'
 import { DisabledProvidersFooter } from './DisabledProvidersFooter.tsx'
+import { claimProviderCardSeat } from './provider-card-seat.ts'
 import { coalesceDescribe, type RefreshBus } from './settings-face.ts'
 import { CAPS_ENTRY_IDS } from '../core/provider-toggle.ts'
 import { PI_AI_SETTINGS_NAMESPACE } from '../core/capabilities.ts'
@@ -81,21 +82,14 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'dsh-model-capabilities: document events')
 
-  ctx.slots.inject('settings.models.provider-card', () => {
-    try {
-      const unregister = ctx.slots.register({
-        name: 'settings.models.provider-card',
-        key: 'llm-pi-ai',
-        inject: () => ({ settings, refresh }),
-      }, CapabilitiesPanel)
-      return () => {
-        unregister()
-      }
-    } catch {
-      // The seat is declared by the official Models section; a host without
-      // it (older deployment) offers no slot to fill, so register nothing.
-      return () => {}
-    }
+  // The provider-card cell is keyed and renders one entry, so a second
+  // plugin claiming it is refused by the registry. The seat helper reports
+  // that refusal (console + the Models page notice the footer renders) and
+  // re-claims the cell once its occupant goes away, instead of the blanket
+  // catch this used to swallow it into a missing panel.
+  const cardSeat = claimProviderCardSeat(ctx, {
+    component: CapabilitiesPanel,
+    inject: () => ({ settings, refresh }),
   })
 
   ctx.slots.inject('settings.models.footer', () => {
@@ -103,13 +97,19 @@ export function apply(ctx: ClientContext): void {
       const unregister = ctx.slots.register({
         name: 'settings.models.footer',
         id: 'ui-model-capabilities',
-        inject: () => ({ settings, refresh }),
+        inject: () => ({ settings, refresh, cardSeat }),
       }, DisabledProvidersFooter)
       return () => {
         unregister()
       }
-    } catch {
-      // Same posture as the provider-card seat: no declaration, no entry.
+    } catch (error) {
+      // The footer is a list cell of this plugin's own id; a refusal here is
+      // not a deployment gap, so say so rather than dropping the listing.
+      try {
+        console.error('[dsh-model-capabilities] the Models page footer slot refused the disabled-provider listing', error)
+      } catch {
+        // Best-effort report; a failed console write must not break the plugin.
+      }
       return () => {}
     }
   })

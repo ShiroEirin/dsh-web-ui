@@ -7,18 +7,11 @@
 }
 
 .heading {
-  margin: 0 0 4px;
+  margin: 0 0 14px;
   font-size: 17px;
   font-weight: 600;
   line-height: 1.4;
   color: var(--dsw-alias-label-primary);
-}
-
-.lede {
-  margin: 0 0 12px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--dsw-alias-label-tertiary);
 }
 
 .sectionList {

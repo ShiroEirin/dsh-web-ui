@@ -2,6 +2,9 @@
  * Host apply tests: enabled=false registers nothing; enabled registers the
  * route family and disposes cleanly.
  */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { apply } from '../src/index.ts'
 
@@ -68,3 +71,55 @@ describe('skill-explorer host apply', () => {
     ])
   })
 })
+
+describe('skill-explorer host apply: provider-row custom roots (#1801)', () => {
+  it('operator sees the live skill-filesystem row customSkillDirs reach the list route', async () => {
+    // Given a host whose loader carries a skill-filesystem row with a custom
+    // root, and a skill file inside that root
+    const tmp = mkdtempSync(join(tmpdir(), 'skill-explorer-apply-'))
+    const customRoot = join(tmp, 'custom-root')
+    const file = join(customRoot, 'apply-skill', 'SKILL.md')
+    mkdirSync(join(customRoot, 'apply-skill'), { recursive: true })
+    writeFileSync(file, '---\nname: apply-skill\ndescription: 行配置\n---\n', 'utf8')
+    try {
+      const state = { routes: [] as Array<{ path?: string; handler: (req: unknown, res: unknown) => Promise<void> }> }
+      const ctx = {
+        webServer: { register: (route: { path?: string; handler: (req: unknown, res: unknown) => Promise<void> }) => { state.routes.push(route); return () => {} } },
+        skills: { snapshot: async () => ({ skills: [], complete: true }) },
+        sessions: { list: () => [] },
+        logger: { warn: () => {} },
+        get: (name: string) => name === 'loader'
+          ? { entries: () => [{ options: { id: 'skill-filesystem', name: '@deepseek-ai/dsh-skill-filesystem', config: { customSkillDirs: [customRoot] } } }] }
+          : undefined,
+        effect: (fn: () => unknown) => { const d = fn(); return () => { if (typeof d === 'function') (d as () => void)() } },
+      }
+      resetMountOnce()
+      apply(ctx as never, {})
+
+      // When the list route serves the panel
+      const list = state.routes.find(route => route.path === '/api/dsh-skill-explorer/list')!
+      const captured = { status: 0, body: '' }
+      const res = {
+        writeHead(status: number) { captured.status = status },
+        end(body: string) { captured.body = body },
+      }
+      const req = {
+        url: '/api/dsh-skill-explorer/list',
+        method: 'GET',
+        socket: { remoteAddress: '127.0.0.1' },
+        headers: { host: 'localhost:3080' },
+      }
+      await list.handler(req, res)
+
+      // Then the row-configured skill is listed with its editable path
+      expect(captured.status).toBe(200)
+      const payload = JSON.parse(captured.body)
+      const custom = payload.groups.find((g: { key: string }) => g.key === 'custom')
+      expect(custom.skills[0].name).toBe('apply-skill')
+      expect(custom.skills[0].path).toBe(file)
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+})
+

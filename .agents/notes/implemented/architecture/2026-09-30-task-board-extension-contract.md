@@ -1,0 +1,50 @@
+# Agent Note: Task Board external provider extension contract
+
+Status: implemented
+
+This decision partially supersedes [GitHub Issues as Task Board work items with controlled write-back](../feature/2026-09-30-task-board-github-issues-integration.md): that note's GitHub endpoint decisions (inbound issue discovery, controlled label write-back, execution immutability, deactivation without loss, Host-side credentials, PR lifecycle, fault isolation) still stand, while the dependency direction and the storage coupling it recorded are replaced by the contract below.
+
+## Problem
+
+The task board used to inline GitHub, and each inlining symptom was a boundary defect a second provider would have multiplied.
+
+- **Inverted dependency direction**: the board imported GitHub and constructed `GitHubApiClient` in its own host entry, so the board knew provider vocabulary and could not be built or reasoned about without it.
+- **Pierced storage layer**: `GitHubSyncService` held the `HostTaskLedger` directly, and the ledger grew provider-specific API (`findTaskByGitHubIdentity`, `updateTaskIntegrations(Partial<GitHubTaskMetadata>)`), so a provider reached around the board's own authority.
+- **Duplicated invariants**: the provider's `shouldRefreshContent` missed `archivedAt`, while the board's `canEditTaskContent` is the correct authority; two implementations of one rule drift.
+- **Board-hard-coded provider policy**: card visibility checked `integrations.github.deactivated` directly, and the provider's browser UI (detail section, settings summary, filter haystack) lived in board files.
+
+## Decision
+
+One external provider contract is the single source of truth. Provider packages implement against it and never import board internals; GitHub is its first implementation, in `packages/dsh-task-board-github`, and the board itself names no provider.
+
+1. **Services**: the host and the browser halves each publish one cordis service named `taskBoard`; the API version constant is `TASK_BOARD_API_VERSION = 1`. A provider declares the version it was built against; any other version is refused visibly (logged and thrown) without disturbing the board.
+2. **Child seats** (board declares, provider registers): `task-board.detail.section` with props `{ task, dispatch }`, `task-board.settings.section` with props `{ dispatch }`, and `task-board.card.decoration` with props `{ task }`. The registering board components declare these keys in `register`'s `children` option and consume them with `renderSlot`, threaded through an internal React context to `TaskDetail`, the card and the settings card. Cross-package providers must not value-import the board; each re-declares the three keys with an identical `declare module` in its own package.
+3. **Host capability face** handed to a provider's `TaskBoardExtension`: `tasks.{ list, get, create(draft, { payload, hidden }), patchContent(taskId, { title, description, prompt }), setStatus(taskId, status, initiator), linked() }`; `integration.{ read(taskId), write(taskId, payload) }`; `events.{ onStatusChanged, onExecutionSettled, onTaskDeleted }` (each returns an unsubscribe function); `publish(summary)` (a read-only summary returned to that provider's client half through `snapshot.extensions[id]`); and `registerTool(definition)` (a model-visible tool that registers and disposes with board-enabled x extension-enabled).
+4. **Client capability face** (provided by the board's browser half): `dispatch({ extensionId, action, taskId?, payload? })` delivered over the board's same-origin action channel (a provider adds no HTTP surface); `registerVisibility(predicate)` card visibility predicates (replacing the board's hard-coded deactivated check); and `subscribe(cb)` / `snapshot()` over the board's task mirror and published summaries.
+5. **Wire and ledger**: `TaskRecord.integrations` is an opaque `Record<string, unknown>` validated only as a pure JSON object whose entries are each at most 64 KiB; the three `github-*` action kinds are collapsed into `{ kind: "extension-action", extensionId, action, taskId?, payload? }`; the snapshot-only `github` field is `extensions?: Record<string, unknown>`. No ledger schema migration is performed.
+6. **Invariants hoisted to the board**: `patchContent` reuses `canEditTaskContent` (an executed or archived card keeps its recorded content); `setStatus` goes through the board's existing gates (the running lock and the manual column rules); event callback failures are isolated with try/catch and a log, never interrupting execution; and identity indexing belongs to the provider (the board provides no `findTaskByGitHubIdentity`).
+7. **Three-state switch precedence**: loader row disabled (needs a restart, the heaviest) beats extension `enabled` (volatile, default true, immediately lazy: stop polling, stop write-back, unregister tools, hide seats, never clear data) beats the board master switch (which silences everything with it).
+8. **No provider vocabulary in the board, shared copies included**: an extension's prompt-section order is the family's generic `EXTENSION_TOOL_SECTION_ORDER` slot, taken after the band of the plugin it extends, rather than a per-package entry in `PLUGIN_TOOL_SECTION_ORDERS`. The board's synced copy of the family tool-surface module therefore names no provider, and `grep -rn github packages/dsh-task-board/src` is empty. This partially supersedes the per-package order table recorded in [Family tool-surface conventions](../feature/2026-10-02-family-tool-surface-conventions.md).
+
+## Context & Efficiency Impact
+
+The contract adds one small shared types module plus a host registry and a browser service; the board's snapshot gains one optional opaque map and loses one provider-shaped field, so the wire payload is unchanged in size. Providers stop duplicating board rules, and the board's own context no longer names a provider. The registry buffers provider tool definitions so a tool registry that resolves late still adopts them, which costs an array per provider.
+
+## Alternatives considered
+
+**Widen the wire with a provider envelope and migrate the ledger to a typed per-provider schema.** Rejected: a schema migration rewrites durable user data for a boundary that can be expressed additively, and a typed provider slot in the ledger re-couples the board to provider vocabulary — the exact defect this contract removes.
+
+**Let each extension own its own store and have the board hold only task ids.** Rejected: the board must stay authoritative over task lifecycle and execution (Host execution, settlement and deletion must be observable by every provider, and the GUI mirrors one ledger), and an extension-owned store cannot be that single authority.
+
+**Let each extension register its own HTTP routes and have the browser talk to them directly.** Rejected: it multiplies same-origin surfaces and their access control, while the board already owns one guarded same-origin action channel that `dispatch` can reuse.
+
+**Declare the seats as three fixed component props instead of slot registrations.** Rejected: the board would then enumerate providers at build time, so a provider package could not be added by installing it; the child-seat registration keeps the provider set open at runtime.
+
+## Consequences
+
+- **The contract is not GitHub-shaped**: a fake provider that consumes every capability passes `packages/dsh-task-board/tests/extension-fake-provider.spec.ts`, and the migrated `github-*` suites live in the provider package and stay green. The contract tests in `packages/dsh-task-board/tests/extension-contract.spec.ts` prove registration is idempotent by id, a mismatched `apiVersion` is refused with a diagnosable error while the board keeps serving, the board x extension enable gate starts and stops a provider, tools register and unregister with it, one throwing event callback is isolated while healthy callbacks still run, `patchContent` refuses a started card, `setStatus` refuses a card the runner is executing, non-JSON and oversized payloads are refused, and provider actions route back with the opaque payload intact. A second provider is a new package only; the board does not change.
+- **Seats collapse with the board's own panel registration**, so the provider re-establishes them from the client mirror on every board re-enable; the provider must therefore treat seat registration as idempotent and cheap.
+- **Opaque integrations push provider validation into providers**: a malformed provider payload no longer drops the ledger row, so a provider must validate its own entry on read.
+- **Visibility predicates run on every board render**, so a `registerVisibility` predicate must stay a cheap pure function of the task.
+- **The board x extension gate is re-evaluated on registration, on the board master switch and on a tool-registry rebind**, so the provider still owns the decision to release its own surface when it flips its own `enabled` switch — which the reference provider does by disposing its registration (releasing its tools and published summary with it).
+- **The heaviest switch needs a restart**: a disabled loader row is out of the board's reach, so a provider reconciled at runtime cannot withdraw a row the loader never inserted.

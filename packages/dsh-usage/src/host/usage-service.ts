@@ -20,7 +20,7 @@ import type { BalanceParse, PlanParse } from '../core/adapters.ts'
 import { foldAliasRoutes } from '../core/provider-routes.ts'
 import { deepseekModelSpend } from '../core/pricing.ts'
 import { createLedgerDocument, deserializeLedger, foldUsage, ledgerDayKeys, localDateKey, pruneLedger, summarizeDays, totalTokens } from '../core/ledger.ts'
-import type { BalanceView, CredentialKind, ObservedSpendView, PlanView, ProviderSnapshotState, ProviderSnapshotView, UsageLedgerDocument, UsageOverviewView, UsageTokenTotals } from '../core/types.ts'
+import type { BalanceView, CredentialKind, ObservedSpendView, PlanView, ProviderSnapshotState, ProviderSnapshotView, UsageDayView, UsageLedgerDocument, UsageOverviewView, UsageTokenTotals } from '../core/types.ts'
 import { addTotals, emptyTotals } from '../core/types.ts'
 
 /**
@@ -103,19 +103,129 @@ async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
   }
 }
 
+function unwrapVolatiles(value: unknown): unknown {
+  if (value === null || value === undefined) return value
+  if (typeof value === 'object') {
+    if (typeof (value as { get?: unknown }).get === 'function') {
+      return unwrapVolatiles((value as { get(): unknown }).get())
+    }
+    if (Array.isArray(value)) {
+      return value.map(unwrapVolatiles)
+    }
+    const result: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) {
+      result[k] = unwrapVolatiles(v)
+    }
+    return result
+  }
+  return value
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function deepMerge(base: unknown, patch: unknown): unknown {
+  if (!isPlainObject(base) || !isPlainObject(patch)) return patch !== undefined ? patch : base
+  const result: Record<string, unknown> = { ...base }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue
+    result[key] = isPlainObject(value) && isPlainObject(result[key]) ? deepMerge(result[key], value) : value
+  }
+  return result
+}
+
 /**
  * Read a foreign settings namespace's resolved value (the llm adapter
- * profiles, the agent default model). Unregistered namespaces read as
- * undefined; nothing here throws into the poll loop.
+ * profiles, the agent default model). Resolves across pre-0.1.7 settings.get(),
+ * 0.1.7 SettingsForms.describe(), live loader entries, and configEditor.
+ * Unregistered namespaces read as undefined; nothing here throws into the poll loop.
  */
 function readNamespace(ctx: Context, ns: string): unknown {
   try {
-    const settings = service<{ get(ns: unknown): unknown }>(ctx, 'settings')
-    if (settings === undefined) return undefined
-    return settings.get(ns)
+    // 1. Try legacy settings.get(ns) or 0.1.7 settings.describe()
+    const settings = service<{
+      get?(ns: unknown): unknown
+      describe?(options?: unknown): Array<{ ns: string; value: unknown }>
+    }>(ctx, 'settings')
+    if (settings !== undefined) {
+      if (typeof settings.get === 'function') {
+        const value = settings.get(ns)
+        if (value !== undefined) return unwrapVolatiles(value)
+      }
+      if (typeof settings.describe === 'function') {
+        const descriptors = settings.describe({ redactSecrets: false })
+        if (Array.isArray(descriptors)) {
+          const match = descriptors.find((d) =>
+            d.ns === ns
+            || (ns === 'llm-pi-ai' && (d.ns === 'llm' || isPlainObject((d.value as { providers?: unknown })?.providers)))
+            || (ns === 'llm-deepseek' && (d.ns === 'llm-deepseek' || d.ns === 'llm-deepseek-api-key'))
+          )
+          if (match !== undefined && match.value !== undefined) {
+            return unwrapVolatiles(match.value)
+          }
+        }
+      }
+    }
+
+    // 2. Try ctx.root.loader or ctx.loader entries
+    const loader = (ctx as unknown as {
+      root?: { loader?: { entries(): Iterable<{ options: { id: string; name?: string }; fiber?: { config?: unknown } }> } }
+      loader?: { entries(): Iterable<{ options: { id: string; name?: string }; fiber?: { config?: unknown } }> }
+    }).root?.loader
+      ?? (ctx as unknown as {
+        loader?: { entries(): Iterable<{ options: { id: string; name?: string }; fiber?: { config?: unknown } }> }
+      }).loader
+    if (loader !== undefined && typeof loader.entries === 'function') {
+      for (const entry of loader.entries()) {
+        const id = entry.options?.id
+        const name = entry.options?.name
+        if (
+          id === ns
+          || name === `@deepseek-ai/dsh-${ns}`
+          || name?.endsWith(`/${ns}`)
+          || (ns === 'llm-pi-ai' && (id === 'llm' || name === '@deepseek-ai/dsh-llm-pi-ai'))
+          || (ns === 'llm-deepseek' && (id === 'llm-deepseek-api-key' || name === '@deepseek-ai/dsh-llm-deepseek-api-key'))
+        ) {
+          if (entry.fiber?.config !== undefined) {
+            return unwrapVolatiles(entry.fiber.config)
+          }
+        }
+      }
+    }
+
+    // 3. Try configEditor service
+    const editor = service<{
+      configuration?(): Array<{
+        entry: { options: { id: string; name?: string }; fiber?: { config?: unknown } }
+        inherited: Record<string, unknown>
+        override: Record<string, unknown>
+      }>
+    }>(ctx, 'configEditor')
+    if (editor !== undefined && typeof editor.configuration === 'function') {
+      const rows = editor.configuration()
+      const match = rows.find((r) => {
+        const id = r.entry.options.id
+        const name = r.entry.options.name
+        return (
+          id === ns
+          || name === `@deepseek-ai/dsh-${ns}`
+          || name?.endsWith(`/${ns}`)
+          || (ns === 'llm-pi-ai' && (id === 'llm' || name === '@deepseek-ai/dsh-llm-pi-ai'))
+          || (ns === 'llm-deepseek' && (id === 'llm-deepseek-api-key' || name === '@deepseek-ai/dsh-llm-deepseek-api-key'))
+        )
+      })
+      if (match !== undefined) {
+        if (match.entry.fiber?.config !== undefined) {
+          return unwrapVolatiles(match.entry.fiber.config)
+        }
+        return unwrapVolatiles(deepMerge(match.inherited, match.override))
+      }
+    }
   } catch {
     return undefined
   }
+  return undefined
 }
 
 export class UsageService {
@@ -206,10 +316,10 @@ export class UsageService {
         // THIS route's account: it is supported by the adapter but not
         // applicable here, and the UI renders it as unsupported rather than
         // showing the other account's number (issue #1688).
-        ...(adapter?.balance !== undefined && balanceAppliesToRoute(adapter, this.piAiProfile(route.id)?.baseURL)
+        ...(adapter?.balance !== undefined && balanceAppliesToRoute(adapter, this.routeBaseUrl(route.id))
           ? { balanceSupported: true }
           : {}),
-        ...(adapter?.balance !== undefined && !balanceAppliesToRoute(adapter, this.piAiProfile(route.id)?.baseURL)
+        ...(adapter?.balance !== undefined && !balanceAppliesToRoute(adapter, this.routeBaseUrl(route.id))
           ? { balanceSupported: false }
           : {}),
         ...(adapter?.plan !== undefined ? { planSupported: true } : {}),
@@ -240,6 +350,9 @@ export class UsageService {
           totals: range.totals,
           providers: range.providers,
         },
+        // Every retained day, not just the trend window: the day picker's
+        // option list reaches back to the oldest day retention still keeps.
+        availableDays: allKeys,
         all: {
           from: allKeys[0] ?? todayKey,
           to: allKeys[allKeys.length - 1] ?? todayKey,
@@ -283,8 +396,19 @@ export class UsageService {
     }
   }
 
+  /**
+   * One retained local day aggregated per provider and model, as the day
+   * route serves it. A day the ledger never held — pruned by retention, or
+   * simply without usage — reads as a zeroed day rather than an error, so a
+   * picker selection that aged out degrades to "no usage" instead of a broken
+   * panel. The route gates the key's shape before it gets here.
+   */
+  day(dateKey: string): UsageDayView {
+    return this.daySummary(dateKey)
+  }
+
   /** One local day aggregated per provider. */
-  private daySummary(dateKey: string): UsageOverviewView['usage']['today'] {
+  private daySummary(dateKey: string): UsageDayView {
     const day = this.ledger.days[dateKey] ?? {}
     const { totals, providers } = summarizeDays([day])
     return { date: dateKey, totals, providers }
@@ -587,7 +711,7 @@ export class UsageService {
     // account, and probing the official endpoint would print this account's
     // money under that route's name (issue #1688). Such a route reports the
     // balance as unsupported instead.
-    const balanceApplies = balanceAppliesToRoute(adapter, this.piAiProfile(route.id)?.baseURL)
+    const balanceApplies = balanceAppliesToRoute(adapter, this.routeBaseUrl(route.id))
     if (credential.key === undefined) {
       // Nothing to probe with (oauth grant, no credential): retained facts
       // would never refresh again, so the row resets to its credential
@@ -703,6 +827,17 @@ export class UsageService {
   private deepseekApiKeyEnv(): string {
     const section = readNamespace(this.ctx, 'llm-deepseek') as { apiKeyEnv?: string } | undefined
     return section?.apiKeyEnv ?? 'DEEPSEEK_API_KEY'
+  }
+
+  /** The DeepSeek official adapter's configured baseURL. */
+  private deepseekBaseUrl(): string | undefined {
+    const section = readNamespace(this.ctx, 'llm-deepseek') as { baseURL?: string } | undefined
+    return section?.baseURL
+  }
+
+  /** The effective base URL for a provider route (pi-ai or deepseek). */
+  private routeBaseUrl(provider: string): string | undefined {
+    return this.piAiProfile(provider)?.baseURL ?? (isDeepSeekProviderRoute(provider) ? this.deepseekBaseUrl() : undefined)
   }
 
 }

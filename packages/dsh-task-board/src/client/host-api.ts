@@ -1,3 +1,5 @@
+import { degradedRowOf, ledgerOwnerPid } from '../core/degraded-reason.ts'
+import { TASK_BOARD_PACKAGE } from '../core/package-name.ts'
 import type { TaskRecord } from '../core/tasks.ts'
 import { t } from './locales.ts'
 import {
@@ -37,7 +39,20 @@ const TASK_PARSE_TIMEOUT_SECONDS = 45
  * "Unexpected token 'o', \"not found\" is not valid JSON" is what a missing
  * Host half looks like today.
  */
-export type HostApiFailure = 'not-mounted' | 'unauthorized' | 'locked' | 'rejected' | 'timeout' | 'unreachable' | 'unexpected'
+export type HostApiFailure =
+  /** The board's own routes are not registered and nothing explains why. */
+  | 'not-mounted'
+  /** Another live DSH process owns the ledger, so this instance registered no board routes (#1730). */
+  | 'ledger-locked'
+  /** This row degraded during start for some other reason the family health route reports (#1730). */
+  | 'degraded'
+  | 'unauthorized'
+  | 'forbidden'
+  | 'locked'
+  | 'rejected'
+  | 'timeout'
+  | 'unreachable'
+  | 'unexpected'
 
 /** Transport failure carrying a stable class next to its user-facing message. */
 export class HostApiError extends Error {
@@ -45,6 +60,86 @@ export class HostApiError extends Error {
     super(message)
     this.name = 'HostApiError'
   }
+}
+
+/**
+ * Same-origin family health route served by the dsh-web-all shell: the
+ * degraded ledger, in which a family row that failed during apply appears WITH
+ * its reason. DOCUMENT-RELATIVE for the same reason as the board's own routes
+ * (issue #1707). A 404 here means the family shell is absent or older than the
+ * route, which is not itself a failure of the board.
+ */
+const FAMILY_DEGRADED_ROUTE = 'api/dsh-web-all/degraded'
+
+/** Health-route ceiling: an unresponsive family shell must not hold the board's first paint. */
+const DEGRADED_LOOKUP_TIMEOUT_MS = 2_000
+
+/**
+ * The failure text for a row this browser knows failed during start.
+ *
+ * A ledger lock is the one class with an owner the user can act on, so its
+ * reason is unpacked into the pid plus what to do about it; every other
+ * degraded row is reported with the shell's own reason verbatim. The raw
+ * reason rides along either way, because it is the only text that names the
+ * lock file or the recovery step when the pid is not the whole story.
+ * @param reason - the shell's one-line failure reason (never empty).
+ */
+function degradedFailureMessage(reason: string): { failure: 'ledger-locked' | 'degraded'; message: string } {
+  const pid = ledgerOwnerPid(reason)
+  if (pid === undefined) return { failure: 'degraded', message: t('board.hostError.degraded', { detail: reason }) }
+  return { failure: 'ledger-locked', message: t('board.hostError.ledgerLocked', { pid: String(pid), detail: reason }) }
+}
+
+/**
+ * The degraded record the family shell holds for THIS board, or undefined when
+ * the row is healthy, the shell is absent, or the answer is unusable. The
+ * lookup is best-effort by contract: any uncertainty keeps the caller's own
+ * failure text instead of replacing it with a weaker one.
+ * @param fetchImpl - fetch implementation (injected for tests).
+ * @returns the ledger's reason for this row, or undefined when it names none.
+ */
+async function fetchDegradedReason(fetchImpl: typeof fetch): Promise<string | undefined> {
+  const controller = new AbortController()
+  const timer = globalThis.setTimeout(() => { controller.abort() }, DEGRADED_LOOKUP_TIMEOUT_MS)
+  try {
+    const response = await fetchImpl(FAMILY_DEGRADED_ROUTE, { signal: controller.signal, headers: { accept: 'application/json' }, cache: 'no-store' })
+    if (!response.ok) return undefined
+    return degradedRowOf(await response.json(), TASK_BOARD_PACKAGE)?.reason
+  } catch {
+    return undefined
+  } finally {
+    globalThis.clearTimeout(timer)
+  }
+}
+
+/**
+ * Name the real reason this board's routes are missing (issue #1730).
+ *
+ * The core webserver answers an unmounted route with a bare 404, which cannot
+ * distinguish "this deployment never loaded the plugin" from "this row
+ * degraded during start" — a second DSH process holding `ledger-v2.lock` is
+ * the case that matters, because the panel's advice ("restart the service")
+ * is then false: the lock belongs to the other process, and restarting cannot
+ * win it. The family health route knows the difference, so the 404 is
+ * disambiguated there before anything is shown.
+ * @param fallback - copy for the plain "routes are not there" failure, which
+ *   is route-specific (the board's state route and the AI-parse route phrase
+ *   their own absence); it is also what is shown when the ledger names nothing.
+ * @param fetchImpl - fetch implementation (injected for tests).
+ * @returns the HostApiError to throw for a missing board route.
+ */
+export async function missingRouteFailure(
+  fallback: string = t('board.hostError.notMounted'),
+  fetchImpl: typeof fetch = fetch,
+): Promise<HostApiError> {
+  const absent = (): HostApiError => new HostApiError('not-mounted', fallback, 404)
+  const reason = await fetchDegradedReason(fetchImpl)
+  // A shell that predates the reason field (or recorded none) tells us the row
+  // is degraded but not why; the route's own wording is more honest than an
+  // empty "because".
+  if (reason === undefined || reason === '') return absent()
+  const described = degradedFailureMessage(reason)
+  return new HostApiError(described.failure, described.message, 404)
 }
 
 function uuid(): string {
@@ -79,14 +174,18 @@ async function readJson<T>(response: Response): Promise<T> {
     // The Host answered with a reason of its own. A ledger lock is the one
     // class worth naming in the panel's words; the authentication fence and
     // every other action rejection are reported as they arrive.
-    if (hostError === 'forbidden') throw new HostApiError('unauthorized', t('board.hostError.unauthorized'), response.status)
+    if (hostError === 'forbidden') throw new HostApiError('forbidden', t('board.hostError.forbidden'), response.status)
     if (response.status === 503 || /lock/i.test(hostError)) {
       throw new HostApiError('locked', t('board.hostError.locked', { detail: hostError }), response.status)
     }
     throw new HostApiError('rejected', hostError, response.status)
   }
-  if (response.status === 404) throw new HostApiError('not-mounted', t('board.hostError.notMounted'), 404)
-  if (response.status === 401 || response.status === 403) throw new HostApiError('unauthorized', t('board.hostError.unauthorized'), response.status)
+  // A bare 404 is the ONLY signal that this board's routes are absent; the
+  // family health route is what turns it into the real reason when this row
+  // degraded during start (issue #1730).
+  if (response.status === 404) throw await missingRouteFailure()
+  if (response.status === 403) throw new HostApiError('forbidden', t('board.hostError.forbidden'), 403)
+  if (response.status === 401) throw new HostApiError('unauthorized', t('board.hostError.unauthorized'), 401)
   throw new HostApiError('unexpected', t('board.hostError.unexpected', { status: String(response.status) }), response.status)
 }
 
@@ -193,8 +292,12 @@ export class HttpTaskBoardHostTransport implements TaskBoardHostTransport {
       if (record !== undefined && isTaskParseDraft(record.draft)) return record.draft
       throw new HostApiError('unexpected', t('new.aiParseFailed', { error: t('board.hostError.unexpected', { status: String(response.status) }) }), response.status)
     }
-    if (response.status === 404) throw new HostApiError('not-mounted', t('new.aiParseUnavailable'), 404)
-    if (response.status === 401 || response.status === 403) throw new HostApiError('unauthorized', t('board.hostError.unauthorized'), response.status)
+    // The parse route lives beside the board's own routes, so a 404 means the
+    // same thing here: absent routes, with the same health-ledger detail and
+    // this route's own wording as the fallback.
+    if (response.status === 404) throw await missingRouteFailure(t('new.aiParseUnavailable'))
+    if (response.status === 403) throw new HostApiError('forbidden', t('board.hostError.forbidden'), 403)
+    if (response.status === 401) throw new HostApiError('unauthorized', t('board.hostError.unauthorized'), 401)
     const code = typeof record?.code === 'string' ? record.code : undefined
     if (code === 'no-model') throw new HostApiError('rejected', t('new.aiParseNoModel'), response.status)
     if (code === 'timeout') throw new HostApiError('timeout', t('new.aiParseTimeout', { seconds: String(TASK_PARSE_TIMEOUT_SECONDS) }), response.status)

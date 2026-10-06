@@ -2,7 +2,7 @@
 
 Status: implemented
 
-Supersession check: no active note owns frames2d *playback mechanics*; [frames2d gameplay](../../feature/2026-08-25-frames2d-gameplay-miku.md) owns the manifest contract and gameplay layer, which are untouched by this change. Evidence source: [dsh-perf attribution scoreboard](../../feature/2026-08-27-dsh-perf-plugin-attribution-scoreboard.md) measurement session.
+Supersession check: no active note owns frames2d *playback mechanics*; [frames2d gameplay](../feature/2026-08-25-frames2d-gameplay-miku.md) owns the manifest contract and gameplay layer, which are untouched by this change. Evidence source: [dsh-perf attribution scoreboard](../feature/2026-08-27-dsh-perf-plugin-attribution-scoreboard.md) measurement session.
 
 ## Problem
 

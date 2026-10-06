@@ -61,7 +61,10 @@ function referenceScan(expr: string, fromMs: number): number | undefined {
     if (!schedule.months.has(day.getMonth() + 1)) continue
     const dayMatches = schedule.days.has(day.getDate())
     const weekdayMatches = schedule.weekdays.has(day.getDay())
-    const matchesDay = schedule.dayWildcard ? weekdayMatches : schedule.weekdayWildcard ? dayMatches : dayMatches || weekdayMatches
+    // Vixie: both fields restricted is OR; any other combination is AND.
+    const matchesDay = !schedule.dayStarred && !schedule.weekdayStarred
+      ? dayMatches || weekdayMatches
+      : dayMatches && weekdayMatches
     if (!matchesDay) continue
     for (const hour of hours) {
       for (const minute of minutes) {

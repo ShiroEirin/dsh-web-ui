@@ -2,9 +2,10 @@
  * through the --dsw-alias-* variables (the same set the official installer
  * page uses); no emoji, no hard-coded colors beyond the variable fallbacks.
  *
- * This stylesheet covers the one surface the package still renders: the
+ * This stylesheet covers the two surfaces the package renders: the
  * check-for-updates block contributed into the official Plugins page's
- * `plugins.detail.section` seat. The former "Plugin manager" tab inside the
+ * `plugins.detail.section` seat, and the list-level update toolbar mounted
+ * beside that page's "Installed" heading. The former "Plugin manager" tab inside the
  * Plugins settings section — and with it the read-only inventory, conflict
  * ledger, boot-failure repair list and safe-mode banner — was removed, so its
  * list / card / child-row / banner classes are gone too. */
@@ -172,3 +173,124 @@
   margin: 0;
   color: var(--dsw-alias-brand-primary);
 }
+
+/* List-level toolbar, inserted into the official page's "Installed" heading
+ * (the heading is the page's own chrome; no seat is declared beside it). The
+ * container is a flex item of that heading row, so it is pushed to the trailing
+ * edge and anchors the flyouts below it. */
+.mount {
+  position: relative;
+  align-self: center;
+  margin-left: auto;
+}
+
+.toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.toolbarButton {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-sm, 6px);
+  padding: 3px 10px;
+  color: var(--dsw-alias-label-primary);
+  background: none;
+}
+
+.toolbarButton:hover:enabled {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.toolbarButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.toolbarButton:focus-visible,
+.toolbarSummary:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+.toolbarSummary {
+  font: inherit;
+  cursor: pointer;
+  border: 0;
+  padding: 3px 2px;
+  color: var(--dsw-alias-label-secondary);
+  background: none;
+}
+
+.toolbarSummary:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.toolbarHint {
+  max-width: 320px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Flyouts hang from the toolbar's trailing edge, inside the page's list
+ * column so the page's own scroll container never clips them. */
+.panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: max-content;
+  min-width: 260px;
+  max-width: min(440px, 60vw);
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-shadow-lv3, 0 8px 24px rgb(0 0 0 / 14%));
+  text-align: left;
+}
+
+.panelActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.panelList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.panelRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.panelName {
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.panelVersion {
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+

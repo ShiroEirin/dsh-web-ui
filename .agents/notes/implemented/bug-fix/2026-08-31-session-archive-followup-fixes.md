@@ -124,7 +124,7 @@ harness boundary:
    readable through the dual lookup).
 
 **Consequences.** Mixed-spelling installs work end to end; the wire format is
-uniformly canonical; legacy bare ledger keys are read and retired naturally.
+uniformly canonical; legacy bare ledger keys are read and retired naturally. Automatic cycles pass the native-id map from their candidate inventory into the archive executor, just like manual batches. The mixed-id automatic-cycle regression covers successful native archive markers, canonical ledger keys, running/current protection, and a repeat cycle that preserves archive times.
 Selection made on a pre-fix page (bare ids) is pruned by the inventory refresh
 (rows are canonical) and the user re-selects. Unit-covered: bare feed ids →
 canonical rows + parent links + archive flags; bare id through the delete

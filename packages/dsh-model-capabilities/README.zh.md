@@ -1,12 +1,25 @@
-# dsh-model-capabilities
+# dsh-model-capabilities · DeepSeek Harness (DSH) 自定义模型能力与 Vision 多模态声明插件
 
 [English](README.md) | 中文
 
-为 DSH 自定义提供方声明逐模型推理档位:为自定义模型目录里的每个模型声明它支持哪些思考档位、每档实际发送的取值,直接在 Models 设置页上编辑。官方 pi-ai 设置命名空间一直就承载这个字段,而 0.1.7-alpha.1 的 Models 页已自带模型输入类型编辑——本插件负责的是设置页仍未提供的推理档位编辑入口。
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-model-capabilities?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>DeepSeek Harness（DSH）官方 Web GUI 与桌面客户端自定义模型属性与推理思考档位配置中心</strong><br>
+  <em>逐模型推理思考档位 · Vision 多模态声明 · 提供方一键禁用/恢复 · Models 设置页无缝扩展 · 零重启热生效</em>
+</p>
+
+为 DeepSeek Harness (DSH) Web GUI 与官方桌面客户端的自定义提供方声明逐模型推理档位：为自定义模型目录里的每个模型声明它支持哪些思考档位、每档实际发送的取值，直接在 Models 设置页上可视化编辑。官方 pi-ai 设置命名空间一直就承载这个字段，而 0.1.7-alpha.1 的 Models 页已自带模型输入类型编辑——本插件负责的是设置页仍未提供的推理档位编辑与提供方快速启闭入口。
 
 ## 功能
 
-- **占位官方扩展区**:注册 Models 页的 `settings.models.provider-card` 插槽(key 为 `llm-pi-ai` 适配器家族),该家族的每张提供方卡片(手填的网关、OpenAI 兼容端点、命名厂商)都会获得一个可折叠的「模型能力」扩展区。
+- **占位官方扩展区**:注册 Models 页的 `settings.models.provider-card` 插槽(key 为 `llm-pi-ai` 适配器家族),该家族的每张提供方卡片(手填的网关、OpenAI 兼容端点、命名厂商)都会获得一个可折叠的「模型能力」扩展区。该插槽每张提供方卡片只渲染一个扩展区,因此当另一个插件先认领同一适配器家族时,本面板会报告这次冲突(浏览器控制台,外加 Models 页上点名占用者的提示),并在那个插件卸载后自行接管回来。
 - **提供方禁用/启用**:一键把该提供方的 profile 存档到插件自己的设置命名空间,再通过官方「移除提供方」同款操作(`unset` `llm-pi-ai.providers.<route>`)下线路由——该提供方随即离开模型目录,输入框模型选择器与子代理可选列表同时消失,所有已打开的界面即时生效,无需重启。启用则原样恢复存档的 profile(API 密钥存放在凭据服务中,禁用/启用完全不触及)。已禁用的提供方列在 Models 页底部的存档区,可从那里恢复。
 - **逐模型推理档位**:每个模型三态编辑——不声明(继承)、声明无推理(`reasoningEfforts: false`,模型选择器不再提供思考档位)、或显式档位字典。档位从 `off` 到 `max`;每个启用的档位带一个发送值输入框(请求实际发送的取值,默认与档位同名),另有一键填入常用的 low/medium/high。`off` 的发送值可留空,含义是「支持,但发送时不带参数」。
 - **走官方线路写入**:保存是一次路径操作,整体替换 `llm-pi-ai` 设置命名空间里该提供方的整个 `models` 数组——与官方卡片首次编辑时相同的整数组覆盖。本插件不编辑的字段(模型 ID、显示名称、输入模态声明、上下文窗口、compat 开关)在每次保存后原样保留;写入即时生效,无需重启。
@@ -47,4 +60,5 @@ dsh plugin --profile web add link:$(pwd)/packages/dsh-model-capabilities
 - 不编辑输入类型:Models 页自带的模型编辑器负责写 `input` 模态声明(alpha.2),本插件只原样保留该字段——声明图片输入请在上方的目录编辑器里操作。
 - 不覆盖 DeepSeek 直连适配器(`llm-deepseek`):它的目录固定,推理强度控制已存在于 Models 页。
 - 仍未保存的草稿提供方卡片不会分发扩展区;请先保存提供方。
+- 同一时刻只能有一个插件扩展 `llm-pi-ai` 提供方卡片。冲突方不会静默消失:Models 页 footer 会说明扩展席位被另一个插件占用并点名它,那个插件停止加载后面板自动恢复。
 - 禁用只作用于用户设置层的 profile——即 Models 页写出的手填提供方。声明在组合(composition base)层的 profile 无法从客户端下线:设置合并机制保证用户写入删不掉它,因此这类卡片不提供禁用开关。

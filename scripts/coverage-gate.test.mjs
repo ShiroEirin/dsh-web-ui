@@ -10,6 +10,7 @@ import {
   METRICS,
   aggregate,
   compare,
+  coverageArgs,
   discoverPackages,
   listPackageDirs,
   metricsFromSummary,
@@ -41,6 +42,30 @@ describe('metricsFromSummary', () => {
 
   it('falls back to zero for an incomplete summary', () => {
     assert.deepEqual(metricsFromSummary({}), { lines: 0, statements: 0, functions: 0, branches: 0 })
+  })
+})
+
+describe('coverageArgs', () => {
+  it('re-applies the exclusions after remapping so inlined dependencies stay out', () => {
+    // Given a package whose bundle inlines a third-party dependency, When the
+    // gate builds the vitest argv, Then it asks for the exclusions to be
+    // reapplied to the remapped sources, which is what keeps that dependency's
+    // unmapped files out of the package's own percentage.
+    const args = coverageArgs('/tmp/report')
+    assert.ok(args.includes('--coverage.excludeAfterRemap=true'))
+    assert.ok(args.includes('--coverage'))
+    assert.ok(args.includes('--coverage.reportsDirectory=/tmp/report'))
+  })
+
+  it('writes the summary to the directory it was given', () => {
+    // Given a reports directory, When the gate builds the argv, Then the JSON
+    // summary lands there rather than at a default path the caller cannot read.
+    const args = coverageArgs('/tmp/one-package')
+    assert.deepEqual(
+      args.filter((arg) => arg.startsWith('--coverage.reporter')),
+      ['--coverage.reporter=json-summary'],
+    )
+    assert.equal(args.at(-1), '--coverage.excludeAfterRemap=true')
   })
 })
 

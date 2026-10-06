@@ -1,8 +1,21 @@
-# dsh-session-archive
+# dsh-session-archive · Full-Text Session Search, Batch Archiving & Lifecycle Manager for DeepSeek Harness (DSH)
 
 English | [中文](README.zh.md)
 
-Session archive management for DSH Web: one place to see every session, archive or restore them in bulk, and physically delete sessions with a full, auditable pipeline. Optional (default-off) automatic policies archive long-inactive sessions and purge expired archives.
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-session-archive?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>Full-Text Session Search, Batch Archiving & Lifecycle Manager for DeepSeek Harness (DSH)</strong><br>
+  <em>Centralized Session View · Faceted Search & Filtering · Batch Archive & Cascade Delete · Automated Retention Rules</em>
+</p>
+
+A comprehensive session lifecycle and archive management plugin for DeepSeek Harness (DSH) Web GUI and official desktop client: centralized session inventory, batch archive/unarchive, and verifiable cascade physical deletion pipelines with disk space reclamation. Optional automated policies automatically archive inactive sessions and prune expired archives based on retention schedules.
 
 ## What it does
 
@@ -11,7 +24,7 @@ Session archive management for DSH Web: one place to see every session, archive 
 - **True multi-select**: per-row checkboxes, per-workspace select/deselect, and select-all that covers the complete filtered result set — not just rendered rows. Selection is kept across filter changes with an explicit note when selected items fall outside the current filter.
 - **Batch operations**: archive, unarchive, and physical delete over the selected set, executed as bounded server-side chunks with live progress, per-session results (success / skipped with reason / failed with reason), and a retry-failed-only action. The current session, running sessions, and sessions with running descendants are always protected and skipped with an explanation.
 - **Physical delete with cascade semantics**: deleting a session also removes its storage (jsonl.zstd directory or session-rdb rows), workspace accounting, archive-set entries, projection cache, and the plugin's archive ledger. Deleting a parent pulls in all descendants; a family containing any protected member is skipped whole — never half-deleted. Deletion requires an explicit confirmation that states the direct count, the cascade count, the final total, the skipped protected count, and the estimated freed space; large deletes require an extra acknowledgement.
-- **Optional automatic maintenance (off by default)**: auto-archive sessions inactive beyond a threshold (by last-activity time, never creation time) and auto-delete archived sessions past their retention (by the recorded archive time, never file times). Both are independent switches with pre-enable previews, run-now buttons, and persisted last-run/next-check status. Sessions archived before this plugin existed have no reliable archive time, are shown as "unknown", and are never auto-deleted.
+- **Optional automatic maintenance (off by default)**: auto-archive sessions inactive beyond a threshold (by last-activity time, never creation time) and auto-delete archived sessions past their retention (by the recorded archive time, never file times). Manual and automatic archiving both support bare UUID and `session-`-prefixed IDs, while the archive ledger uses canonical IDs. Both are independent switches with pre-enable previews, run-now buttons, and persisted last-run/next-check status. Sessions archived before this plugin existed have no reliable archive time, are shown as "unknown", and are never auto-deleted.
 - **Safe by construction**: all routes are loopback-fenced (tunnels and LAN clients get 403), deletion never follows symlinks outside the sessions root, and operations serialize so two batches can never interleave.
 
 ## Install

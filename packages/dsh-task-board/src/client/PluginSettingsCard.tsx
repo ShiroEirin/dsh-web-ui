@@ -41,6 +41,13 @@ export interface PluginSettingsCardProps<TKey extends string = string> {
   descriptionKey: TKey
   /** Optional rich header description rendered instead of the plain t(descriptionKey) text (the plain text stays as the tooltip). */
   descriptionNode?: ReactNode
+  /**
+   * Optional leading mark identifying the plugin. A card without one keeps the
+   * plain official header shape, so the chrome stays a readable sibling of the
+   * built-in PluginCard wherever a family plugin lands in the official bundle
+   * seat.
+   */
+  icon?: ReactNode
   /** The card's form state: availability, writability, and what a save would do. */
   state: CardShell
   /** Write every staged edit. */
@@ -91,6 +98,7 @@ export function PluginSettingsCard<TKey extends string = string>(props: PluginSe
   const header = alwaysOpen === true
     ? (
       <div className={css.headerStatic}>
+        {props.icon !== undefined ? <span className={css.mark} aria-hidden="true">{props.icon}</span> : null}
         <span className={css.headText}>
           <span className={css.name} title={title}>{title}</span>
           <span className={css.description} title={description}>{props.descriptionNode ?? description}</span>
@@ -106,6 +114,7 @@ export function PluginSettingsCard<TKey extends string = string>(props: PluginSe
         aria-label={`${props.t(open ? 'settings.collapse' : 'settings.expand')}: ${title}`}
         onClick={() => { setOpen(!open) }}
       >
+        {props.icon !== undefined ? <span className={css.mark} aria-hidden="true">{props.icon}</span> : null}
         <span className={css.headText}>
           <span className={css.name} title={title}>{title}</span>
           <span className={css.description} title={description}>{props.descriptionNode ?? description}</span>

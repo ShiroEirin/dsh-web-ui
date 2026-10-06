@@ -92,8 +92,10 @@ pnpm typecheck && pnpm test && pnpm docs:check   # 提交前必过
 `pnpm market:fetch` 得到 `HTTP 404`——移动钉扎的那一次运行成功，掩盖了后续所有运行的失败。
 卫星仓内改动的验收与门禁在该仓自己的 CI 跑（见该仓 `AGENTS.md`）。
 
+**卫星仓的 `main` 受分支规则集保护**：只有仓库所有者与拥有 write 权限的协作者可以直接 push，其他贡献者必须对该仓的 `main` 开 PR，由该仓 CI 作业转绿后合入。规则集始终要求 PR、禁止强推与删除，且不要求人工审批；豁免名单与决策见 [卫星分支推送策略 Note](.agents/notes/implemented/process/2026-10-04-satellite-main-branch-push-policy.md)。
+
 **桌面宿主读到的是哪份卫星副本**：全家桶聚合包按 semver 声明这四个卫星包
-（`^0.4.2`），`pnpm install` 因此把聚合包 `node_modules/@linxin666` 下的符号链接指到
+（`^0.4.3`），`pnpm install` 因此把聚合包 `node_modules/@linxin666` 下的符号链接指到
 pnpm store 的已发布 tarball。桌面宿主解析聚合 patch 行贡献的外部行时从聚合包自身的
 node_modules 出发——仅提交卫星仓并重启，GUI 加载的仍是发布版旧代码。在本地检出开发
 卫星内容后重跑 `node scripts/link-profile.mjs`：它会把这些 store 链接改指到本地卫星
@@ -115,7 +117,7 @@ active panel (#76 #87)`。提交信息禁止 emoji（全仓规则）。
    `README.zh.md` + `README.i18n.yaml`），改完任一侧后重录配对记录：
 
 ```sh
-pnpm docs:write-pair <包目录名>   # 如 dsh-ssh 或 xp
+pnpm docs:write-pair <包目录名>   # 如 dsh-ssh 或 dsh-update
 ```
 
 3. **无 emoji**：代码、注释、文档、提交信息均不得出现 emoji（CI 有全树
@@ -188,7 +190,7 @@ dsh-market.com。预设启用后运行在 DSH 宿主进程内，PR 描述需说�
 | --- | --- | --- |
 | [AGENTS.md](AGENTS.md) | 布局、命令、全局约定、开发与贡献流程 | 每个会话 |
 | [packages/AGENTS.md](packages/AGENTS.md) | 包级规则：SDK 约束、bundle 形态、测试纪律 | 改 packages/ 前 |
-| [docs/AGENTS.md](docs/AGENTS.md) | 文档标准：结构分层、写作规则、i18n 配对、预算 | 写文档前 |
+| [docs/AGENTS.md](docs/AGENTS.md) | 文档标准：结构分层、写作规则、i18n 配对 | 写文档前 |
 | 各包 `AGENTS.md` | 该包特有规则（如 dsh-ssh 安全模型） | 改对应包前 |
 | [docs/architecture.md](docs/architecture.md) | 架构总览与运行时全景 | 了解整体架构时 |
 | [docs/plugins.md](docs/plugins.md) | 新插件入桶规范与脚手架 | 新增或改造插件时 |

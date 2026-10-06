@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-桌面版内置运行时此前只带 Node 加宿主与 profile 载荷，没有 pnpm，因此在没有预装任何工具的机器上，应用内走 pnpm 的插件流程（`dsh plugin add/remove`）会报「pnpm not found on PATH」——这是[Electron 桌面版](../../architecture/2026-09-03-electron-desktop-app.zh.md)记录在案的已知限制。产品标准是一台没有装任何编程环境的电脑也能完整使用桌面版，而插件管理是核心流程（Workshop 插件安装与社区插件接入都要经过它）。
+桌面版内置运行时此前只带 Node 加宿主与 profile 载荷，没有 pnpm，因此在没有预装任何工具的机器上，应用内走 pnpm 的插件流程（`dsh plugin add/remove`）会报「pnpm not found on PATH」——这是[Electron 桌面版](../architecture/2026-09-03-electron-desktop-app.zh.md)记录在案的已知限制。产品标准是一台没有装任何编程环境的电脑也能完整使用桌面版，而插件管理是核心流程（Workshop 插件安装与社区插件接入都要经过它）。
 
 接入 pnpm 的验证过程还暴露出第二个既有的缺陷：暂存 Node 发行版的 `bin/npm` 与 `bin/npx` 是指向已被删除的解包临时目录的悬空符号链接，内置 npm 从来无法启动——对任何会 shell 出去调 npm 的流程，「零预装工具」的承诺早已不成立。
 

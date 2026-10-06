@@ -57,6 +57,60 @@ describe('stripManagedBlock', () => {
     const content = '- id: only\n'
     expect(stripManagedBlock(content)).toBe(content)
   })
+
+  // The plugin manager appends rows through the YAML document API, so
+  // they land at the end of the sequence - before a trailing END marker that
+  // was written last. Stripping the whole region deleted the user's rows.
+  it('operator: every row a YAML writer appended inside the displaced markers survives', () => {
+    // Given a patch holding the block plus rows appended after it.
+    const content = [
+      '- id: before',
+      LAN_BIND_BLOCK_BEGIN,
+      '- id: webserver',
+      "  name: '@deepseek-ai/dsh-host-webserver'",
+      '  config:',
+      "    host: '0.0.0.0'",
+      '    port: 19387',
+      '- id: web-ui-remote-web-ui',
+      '  config:',
+      '    lanBind: true',
+      '- id: after',
+      LAN_BIND_BLOCK_END,
+      '',
+    ].join('\n')
+    // When the block is stripped for a rewrite.
+    const stripped = stripManagedBlock(content)
+    // Then only the markers and the managed row are gone.
+    expect(stripped).toBe([
+      '- id: before',
+      '- id: web-ui-remote-web-ui',
+      '  config:',
+      '    lanBind: true',
+      '- id: after',
+      '',
+    ].join('\n'))
+  })
+
+  it('operator: the pinned bind is read from the managed row, not a displaced one', () => {
+    // Given a region whose first row belongs to another plugin.
+    const content = [
+      LAN_BIND_BLOCK_BEGIN,
+      '- id: other-plugin',
+      '  config:',
+      "    host: '10.0.0.9'",
+      '    port: 9',
+      '- id: webserver',
+      "  name: '@deepseek-ai/dsh-host-webserver'",
+      '  config:',
+      "    host: '0.0.0.0'",
+      '    port: 19387',
+      LAN_BIND_BLOCK_END,
+      '',
+    ].join('\n')
+    // When the pinned bind is read back.
+    // Then the foreign row's host and port are ignored.
+    expect(managedBindOf(content)).toEqual({ host: '0.0.0.0', port: 19387 })
+  })
 })
 
 describe('writeLanBind / lanBindState', () => {
@@ -90,18 +144,63 @@ describe('writeLanBind / lanBindState', () => {
     expect(() => profilePatchFile('../../elsewhere', home)).toThrow(/unsafe lan-bind profile/)
   })
 
-  it('truncates an unterminated block instead of stacking a second webserver row', () => {
+  it('replaces an unterminated block instead of stacking a second webserver row', () => {
     const home = tempHome()
     const patch = join(home, 'profiles', 'web', 'cordis.patch.yml')
     mkdirSync(join(home, 'profiles', 'web'), { recursive: true })
-    // A hand-truncated file: BEGIN present, END missing.
-    writeFileSync(patch, '- id: keep\n' + `${LAN_BIND_BLOCK_BEGIN}\n- id: webserver\n  config:\n    host: '0.0.0.0'\n`)   
+    // A hand-truncated file: BEGIN present, END missing, and a row after the
+    // orphan that the rewrite must not eat.
+    writeFileSync(patch, '- id: keep\n' + `${LAN_BIND_BLOCK_BEGIN}\n- id: webserver\n  config:\n    host: '0.0.0.0'\n- id: keep-after\n`)
     writeLanBind('127.0.0.1', 3191, 'web', home)
     const after = readFileSync(patch, 'utf8')
     expect(managedBindOf(after)).toEqual({ host: '127.0.0.1', port: 3191 })
     expect(after.split(LAN_BIND_BLOCK_BEGIN)).toHaveLength(2)
     expect(after.split('- id: webserver')).toHaveLength(2)
     expect(after).toContain('- id: keep')
+    expect(after).toContain('- id: keep-after')
+  })
+
+  // Write path: the boot re-assert (and every toggle flip) reaches
+  // stripManagedBlock. It must leave rows another writer displaced into the
+  // markers alone - the remote-control row carries the LAN toggle itself, so
+  // deleting it turned the feature back off and locked the phone out again.
+  it('operator: the boot re-assert keeps rows displaced inside the markers', () => {
+    const home = tempHome()
+    // Given a Desktop profile whose remote-control row and model rows were
+    // appended through the YAML document API while the block was last.
+    const patch = join(home, 'profiles', 'desktop', 'cordis.patch.yml')
+    mkdirSync(join(home, 'profiles', 'desktop'), { recursive: true })
+    writeFileSync(patch, [
+      '- id: keep-before',
+      LAN_BIND_BLOCK_BEGIN,
+      '- id: webserver',
+      "  name: '@deepseek-ai/dsh-host-webserver'",
+      '  config:',
+      "    host: '0.0.0.0'",
+      '    port: 19387',
+      '- id: web-ui-remote-web-ui',
+      '  config:',
+      "    plugin: '@linxin666/dsh-remote-web-ui'",
+      '    lanBind: true',
+      '- id: llm-verifier',
+      '  config:',
+      '    model: gpt-6-sol',
+      LAN_BIND_BLOCK_END,
+      '',
+    ].join('\n'))
+    // When the boot re-assert rewrites the block for the same bind.
+    writeLanBind('0.0.0.0', 19387, 'desktop', home)
+    // Then every foreign row survives and one block still carries the bind.
+    const content = readFileSync(patch, 'utf8')
+    expect(parsePatch(content).map(item => item.id)).toEqual([
+      'keep-before',
+      'web-ui-remote-web-ui',
+      'llm-verifier',
+      'webserver',
+    ])
+    expect(managedBindOf(content)).toEqual({ host: '0.0.0.0', port: 19387 })
+    expect(content.split(LAN_BIND_BLOCK_BEGIN)).toHaveLength(2)
+    expect(content.split('- id: webserver')).toHaveLength(2)
   })
 
   it.skipIf(process.platform === 'win32')('preserves the original file permissions instead of resetting to umask', () => {

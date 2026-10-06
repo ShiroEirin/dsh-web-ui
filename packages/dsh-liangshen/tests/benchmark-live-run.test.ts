@@ -478,8 +478,8 @@ describe('benchmark version capture', () => {
     // harness version.
     const error = '\'"dsh" "--version"\' is not recognized as an internal or external command,'
     expect(versionLine(error)).toBeNull()
-    expect(versionLine(error + '\n0.1.7-rc.2')).toBe('0.1.7-rc.2')
+    expect(versionLine(error + '\n0.2.0-rc.2')).toBe('0.2.0-rc.2')
     expect(versionLine('   ')).toBeNull()
-    expect(versionLine('dsh 0.1.7-rc.2')).toBe('0.1.7-rc.2')
+    expect(versionLine('dsh 0.2.0-rc.2')).toBe('0.2.0-rc.2')
   })
 })

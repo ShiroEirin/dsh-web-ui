@@ -1,0 +1,5 @@
+# Bilingual-pair consistency record (docs/i18n.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with git hash-object.
+.agents/notes/implemented/bug-fix/2026-08-26-viewport-scroll-lock-on-workspace-select.md: 568d7943ed7bcfe67b5083f9b95f7052377110d3
+.agents/notes/implemented/bug-fix/2026-08-26-viewport-scroll-lock-on-workspace-select.zh.md: a02f1a7523970a66f912f41ab4a59f55b21ffafc

@@ -208,7 +208,7 @@ export function makeTaskBoardRoutes(
         if (parsed.action.kind !== 'import' && Buffer.byteLength(body.raw) > ACTION_LIMIT) {
           return writeJson(res, 413, { ok: false, error: 'body-too-large' }, { 'cache-control': 'no-store' })
         }
-        writeJson(res, 200, service.apply(parsed.requestId, parsed.action, parsed.initiator), { 'cache-control': 'no-store' })
+        writeJson(res, 200, await service.apply(parsed.requestId, parsed.action, parsed.initiator), { 'cache-control': 'no-store' })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         writeJson(res, message === 'body-too-large' ? 413 : 400, { ok: false, error: message }, { 'cache-control': 'no-store' })
@@ -289,5 +289,18 @@ export function makeTaskBoardRoutes(
       }
     },
   }
-  return [state, action, events, parse]
+  const verification: WebRoute = {
+    kind: 'exact',
+    path: `${TASK_BOARD_API_PREFIX}/verification`,
+    handler: async (req, res): Promise<void> => {
+      if (req.method !== 'GET') return writeJson(res, 405, { ok: false, error: 'method-not-allowed' }, { 'cache-control': 'no-store' })
+      if (!guard(req, res)) return
+      try {
+        writeJson(res, 200, await service.verificationOptions(), { 'cache-control': 'no-store' })
+      } catch (error) {
+        writeJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) }, { 'cache-control': 'no-store' })
+      }
+    },
+  }
+  return [state, action, events, parse, verification]
 }

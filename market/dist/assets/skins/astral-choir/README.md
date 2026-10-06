@@ -42,7 +42,7 @@ with an arched glow. Cyan is reserved for signal.
   skin whitelist rejects colour functions.
 - Follows `contracts/performance-guidelines-v1.md`: no hooks (`facets.client` omitted),
   no `will-change`, no animated `background-position`, no self-declared `backdrop-filter`.
-- `body::after` (the ground plate) steps aside under `body[data-dsh-wallpaper-active]`
+- `body::after` (the ground plate) steps aside under `body[data-we-wallpaper]`
   and `body[data-dsh-backdrop-active]` so wallpapers and `backgroundMedia` win.
 - Slot outlets are `display: contents`, so all decoration is applied to `> *`.
 

@@ -30,6 +30,13 @@ interface FakeEntry {
   id: string
   /** Volatile field names the entry's form declares; a patch outside them is refused. */
   fields: string[]
+  /**
+   * Field names that are NESTED object sections of the entry's Config, the way
+   * the Skin Center carries the namespaces it folded in. A field that is not
+   * listed here is a scalar the entry merely happens to name. Defaults to the
+   * whole field list, which is right for the folded-namespace fixture.
+   */
+  sections?: string[]
   /** The entry's own user layer (the profile override). */
   user: Record<string, unknown>
   /** Revision the descriptor reports; a write expecting another one is refused. */
@@ -64,8 +71,13 @@ function fakeHost(roster: BridgeProfileEntry[], entries: FakeEntry[]): FakeHost 
   const project = (entry: FakeEntry): SettingsDescriptor => ({
     ns: entry.id as unknown as SettingsNamespace,
     autoGenerate: true,
-    schema: { type: 'object', dict: Object.fromEntries(entry.fields.map(field => [field, { type: 'unknown' }])) },
-    value: { ...entry.user },
+    // The 0.2.0 cohort serializes a schemastery schema as a { uid, refs }
+    // reference graph: there is no top-level 'dict' for a reader to take field
+    // names from, which is exactly why the import reads the live value (#1770).
+    schema: { uid: 1, refs: { 1: { type: 'object', dict: Object.fromEntries(entry.fields.map(field => [field, { type: 'unknown' }])) } } },
+    // A real descriptor's value carries the entry's whole Config: each declared
+    // nested section is a key, and the entry's own overrides sit alongside.
+    value: { ...Object.fromEntries(entry.fields.map(field => [field, (entry.sections ?? entry.fields).includes(field) ? {} : false])), ...entry.user },
     user: { ...entry.user },
     revision: entry.revision,
     applies: 'live',
@@ -181,6 +193,27 @@ describe('legacy family settings import', () => {
     expect(outcome.imported).toEqual(['pet'])
     expect(host.accepted).toEqual([{ entryId: 'web-ui-pet', patch: { size: 96, window: { offset: 5 } }, revision: 2 }])
     expect(pet.user).toEqual({ visible: true, size: 96, window: { scale: 2, offset: 5 } })
+  })
+
+  it('user migrates a folded-in section under the 0.2.0 reference-graph schema (#1770)', async () => {
+    // Given a Skin Center entry whose descriptor carries the 0.2.0 schema shape:
+    // a { uid, refs } reference graph with no top-level 'dict' to read field
+    // names from, and the folded-in namespaces only visible as value keys
+    const center = skinCenter()
+    const host = fakeHost(AGGREGATE_ROSTER, [center])
+    const marker = freshMarkerPath()
+
+    // When the import runs over a folded-in section the old schema read missed
+    const outcome = await runImport(host, marker, 'skin-wallpaper:\n  selection: stripes\n  dim: 15\n', fakeLogger())
+
+    // Then the section is recognized, written at its field path and recorded,
+    // instead of being reported unserved and retried on every boot
+    expect(outcome.imported).toEqual(['skin-wallpaper'])
+    expect(outcome.unserved).toEqual([])
+    expect(host.accepted).toEqual([{ entryId: 'web-ui-skin-center', patch: { 'skin-wallpaper': { selection: 'stripes', dim: 15 } }, revision: 6 }])
+    const recorded = readLegacyImportMarkerState(marker)
+    expect(recorded.status).toBe('recorded')
+    expect(recorded.status === 'recorded' ? Object.keys(recorded.marker.sections) : []).toEqual(['skin-wallpaper'])
   })
 
   it('user settings in a section no family namespace resolves are left alone', async () => {
@@ -390,23 +423,26 @@ describe('legacy family settings import', () => {
   })
 
   it('user settings for a field name two served entries declare are skipped instead of written twice', async () => {
-    // Given two served entries whose Config both declare the same field name
+    // Given two served entries whose Config both nest a section of the same
+    // name. The name is deliberately one the alias rule cannot reach, so only
+    // the field rule can claim it and its uniqueness check is what decides.
     const center = skinCenter()
-    const pet: FakeEntry = { id: 'web-ui-pet', fields: ['visible', 'skin-wallpaper'], user: {}, revision: 2 }
-    const host = fakeHost(AGGREGATE_ROSTER, [center, pet])
+    const pet: FakeEntry = { id: 'web-ui-pet', fields: ['visible', 'shared-section'], sections: ['shared-section'], user: {}, revision: 2 }
+    const other: FakeEntry = { id: 'web-ui-usage', fields: ['pollIntervalSec', 'shared-section'], sections: ['shared-section'], user: {}, revision: 2 }
+    const host = fakeHost(AGGREGATE_ROSTER, [pet, other])
     const marker = freshMarkerPath()
     const logger = fakeLogger()
 
     // When the import runs over that section
-    const outcome = await runImport(host, marker, 'skin-wallpaper:\n  selection: stripes\n', logger)
+    const outcome = await runImport(host, marker, 'shared-section:\n  selection: stripes\n', logger)
 
     // Then neither entry is written and the ambiguity is reported
     expect(outcome.imported).toEqual([])
-    expect(outcome.skipped).toEqual(['skin-wallpaper'])
-    expect(outcome.ambiguous).toEqual(['skin-wallpaper'])
+    expect(outcome.skipped).toEqual(['shared-section'])
+    expect(outcome.ambiguous).toEqual(['shared-section'])
     expect(host.accepted).toEqual([])
-    expect(center.user).toEqual({})
     expect(pet.user).toEqual({})
+    expect(other.user).toEqual({})
     expect(readLegacyImportMarkerState(marker)).toEqual({ status: 'absent' })
     expect(logger.lines.filter(line => line.includes('more than one served entry'))).toHaveLength(1)
   })
@@ -435,7 +471,7 @@ describe('legacy family settings import', () => {
     // Given a pet namespace the profile serves as an entry, and another served
     // entry whose Config happens to declare a field of the same name
     const pet: FakeEntry = { id: 'web-ui-pet', fields: ['visible', 'size'], user: {}, revision: 4 }
-    const other: FakeEntry = { id: 'web-ui-usage', fields: ['pollIntervalSec', 'pet'], user: {}, revision: 1 }
+    const other: FakeEntry = { id: 'web-ui-usage', fields: ['pollIntervalSec', 'pet'], sections: [], user: {}, revision: 1 }
     const host = fakeHost(AGGREGATE_ROSTER, [pet, other])
 
     // When the import runs over the pet section

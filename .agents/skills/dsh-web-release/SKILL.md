@@ -164,12 +164,17 @@ printf 'Previous release: %s; default target: %s\n' "$PREVIOUS_VERSION" "$TARGET
 find packages -name package.json -not -path '*/node_modules/*' \
   -exec sed -i '' 's/"version": "[0-9][^"]*"/"version": "X.Y.Z"/' {} +
 sed -i '' 's/"version": "[0-9][^"]*"/"version": "X.Y.Z"/' package.json
+sed -i '' 's|"@linxin666/dsh-web-all": ".*"|"@linxin666/dsh-web-all": "^X.Y.Z"|' package.json
 find packages package.json -name package.json -not -path '*/node_modules/*' \
   -exec grep -H '"version"' {} \; | grep -v '"version": "X.Y.Z"'   # 必须无输出
+grep -H '"@linxin666/dsh-web-all"' package.json   # 必须是 "^X.Y.Z"（根依赖基线随 tag 走）
+pnpm install --lockfile-only --ignore-scripts     # 刷新锁文件里该依赖的 specifier
 ```
 
-pnpm-lock.yaml 不记录包版本，无需改动；家族包依赖用 workspace:*，发布时由 pnpm 自动替换为
-实际版本，无需手工改依赖链。卫星包不是 workspace 包，它们的依赖范围与锁文件条目在第 2 节随对齐一起更新。
+pnpm-lock.yaml 不记录家族包的 version，无需为它们改动；家族包依赖用 workspace:*，发布时由 pnpm
+自动替换为实际版本，无需手工改依赖链。根别名是例外：它的聚合包依赖是基线随 tag 走的 caret 范围
+（`^X.Y.Z`，见 [root alias caret Note](../../notes/implemented/architecture/2026-09-29-root-alias-caret-aggregate-range.md)），
+基线搬动后锁文件的 specifier 要一起刷新。卫星包不是 workspace 包，它们的依赖范围与锁文件条目在第 2 节随对齐一起更新。
 
 ## 2. 卫星仓同版本发版（先于本仓）
 

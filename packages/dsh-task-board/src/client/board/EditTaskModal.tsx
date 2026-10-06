@@ -10,9 +10,10 @@ import type { BoardController } from '../../core/controller.ts'
 import { collectKnownTags, type TaskRecord, type TaskTag } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import { ModalShell, TaskContentFields, TaskTagFields, cleanTags } from './TaskForm.tsx'
+import type { OverlayPhase } from './overlay.tsx'
 
 /** Edit-task form overlay. */
-export function EditTaskModal({ controller, task, onClose }: { controller: BoardController; task: TaskRecord; onClose: () => void }) {
+export function EditTaskModal({ controller, task, onClose, phase }: { controller: BoardController; task: TaskRecord; onClose: () => void; phase?: OverlayPhase }) {
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
   const [prompt, setPrompt] = useState(task.prompt)
@@ -55,6 +56,7 @@ export function EditTaskModal({ controller, task, onClose }: { controller: Board
       submitLabel={t('edit.save')}
       onSubmit={() => { void submit() }}
       onClose={onClose}
+      phase={phase}
     >
       <TaskContentFields
         title={title}
@@ -71,7 +73,7 @@ export function EditTaskModal({ controller, task, onClose }: { controller: Board
 }
 
 /** Edit-tags modal: edit labels only, shown for tasks after first execution. */
-export function EditTagsModal({ controller, task, onClose }: { controller: BoardController; task: TaskRecord; onClose: () => void }) {
+export function EditTagsModal({ controller, task, onClose, phase }: { controller: BoardController; task: TaskRecord; onClose: () => void; phase?: OverlayPhase }) {
   const [tags, setTags] = useState<TaskTag[]>(task.tags ?? [])
   const [error, setError] = useState<string | undefined>(undefined)
   const [pending, setPending] = useState(false)
@@ -99,6 +101,7 @@ export function EditTagsModal({ controller, task, onClose }: { controller: Board
       submitLabel={t('edit.save')}
       onSubmit={() => { void submit() }}
       onClose={onClose}
+      phase={phase}
     >
       <TaskTagFields tags={tags} knownTags={collectKnownTags(controller.getSnapshot().tasks)} onChange={setTags} />
     </ModalShell>

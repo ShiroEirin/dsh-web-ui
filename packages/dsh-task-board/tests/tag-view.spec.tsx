@@ -208,6 +208,16 @@ describe('tag editor', () => {
   }
 
   /**
+   * The add-row control. Its name is the label alone: the leading mark is a
+   * vector glyph, not a "+" the copy has to carry.
+   */
+  function addButton(container: HTMLElement): HTMLButtonElement {
+    const found = [...container.querySelectorAll('button')].find(button => button.textContent === t('new.tagAdd'))
+    if (found === undefined) throw new Error('no add-row button')
+    return found as HTMLButtonElement
+  }
+
+  /**
    * Type into a React-controlled input. Assigning `value` directly is swallowed
    * by React's value tracker, so the native setter is used before the event.
    */
@@ -221,7 +231,7 @@ describe('tag editor', () => {
 
   it('adds and removes rows through the shared form', () => {
     const editor = mountEditor([])
-    const add = [...editor.container.querySelectorAll('button')].find(button => button.textContent!.includes('+'))!
+    const add = addButton(editor.container)
     click(add)
     expect(editor.value()).toHaveLength(1)
 
@@ -235,8 +245,11 @@ describe('tag editor', () => {
   it('stops offering new rows at the limit', () => {
     const tags = Array.from({ length: TASK_TAG_LIMIT }, (_, index) => ({ name: 'tag' + String(index) }))
     const editor = mountEditor(tags)
-    const add = [...editor.container.querySelectorAll('button')].find(button => button.textContent!.includes('+'))! as HTMLButtonElement
+    const add = addButton(editor.container)
     expect(add.disabled).toBe(true)
+    // The mark is a vector glyph, so the control still carries exactly its
+    // label as text and keeps its accessible name.
+    expect(add.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 16 16')
   })
 
   it('adopts the hint of a label already in use', () => {

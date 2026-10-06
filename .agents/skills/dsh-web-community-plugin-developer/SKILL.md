@@ -1,7 +1,7 @@
 ---
 name: dsh-web-community-plugin-developer
 description: Develop a DSH community plugin in the contributor's own repository, and register it in the community plugin index owned by the dsh-community-plugins repository — the index is community.json at that repository's root, its gate is pnpm community:check (node scripts/community-index.cjs --check), and the pull request goes to that repository. dsh-web itself consumes the published @linxin666/dsh-client-ui-community-plugins package and reads the community content pinned by the submodule gitlink when building the market. Use when the user asks to develop a community plugin (社区插件), register/index/接入 a community plugin into the dsh web GUI, update community.json, or asks how community plugins get listed in the settings page.
-whenToUse: 用户要开发/新建一个社区插件、把第三方插件登记进社区插件索引、更新 community.json，或询问社区插件如何进入 dsh web GUI 的「社区插件」列表。不适用于：皮肤（dsh-web-skin-developer skill）、宠物（dsh-web-pet-developer skill）、dsh-web 家族插件本身的开发（走 packages/AGENTS.md 与 scripts/dsh-plugin-new）。
+whenToUse: 用户要开发/新建一个社区插件、把第三方插件登记进社区插件索引、更新 community.json，或询问社区插件如何进入 dsh web GUI 的「社区插件」列表。不适用于：皮肤（dsh-skins 仓库的 dsh-skin-developer skill）、宠物（dsh-pet 仓库的 dsh-pet-developer skill）、dsh-web 家族插件本身的开发（走 packages/AGENTS.md 与 scripts/dsh-plugin-new）。
 disable-model-invocation: true
 ---
 

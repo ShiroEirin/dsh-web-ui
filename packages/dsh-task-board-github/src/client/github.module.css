@@ -1,0 +1,459 @@
+/**
+ * Styles for the GitHub provider surfaces: the sections rendered into the
+ * board's child seats and the integration block of the extension's own
+ * settings card.
+ *
+ * The extension ships its own stylesheet: a provider bundle may not import the
+ * board's CSS module, so the handful of board-family classes its sections use
+ * (section shell, pills, modal, buttons) are carried here on the same design
+ * tokens. The filled action button uses the primary-button trio rather than the
+ * board's info fill, so it stays legible under both light and dark themes.
+ */
+
+.detailSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detailSection h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-tertiary);
+  text-transform: none;
+}
+
+.detailText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--dsw-alias-label-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.detailMeta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.cardTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cardTag {
+  max-width: 100%;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid var(--dsh-task-tag-border);
+  border-radius: 999px;
+  background: var(--dsh-task-tag-fill);
+  color: var(--dsw-alias-label-primary);
+  font-size: 10px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Card-decoration chip. It sits inside the board's inline meta row; the
+   inline-flex display and flex-start self-alignment keep it a chip even when a
+   board renders the seat inside a column flex container. */
+.cardSchedule {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  flex: none;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.cardLink {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cardLink:hover {
+  color: var(--dsw-alias-label-primary);
+  text-decoration: underline;
+}
+
+.cardLink:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.statusBadge {
+  flex: none;
+  padding: 2px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.statusBadge[data-status='running'] {
+  color: var(--dsw-alias-state-warn-primary);
+  border-color: var(--dsw-alias-state-warn-primary);
+}
+
+.statusBadge[data-status='done'] {
+  color: var(--dsw-alias-state-success-primary);
+  border-color: var(--dsw-alias-state-success-primary);
+}
+
+.statusBadge[data-status='failed'] {
+  color: var(--dsw-alias-state-error-primary);
+  border-color: var(--dsw-alias-state-error-primary);
+}
+
+.moveRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.formError {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.input {
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-specific-input-major);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.input:focus {
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.input::placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.scheduleToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.scheduleToggle input {
+  accent-color: var(--dsw-alias-state-business-primary);
+}
+
+.linkButton {
+  padding: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-state-business-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.linkButton:hover {
+  text-decoration: underline;
+}
+
+.primaryButton {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary-foreground);
+  background: var(--dsw-alias-button-primary-fill);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.primaryButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ghostButton {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  background: transparent;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ghostButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.ghostButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.primaryButton:focus-visible,
+.ghostButton:focus-visible,
+.linkButton:focus-visible,
+.input:focus-visible,
+.scheduleToggle input:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+
+.primaryButton,
+.ghostButton,
+.linkButton,
+.input,
+.scheduleToggle input {
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, outline-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.primaryButton:active:not(:disabled),
+.ghostButton:active:not(:disabled),
+.linkButton:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dsw-alias-bg-mask-1);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(520px, calc(100vw - 48px));
+  max-height: calc(100vh - 96px);
+  overflow: hidden;
+  padding: 18px;
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
+  box-shadow: var(--dsw-shadow-lv3);
+  color: var(--dsw-alias-label-primary);
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.modalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.modalBody > * {
+  flex: none;
+}
+
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* Integration block of the extension's settings card: the credential, the
+   synchronized repositories and the connection test, separated from the
+   switches above it. */
+/* Copy shown in place of the integration block while the extension's master
+   switch is off: what the block would do, and that turning the switch on brings
+   it back. */
+.sectionHint {
+  margin: 4px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.setupPanel {
+  margin-top: 16px;
+  border-top: 1px solid var(--dsw-alias-separator-primary);
+  padding-top: 12px;
+}
+
+.settingsSummaryTitle {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.setupSection {
+  margin-top: 10px;
+}
+
+.setupLine {
+  margin: 4px 0;
+  font-size: 12px;
+}
+
+.setupHint {
+  margin: 4px 0;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.setupRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 6px 0;
+}
+
+.setupRow .input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.setupLabelInput {
+  flex: 0 1 140px;
+}
+
+.setupRepository {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  flex: 1 1 220px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.setupReport {
+  margin-top: 4px;
+}
+
+@media (max-width: 720px) {
+  .input {
+    box-sizing: border-box;
+    font-size: 16px;
+  }
+
+  .modalBackdrop {
+    align-items: stretch;
+    justify-content: stretch;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .modal {
+    box-sizing: border-box;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    padding-top: max(16px, env(safe-area-inset-top));
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    padding-left: max(16px, env(safe-area-inset-left));
+  }
+
+  .modalFooter {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    flex-wrap: wrap;
+    padding-top: 8px;
+    background: var(--dsw-alias-bg-base);
+  }
+
+  .modalFooter > button {
+    flex: 1 1 120px;
+  }
+}
+
+/* Execution-prompt panel of the task-detail seat: how the prompt was built,
+   the optional model analysis, and its controls. */
+.promptPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dsh-task-tag-border);
+}
+
+.promptPanel .detailMeta {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.promptAnalysis {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--dsh-task-tag-border);
+  border-radius: 8px;
+  background: var(--dsh-task-tag-fill);
+}
+
+.promptList {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+}
+
+.promptNotice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}

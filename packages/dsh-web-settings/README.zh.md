@@ -1,6 +1,19 @@
-# @linxin666/dsh-client-ui-web-ui-settings
+# dsh-web-settings · DeepSeek Harness (DSH) Web GUI 偏好设置增强与外观管理插件
 
 [English](README.md) | 中文
+
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-client-ui-web-ui-settings?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>DeepSeek Harness（DSH）官方 Web GUI 与桌面客户端统一偏好设置与插件配置中心</strong><br>
+  <em>全家桶设置分区 · 原生表单通道桥接 · 旧版设置无损迁移 · 界面外观与交互微调 · 模块化卡片槽位</em>
+</p>
 
 面向 DSH 设置页的 dsh web UI 设置插件组：在 DSH 设置页注册一个一级菜单项（与通用设置 / 模式 / 插件 / Agent 预设同级），归组全家桶插件的启用开关与配置表单。
 

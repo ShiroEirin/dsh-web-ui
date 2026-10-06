@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-聚合包为每个家族插件挂一行 loader 条目，在[聚合 shell](2026-09-01-aggregate-plugin-fault-isolation-shell.md)
+聚合包为每个家族插件挂一行 loader 条目，在[聚合 shell](../architecture/2026-09-01-aggregate-plugin-fault-isolation-shell.md)
 后面挂载真实插件包；共享的 `mountOnce`（`shared/host/mount-once.ts`）让聚合行与
 同一包的独立安装能在同一进程共存：首次挂载正常执行，之后同名包的挂载成为空操作，
 持有者的 fiber 销毁时释放该名字。

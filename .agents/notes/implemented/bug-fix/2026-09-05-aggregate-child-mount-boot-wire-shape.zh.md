@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-v0.3.15 的 #1372 修复([多问题合入](2026-09-04-multi-issue-landing-1368-1370-1372-1359.md))让聚合子插件的挂载依赖从 `__DSH_BOOT__.entries` 读取行级状态:家族子插件只有在其 patch 行 id(`web-ui-market`、`web-ui-plugin-manager` 等)或 `@linxin666/dsh-web-all/<family>` 子路径出现在活跃 entries 中时才会挂载。但这个 wire 契约并不存在。宿主的 boot entries 只由已伺服的 client bundle 组成([`graphRow`](../../../packages/dsh-git-graph/docs/ADR-001-plugin-boundary.md) wire 形状:`id` 是 bundle 包名,外加 `url`/`rev`/`inject`/`immediately`/`external`——没有 `name`、没有 `disabled`,永远不会出现 patch 行 id),所以任何 aggregate 安装下,gate 都找不到任何行 id,把全部家族子插件跳过。在受影响的 profile 里,整个 dsh-web 插件家族——Web 插件设置卡片、皮肤中心、创意工坊、宠物、任务看板、使用统计、会话归档 UI——同时从设置对话框中消失,即本次报告的严重恶性回归。
+v0.3.15 的 #1372 修复([多问题合入](2026-09-04-multi-issue-landing-1368-1370-1372-1359.md))让聚合子插件的挂载依赖从 `__DSH_BOOT__.entries` 读取行级状态:家族子插件只有在其 patch 行 id(`web-ui-market`、`web-ui-plugin-manager` 等)或 `@linxin666/dsh-web-all/<family>` 子路径出现在活跃 entries 中时才会挂载。但这个 wire 契约并不存在。宿主的 boot entries 只由已伺服的 client bundle 组成([`graphRow`](../../../../packages/dsh-git-graph/docs/ADR-001-plugin-boundary.md) wire 形状:`id` 是 bundle 包名,外加 `url`/`rev`/`inject`/`immediately`/`external`——没有 `name`、没有 `disabled`,永远不会出现 patch 行 id),所以任何 aggregate 安装下,gate 都找不到任何行 id,把全部家族子插件跳过。在受影响的 profile 里,整个 dsh-web 插件家族——Web 插件设置卡片、皮肤中心、创意工坊、宠物、任务看板、使用统计、会话归档 UI——同时从设置对话框中消失,即本次报告的严重恶性回归。
 
 随 gate 一起提交的单元测试伪造了含行 id 的 boot payload(`bootWith(['web-ui-plugin-manager'])`),这种形状真实宿主从不产生,所以测试全绿而真实 GUI 已坏。
 
@@ -12,7 +12,7 @@ v0.3.15 的 #1372 修复([多问题合入](2026-09-04-multi-issue-landing-1368-1
 
 `mountClientChildren` 恢复为 0.3.15 之前的双挂载保护语义:仅当子插件自身的包 id 出现在 `__DSH_BOOT__.entries` 中(该子插件经自己的 loader entry 伺服,例如同一 profile 里独立安装的 `@linxin666/dsh-session-archive`)才跳过,否则一律挂载。`CHILD_ROW_IDS`、boot entry 的 `name`/`disabled` 字段和行状态分支全部移除。模块文档现在记录了真实 wire 形状,以及 boot entries 为何无法表达行级启用状态。
 
-本次回退实际上撤销了 #1372(隐藏已停用家族行的 UI 入口),该问题在出现真实信号前保持未解决:客户端需要宿主提供的行状态通道(或设置清单查询),而不是 bundle graph。新增回归测试钉住真实 wire 形状——一个填满包名 id 的 aggregate boot graph 必须仍然挂载全部家族子插件。正确信号的后续设计见[家族行状态路由](../../proposed/feature/2026-09-05-family-row-state-route.zh.md)。
+本次回退实际上撤销了 #1372(隐藏已停用家族行的 UI 入口),该问题在出现真实信号前保持未解决:客户端需要宿主提供的行状态通道(或设置清单查询),而不是 bundle graph。新增回归测试钉住真实 wire 形状——一个填满包名 id 的 aggregate boot graph 必须仍然挂载全部家族子插件。正确信号的后续设计见[家族行状态路由](../feature/2026-09-05-family-row-state-route.zh.md)。
 
 ## Testing
 

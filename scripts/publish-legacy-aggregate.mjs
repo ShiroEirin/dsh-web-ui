@@ -19,8 +19,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/** GNU tar reads a `C:\...` argument as a remote host spec; --force-local keeps it a local path. */
-const TAR_LOCAL = process.platform === 'win32' ? ['--force-local'] : []
+import { TAR_LOCAL } from './tar-args.cjs'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(SCRIPT_DIR, '..')

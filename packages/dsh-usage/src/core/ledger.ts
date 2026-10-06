@@ -15,6 +15,19 @@ export function localDateKey(ms: number): string {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
+/**
+ * Whether `key` is a real local-date key (`YYYY-MM-DD`). The shape check is
+ * round-tripped: an impossible date (9999-99-99) parses to NaN and a rollover
+ * (2026-02-30) lands on another day, so both would otherwise fold into a bogus,
+ * never-pruned bucket. Shared by the persisted-document reader and the day
+ * route's query gate.
+ */
+export function isLedgerDateKey(key: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return false
+  const atMs = new Date(key + 'T12:00:00').getTime()
+  return Number.isFinite(atMs) && localDateKey(atMs) === key
+}
+
 /** An empty ledger document. */
 export function createLedgerDocument(): UsageLedgerDocument {
   return { version: 1, days: {} }
@@ -152,12 +165,8 @@ export function deserializeLedger(value: unknown): UsageLedgerDocument {
   const days = (value as Record<string, unknown>).days
   if (typeof days !== 'object' || days === null) return doc
   for (const [dateKey, providers] of Object.entries(days as Record<string, unknown>)) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || typeof providers !== 'object' || providers === null) continue
-    // Round-trip the date key: an impossible date (9999-99-99) parses to NaN
-    // and a rollover (2026-02-30) lands on another day; both would otherwise
-    // fold into a bogus, never-pruned bucket.
+    if (!isLedgerDateKey(dateKey) || typeof providers !== 'object' || providers === null) continue
     const atMs = new Date(dateKey + 'T12:00:00').getTime()
-    if (!Number.isFinite(atMs) || localDateKey(atMs) !== dateKey) continue
     for (const [provider, models] of Object.entries(providers as Record<string, unknown>)) {
       if (typeof models !== 'object' || models === null) continue
       for (const [model, totals] of Object.entries(models as Record<string, unknown>)) {

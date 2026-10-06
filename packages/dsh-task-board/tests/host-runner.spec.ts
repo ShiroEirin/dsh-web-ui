@@ -86,8 +86,8 @@ describe('HostExecutionRunner', () => {
     const promptPayloads: unknown[] = []
     const commands = {
       execute: vi.fn(async (_sessionId: string, line: string) => {
-        order.push('permission')
-        expect(line).toBe('/permission workspace-write')
+        order.push(line.startsWith('/permission ') ? 'permission' : 'goal')
+        if (line.startsWith('/permission ')) expect(line).toBe('/permission workspace-write')
         return { kind: 'success' as const }
       }),
     }
@@ -117,7 +117,10 @@ describe('HostExecutionRunner', () => {
       }),
     }
     await expect(new HostExecutionRunner(gateway, commands, workspaceRegistry()).launch(configuredTask())).resolves.toBe('session-a')
-    expect(order).toEqual(['preset', 'create', 'rename', 'permission', 'prompt'])
+    // The permission pin precedes the prompt; the /goal arming follows it, so
+    // the session's first turn carries the instruction verbatim.
+    expect(order).toEqual(['preset', 'create', 'rename', 'permission', 'prompt', 'goal'])
+    expect(commands.execute).toHaveBeenCalledWith('session-a', '/goal do work', expect.anything())
     expect(gateway.invoke.mock.calls[1]?.[0].args).toEqual({ request: { workspaceId: 'workspace-a', agentPreset: 'preset-a' } })
     expect(promptPayloads).toEqual([{ sessionId: 'session-a', requestId: expect.any(String), mode: 'queue', content: [{ type: 'text', text: 'do work' }] }])
   })
@@ -127,8 +130,8 @@ describe('HostExecutionRunner', () => {
     const promptPayloads: unknown[] = []
     const commands = {
       execute: vi.fn(async (_sessionId: string, line: string) => {
-        order.push('permission')
-        expect(line).toBe('/permission workspace-write')
+        order.push(line.startsWith('/permission ') ? 'permission' : 'goal')
+        if (line.startsWith('/permission ')) expect(line).toBe('/permission workspace-write')
         return { kind: 'success' as const }
       }),
     }
@@ -159,7 +162,7 @@ describe('HostExecutionRunner', () => {
     ).resolves.toBe('session-existing')
     // The pinned permission is re-asserted on the existing session; no
     // create/rename reaches the gateway at all.
-    expect(order).toEqual(['preset', 'projections', 'permission', 'prompt'])
+    expect(order).toEqual(['preset', 'projections', 'permission', 'prompt', 'goal'])
     expect(promptPayloads).toEqual([{ sessionId: 'session-existing', requestId: expect.any(String), mode: 'queue', content: [{ type: 'text', text: 'do work' }] }])
   })
 
@@ -331,11 +334,36 @@ describe('HostExecutionRunner', () => {
       running = false
       await expect(runner.inspect('session-a')).resolves.toEqual({ outcome: 'failed', error: 'agent turn ended with an error' })
       historyOk = false
-      await expect(runner.inspect('session-a')).resolves.toEqual({ outcome: 'pending' })
+      await expect(runner.inspect('session-a')).resolves.toEqual({ outcome: 'pending', unreadable: true, reason: 'session/page failed: offline' })
       expect(warnSpy).toHaveBeenCalledWith('[dsh-task-board] session/page failed during execution inspection; keeping the outcome pending', expect.any(Error))
     } finally {
       warnSpy.mockRestore()
     }
+  })
+
+  it('operator sees a durable teammate settle from its completed turn while the roster still calls it running', async () => {
+    // Given a session the roster reports as running and a history holding the
+    // teammate's own completed turn
+    const gateway = {
+      invoke: fakeInvoke(async (request: GatewayRequest) => {
+        if (request.method === 'list') return { items: [{ sessionId: 'session-a', running: true }] }
+        if (request.method === 'projections') return { values: { goal: null } }
+        return { records: [sessionEvent('turn/end', 10, 1_100, { reason: { kind: 'completed' } })], hasMore: false }
+      }),
+      stream: fakeStream(async () => ({
+        async *[Symbol.asyncIterator]() {
+          yield snapshot([], 10, true)
+        },
+      })),
+    }
+    const runner = new HostExecutionRunner(gateway)
+
+    // When the runner inspects that session as an ordinary execution and as a
+    // teammate that is still on the roster
+    // Then the ordinary execution still waits for the session to go idle, while
+    // the teammate reads the turn it already completed
+    await expect(runner.inspect('session-a', 1_000)).resolves.toEqual({ outcome: 'pending' })
+    await expect(runner.inspect('session-a', 1_000, undefined, { whileRunning: true })).resolves.toEqual({ outcome: 'succeeded' })
   })
 
   it('pages backward to the execution turn and ignores later user turns in the same session', async () => {
@@ -348,7 +376,10 @@ describe('HostExecutionRunner', () => {
     const gateway = {
       invoke: fakeInvoke(async (request: GatewayRequest) => request.method === 'list'
         ? { items: [{ sessionId: 'session-a', running: false }] }
-        : page(request)),
+        // The settle decision reads the goal phase (no goal on this session).
+        : request.method === 'projections'
+          ? { values: { goal: null } }
+          : page(request)),
       stream: fakeStream(async () => ({
         async *[Symbol.asyncIterator]() {
           yield snapshot([sessionEvent('user/message', 400, 4_000, {})], 400, true)
@@ -364,8 +395,13 @@ describe('HostExecutionRunner', () => {
     const items = [{ sessionId: 'session-a', running: false }]
     const list = vi.fn(async () => ({ items }))
     const page = vi.fn(async () => ({ records: [sessionEvent('turn/end', 10, 1_100, { reason: { kind: 'completed' } })], hasMore: false }))
+    const projections = vi.fn(async () => ({ values: { goal: null } }))
     const gateway = {
-      invoke: fakeInvoke(async (request: GatewayRequest) => request.method === 'list' ? list() : page()),
+      invoke: fakeInvoke(async (request: GatewayRequest) => request.method === 'list'
+        ? list()
+        : request.method === 'projections'
+          ? projections()
+          : page()),
       stream: fakeStream(async () => ({
         async *[Symbol.asyncIterator]() {
           yield snapshot([], 10, true)
@@ -379,6 +415,7 @@ describe('HostExecutionRunner', () => {
     await expect(runner.inspect('session-a', 1_000, running.items)).resolves.toEqual({ outcome: 'succeeded' })
     expect(list).toHaveBeenCalledOnce()
     expect(page).toHaveBeenCalledOnce()
+    expect(projections).toHaveBeenCalledOnce()
   })
 
   it('requests the host roster under the descriptor _request wire key and reports it known', async () => {
@@ -638,5 +675,62 @@ describe('HostExecutionRunner', () => {
 
     // Then unreadable evidence is never treated as success
     expect(result).toEqual({ outcome: 'failed', error: 'agent turn ended without completing: unknown' })
+  })
+})
+
+describe('HostExecutionRunner workspace default', () => {
+  function registryListing(items: readonly { id: string; updatedAt: string }[]): { list(): readonly Workspace[] } {
+    return { list: () => items } as unknown as { list(): readonly Workspace[] }
+  }
+
+  it('operator sees an unpinned card run in the most recently used workspace', async () => {
+    // Given a deployment whose newest workspace record is workspace-new
+    const created: unknown[] = []
+    const gateway = {
+      stream: fakeStream(async () => ({ async *[Symbol.asyncIterator]() {} })),
+      invoke: fakeInvoke(async (request: GatewayRequest) => {
+        if (request.method === 'create') {
+          created.push(request.args.request)
+          return { sessionId: 'session-a' }
+        }
+        if (request.method === 'rename') return { title: 'Run me', seq: 1 }
+        if (request.method === 'prompt') return { accepted: true }
+        throw new Error('unexpected gateway call')
+      }),
+    }
+    const task = createTask({ title: 'Run me', description: '', prompt: 'do work' }, 1, 'task-a')
+
+    // When the runner launches a card that pins no workspace
+    await new HostExecutionRunner(gateway, undefined, registryListing([
+      { id: 'workspace-old', updatedAt: '2026-09-29T10:00:00.000Z' },
+      { id: 'workspace-new', updatedAt: '2026-09-30T10:00:00.000Z' },
+    ])).launch(task)
+
+    // Then the session is created in that workspace, never in the Host's own directory
+    expect(created).toEqual([{ workspaceId: 'workspace-new' }])
+  })
+
+  it('operator sees the Host decide when the deployment knows no workspace', async () => {
+    // Given a deployment that has registered no workspace at all
+    const created: unknown[] = []
+    const gateway = {
+      stream: fakeStream(async () => ({ async *[Symbol.asyncIterator]() {} })),
+      invoke: fakeInvoke(async (request: GatewayRequest) => {
+        if (request.method === 'create') {
+          created.push(request.args.request)
+          return { sessionId: 'session-a' }
+        }
+        if (request.method === 'rename') return { title: 'Run me', seq: 1 }
+        if (request.method === 'prompt') return { accepted: true }
+        throw new Error('unexpected gateway call')
+      }),
+    }
+    const task = createTask({ title: 'Run me', description: '', prompt: 'do work' }, 1, 'task-a')
+
+    // When the runner launches the card
+    await new HostExecutionRunner(gateway, undefined, workspaceRegistry([])).launch(task)
+
+    // Then the create request carries no workspace and the Host's own default decides
+    expect(created).toEqual([{}])
   })
 })

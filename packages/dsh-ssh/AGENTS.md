@@ -38,6 +38,14 @@ dsh Web GUI 的远程 SSH 运维插件：Host 进程内的持久 ssh2 连接池 
   视图卸载只 detach、重新挂载按 id reattach 并回放滚动缓冲；只有显式
   `close` 帧、远端退出后的宽限期到期或空闲回收才结束会话。路由层只做
   loopback 围栏与 socket 接线，会话表随路由注销一并 dispose。
+- **终端 socket 走外壳公布的 Host**（`src/client/api.ts` 的 `terminalSocketUrl`）：
+  应用交付的页面（桌面版 `dsh-app://app/`）不能在自己的 scheme 上升级 socket，
+  但外壳已经通过官方钩子 `__DSH_TRANSPORT__.streamBaseUrl` 公布它拥有的 Host
+  authority 并改写该 Host 的握手，因此在这种页面上改拨该地址（仅当它是可解析、
+  无 userinfo、authority 非空的 http(s) origin）。网页始终按自身 origin 解析——
+  远程通道会把 `ownsHost` 授予已配对的局域网页面，那类页面必须继续留在门控通道里。
+  宿主侧围栏不变，socket 仍走 loopback。决策与被取代的旧方案见
+  `.agents/notes/implemented/bug-fix/2026-10-02-ssh-terminal-dials-shell-owned-host.md`。
 
 ## 提交前检查
 

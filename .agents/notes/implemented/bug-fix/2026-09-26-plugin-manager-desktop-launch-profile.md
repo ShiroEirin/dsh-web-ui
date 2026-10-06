@@ -34,7 +34,7 @@ its update block.
 The launched profile the official runtime publishes on the host context —
 `profileContext` (`{ name, dir, patchPath, installAnchor, … }`) — is a
 resolution fact for the gateway, exactly as
-[remote-web-ui's LAN bind](../2026-09-25-remote-web-ui-desktop-lan-bind-profile.md)
+[remote-web-ui's LAN bind](2026-09-25-remote-web-ui-desktop-lan-bind-profile.md)
 already treats it:
 
 - `resolveProfile(argv, env, launched?, desktopLauncher?)` in
@@ -59,7 +59,7 @@ already treats it:
   order settles is a stale or hand-set value that disagrees with the running
   host, where following the variable would mount a gateway whose writes never
   reach the profile the host reads (the hazard
-  [remote-web-ui's note](../2026-09-25-remote-web-ui-desktop-lan-bind-profile.md)
+  [remote-web-ui's note](2026-09-25-remote-web-ui-desktop-lan-bind-profile.md)
   records).
   The published `dir` is used as the profile root — it is the same directory the
   runtime hands its own profile loader — so the gateway reads and writes the

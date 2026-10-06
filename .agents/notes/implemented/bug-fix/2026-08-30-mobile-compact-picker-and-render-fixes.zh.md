@@ -2,6 +2,8 @@
 
 Status: implemented
 
+部分被[手机紧凑选择器按钮移除](../simplification/2026-10-03-mobile-compact-picker-removed.md)取代：Decision 3 的两个合成模型/强度图标按钮、其钻取行为、`dsh-remote-compact-picker` body class 与 `mobile.composer.pickModel` / `mobile.composer.pickEffort` 语言键均已移除。本记录其余三项修复仍然成立。
+
 ## Problem
 
 `dsh-remote-web-ui` 手机竖屏表面的四个缺陷（390x844 触摸模拟下在真实 GUI 复现）：

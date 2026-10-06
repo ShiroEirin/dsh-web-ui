@@ -9,12 +9,12 @@ In the task board kanban view, moving a task between status columns (Backlog and
 ## Decision
 
 1. In `packages/dsh-task-board/src/client/board/TaskCard.tsx`, made cards draggable when they are non-archived, non-running, and non-pending (`!archived && task.status !== 'running' && !pending`), setting the task ID in `dataTransfer`.
-2. In `packages/dsh-task-board/src/client/board/TaskBoard.tsx`, added `onDragOver` and `onDrop` handlers to manual status columns (`backlog` and `todo`), validating drop eligibility with `canMoveManually` and invoking `controller.moveTask`.
+2. In `packages/dsh-task-board/src/client/board/TaskBoard.tsx`, added `onDragOver` and `onDrop` handlers to every manual status column — `backlog` and `todo` when this shipped, and since [manual column switching](2026-09-29-task-board-manual-column-switching.md) every column — validating drop eligibility with `canMoveManually` and invoking `controller.moveTask`.
 3. Added comprehensive automated tests in `packages/dsh-task-board/tests/board-view.spec.tsx` testing draggable states and valid/invalid drag-and-drop moves.
 
 ## Consequences
 
-Users can smoothly drag tasks between Backlog and Todo columns directly on the board. Running, failed, done, and pending execution states continue to be safely governed by execution guards and cannot be illegally dragged.
+Users can smoothly drag tasks between the manual columns directly on the board. Running and pending execution states continue to be safely governed by execution guards and cannot be illegally dragged; Every column became a legal drop target — Done and Failed included — with [manual column switching](2026-09-29-task-board-manual-column-switching.md), which partially supersedes the manual-column set recorded here.
 
 ## Testing
 

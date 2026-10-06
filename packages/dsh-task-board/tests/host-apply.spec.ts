@@ -17,7 +17,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { TypertGateway } from '@deepseek-ai/dsh-api-gateway'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { Config, apply } from '../src/index.ts'
+import { Config, apply, resolveHostDefaultPermission } from '../src/index.ts'
 
 /** The write protocol a volatile reference shares across cosmokit copies. */
 const VOLATILE_WRITE = Symbol.for('cosmokit.volatile.write')
@@ -40,7 +40,7 @@ interface MountedBoard {
   /** POST one action envelope to the mounted HTTP surface. */
   action(envelope: ActionEnvelope): Promise<{ status: number; body: { error?: string; revision?: number } }>
   /** GET the host snapshot the browser mirrors. */
-  state(): Promise<{ status: number; body: { maxSubtaskDepth?: number } }>
+  state(): Promise<{ status: number; body: { maxSubtaskDepth?: number; sessionDefaultPermission?: string } }>
   /** Tear the activation and its HTTP surface down. */
   dispose(): Promise<void>
 }
@@ -60,14 +60,28 @@ function emptyRosterGateway(): TypertGateway {
  * Mount the board's host half into a capture-only context and serve its routes
  * over loopback HTTP.
  * @param config - the parsed row config the Host hands the activation.
+ * @param options - the deployment's own permission-preset service: the preset a
+ *   new session starts at. A function is read per call, which is how a Settings
+ *   change made while the board runs reaches it; omitted means the deployment
+ *   serves no permission catalog at all.
  * @returns the mounted activation's observation surface.
  */
-async function mountBoard(config: ReturnType<typeof Config>): Promise<MountedBoard> {
+async function mountBoard(
+  config: ReturnType<typeof Config>,
+  options: { hostDefaultPreset?: string | (() => string | undefined) } = {},
+): Promise<MountedBoard> {
   const routes: WebRoute[] = []
   const disposers: Array<() => void> = []
   const sections: string[] = []
   let volatileListener: (() => void) | undefined
+  const hostDefaultPreset = options.hostDefaultPreset
+  const presetRead = (): string | undefined =>
+    typeof hostDefaultPreset === 'function' ? hostDefaultPreset() : hostDefaultPreset
+  const permissionPresets = hostDefaultPreset === undefined
+    ? undefined
+    : { catalog: () => ({ defaultPreset: presetRead() }) }
   const ctx = {
+    get: (name: string) => name === 'permissionPresets' ? permissionPresets : undefined,
     typertGateway: emptyRosterGateway(),
     workspaceRegistry: {},
     agents: { get: () => undefined },
@@ -133,7 +147,7 @@ async function mountBoard(config: ReturnType<typeof Config>): Promise<MountedBoa
       const response = await fetch(`${base}/api/task-board/state`, {
         headers: { 'sec-fetch-site': 'same-origin' },
       })
-      return { status: response.status, body: await response.json() as { maxSubtaskDepth?: number } }
+      return { status: response.status, body: await response.json() as { maxSubtaskDepth?: number; sessionDefaultPermission?: string } }
     },
     dispose: async () => {
       for (const dispose of disposers.reverse()) dispose()
@@ -249,5 +263,101 @@ describe('host activation settings', () => {
     expect((await board.state()).body.maxSubtaskDepth).toBe(2)
     board.commit('maxSubtaskDepth', 1)
     expect((await board.state()).body.maxSubtaskDepth).toBe(1)
+  })})
+
+/**
+ * One create action for a card that pins its own permission, which the
+ * confirmation gate judges against the deployment's baseline.
+ */
+function highPermissionAction(requestId: string, permission: string): ActionEnvelope {
+  return {
+    requestId,
+    action: { kind: 'create', id: requestId, input: { title: 'High card', description: '', prompt: 'work', permission } },
+  }
+}
+
+/** One run action for a card created by {@link highPermissionAction}. */
+function runAction(requestId: string, taskId: string): ActionEnvelope {
+  return { requestId, action: { kind: 'run', taskId } }
+}
+
+describe('host permission baseline', () => {
+  it('operator sees a row that pins no baseline carry none of its own', () => {
+    // Given the Config schema the Host serves as this row's settings page
+    // When a row is parsed without an explicit permission baseline
+    // Then nothing is baked in, so the board is free to follow the Host default
+    expect(Config({}).sessionDefaultPermission).toBeUndefined()
+    expect(Config({ sessionDefaultPermission: 'workspace-write' }).sessionDefaultPermission).toBe('workspace-write')
+  })
+
+  it('operator sees the board follow the Host default permission when the row pins none', async () => {
+    // Given a deployment whose new sessions start at full access and a row that pins no baseline
+    const board = await mountBoard(Config({ enabled: true }), { hostDefaultPreset: 'danger-full-access' })
+    mounted.push(board)
+
+    // When a card pinning that permission is created and run
+    await board.action(highPermissionAction('host-card', 'danger-full-access'))
+    const run = await board.action(runAction('host-run', 'host-card'))
+
+    // Then the Host default is the board's baseline and the card needs no confirmation
+    expect((await board.state()).body.sessionDefaultPermission).toBe('danger-full-access')
+    expect(run.status).toBe(200)
+  })
+
+  it('operator sees an explicit baseline override the Host default permission', async () => {
+    // Given a deployment at full access but a row that pins the conservative baseline
+    const board = await mountBoard(Config({ enabled: true, sessionDefaultPermission: 'read-only' }), { hostDefaultPreset: 'danger-full-access' })
+    mounted.push(board)
+
+    // When a card pinning full access is created and run
+    await board.action(highPermissionAction('pinned-card', 'danger-full-access'))
+    const run = await board.action(runAction('pinned-run', 'pinned-card'))
+
+    // Then the pinned baseline governs and the elevation still needs a human confirmation
+    expect((await board.state()).body.sessionDefaultPermission).toBe('read-only')
+    expect(run).toMatchObject({ status: 400, body: { error: expect.stringContaining('confirmation-required') } })
+  })
+
+  it('operator sees the fail-safe baseline hold when the deployment serves no permission catalog', async () => {
+    // Given a deployment with no permission-preset service at all
+    const board = await mountBoard(Config({ enabled: true }))
+    mounted.push(board)
+
+    // When a card pinning full access is created and run
+    await board.action(highPermissionAction('fallback-card', 'danger-full-access'))
+    const run = await board.action(runAction('fallback-run', 'fallback-card'))
+
+    // Then the gate falls back to read-only rather than assuming an elevation is fine
+    expect((await board.state()).body.sessionDefaultPermission).toBe('read-only')
+    expect(run).toMatchObject({ status: 400, body: { error: expect.stringContaining('confirmation-required') } })
+  })
+
+  it('operator lowering the Host default while the board runs sees the gate follow it', async () => {
+    // Given a running board under a deployment that starts sessions at full access
+    let preset = 'danger-full-access'
+    const board = await mountBoard(Config({ enabled: true }), { hostDefaultPreset: () => preset })
+    mounted.push(board)
+    await board.action(highPermissionAction('live-card-1', 'danger-full-access'))
+    expect((await board.action(runAction('live-run-1', 'live-card-1'))).status).toBe(200)
+
+    // When the operator lowers the deployment default without remounting the row
+    preset = 'read-only'
+    await board.action(highPermissionAction('live-card-2', 'danger-full-access'))
+
+    // Then the next elevation is gated again, because the baseline is re-read per evaluation
+    expect((await board.state()).body.sessionDefaultPermission).toBe('read-only')
+    expect(await board.action(runAction('live-run-2', 'live-card-2'))).toMatchObject({ status: 400, body: { error: expect.stringContaining('confirmation-required') } })
+  })
+
+  it('operator sees a Host preset the board cannot pin a card to fall back to the fail-safe baseline', () => {
+    // Given a catalog whose default is the current-session-only auto preset
+    const ctx = { get: (name: string) => name === 'permissionPresets' ? { catalog: () => ({ defaultPreset: 'auto' }) } : undefined }
+
+    // When the Host default is read
+    // Then it is not a pinnable permission, so the caller keeps the fail-safe baseline
+    expect(resolveHostDefaultPermission(ctx as never)).toBeUndefined()
+    expect(resolveHostDefaultPermission({ get: () => ({ catalog: () => ({ defaultPreset: 'workspace-write' }) }) } as never)).toBe('workspace-write')
+    expect(resolveHostDefaultPermission({ get: () => { throw new Error('service unavailable') } } as never)).toBeUndefined()
   })
 })
+

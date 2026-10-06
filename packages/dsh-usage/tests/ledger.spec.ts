@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  createLedgerDocument, deserializeLedger, foldUsage, ledgerDayKeys, localDateKey, pruneLedger, summarizeDays, totalTokens,
+  createLedgerDocument, deserializeLedger, foldUsage, isLedgerDateKey, ledgerDayKeys, localDateKey, pruneLedger, summarizeDays, totalTokens,
 } from '../src/core/ledger.ts'
 import { emptyTotals } from '../src/core/types.ts'
 
@@ -9,6 +9,18 @@ describe('localDateKey', () => {
     // 2026-08-29 12:00 local, constructed via Date components to stay TZ-neutral.
     const date = new Date(2026, 7, 29, 12, 0, 0)
     expect(localDateKey(date.getTime())).toBe('2026-08-29')
+  })
+})
+
+describe('isLedgerDateKey', () => {
+  it('user gets only real local days accepted as a day key', () => {
+    // Given the day route's query gate, which shares this check with the
+    // persisted-document reader so a rollover key never reaches a bucket
+    const candidates = ['2026-08-29', '2026-02-30', '2026-13-01', 'yesterday', '']
+    // When each candidate is validated
+    const verdicts = candidates.map(isLedgerDateKey)
+    // Then only the real local day is accepted
+    expect(verdicts).toEqual([true, false, false, false, false])
   })
 })
 

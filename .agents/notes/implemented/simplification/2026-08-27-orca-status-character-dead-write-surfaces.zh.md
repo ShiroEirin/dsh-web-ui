@@ -2,7 +2,7 @@
 
 Status: implemented
 
-Supersession check: 没有活跃 Note 拥有状态小恐龙帧循环；[performance-guidelines-v1](../../../packages/skins/skin-center/contracts/performance-guidelines-v1.md) 的 R3/R5 是「规则」属主，但没有任何 Note 记录这个 hook 的合规状态。hooks 成本的实测案例研究仍由契约文档自身承载。
+Supersession check: 没有活跃 Note 拥有状态小恐龙帧循环；[performance-guidelines-v1](https://github.com/zhu1090093659/dsh-skins/blob/main/contracts/performance-guidelines-v1.md) 的 R3/R5 是「规则」属主，但没有任何 Note 记录这个 hook 的合规状态。hooks 成本的实测案例研究仍由契约文档自身承载。
 
 ## Problem
 

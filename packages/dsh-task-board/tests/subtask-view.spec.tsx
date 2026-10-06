@@ -9,6 +9,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
 import { LinkSubtaskModal } from '../src/client/board/LinkSubtaskModal.tsx'
 import { NewTaskModal } from '../src/client/board/NewTaskModal.tsx'
+import { openFormSection } from './form-sections.ts'
 import { TaskBoard } from '../src/client/board/TaskBoard.tsx'
 import { TaskDetail } from '../src/client/board/TaskDetail.tsx'
 import { t } from '../src/client/locales.ts'
@@ -110,7 +111,11 @@ describe('task detail subtask block', () => {
     // Then the block lists the subtask and offers both add actions
     const section = container.querySelector('[data-dsh-part="subtasks"]')
     expect(section?.textContent).toContain('child')
-    expect(button(container, '+ ' + t('detail.subtasks.add')).textContent).toBe('+ ' + t('detail.subtasks.add'))
+    const add = button(container, t('detail.subtasks.add'))
+    expect(add.textContent).toBe(t('detail.subtasks.add'))
+    // The leading mark is the board's own vector glyph, not a text "+", so the
+    // control's text is exactly its label.
+    expect(add.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 16 16')
     expect(button(container, t('detail.subtasks.link')).textContent).toBe(t('detail.subtasks.link'))
   })
 
@@ -126,7 +131,7 @@ describe('task detail subtask block', () => {
     // Then the depth rule is explained and no add control is offered
     const section = container.querySelector('[data-dsh-part="subtasks"]')
     expect(section?.textContent).toContain(t('detail.subtasks.depthLimit', { depth: '1' }))
-    expect([...container.querySelectorAll('button')].some(candidate => candidate.textContent === '+ ' + t('detail.subtasks.add'))).toBe(false)
+    expect([...container.querySelectorAll('button')].some(candidate => candidate.textContent === t('detail.subtasks.add'))).toBe(false)
     expect(controller.getSnapshot().tasks.find(entry => entry.id === 'child')?.parentId).toBe('parent')
   })
 
@@ -229,6 +234,7 @@ describe('new subtask form with a stale parent target', () => {
 
     // When the user opens the subtask form created from that parent
     const container = render(<NewTaskModal controller={controller} parentTask={parent} onClose={() => {}} />)
+    openFormSection(container, t('new.section.execution'))
 
     // Then each stale pin stays visible as a selectable row
     expect([...container.querySelectorAll('option')].map(option => option.value)).toEqual(

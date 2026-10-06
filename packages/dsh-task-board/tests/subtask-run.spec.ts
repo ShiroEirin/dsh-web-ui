@@ -275,6 +275,48 @@ describe('Agent Team runs', () => {
     ])
   })
 
+  it('operator sees a team run close on its Lead verdict when no teammate reports one', () => {
+    // Given a team-mode root whose two subtasks were dispatched as teammates
+    const ledger = new HostTaskLedger(tempRoot(), () => NOW)
+    ledger.applyRequest('seed-root', { kind: 'create', id: 'root', input: { title: 'root', description: '', prompt: 'root', teamRun: true } })
+    ledger.applyRequest('seed-a', { kind: 'create', id: 'a', input: { title: 'a', description: '', prompt: 'a', parentId: 'root' } })
+    ledger.applyRequest('seed-b', { kind: 'create', id: 'b', input: { title: 'b', description: '', prompt: 'b', parentId: 'root' } })
+    const runs = ledger.applyRequest('run-1', { kind: 'run', taskId: 'root' }).runs ?? []
+    const lead = runs.find(run => run.task.id === 'root')
+    if (lead === undefined) throw new Error('expected the Lead execution to open')
+
+    // When the Lead's own turn settles and no teammate ever reports a verdict
+    ledger.settle('root', lead.execution.id, 'succeeded')
+
+    // Then the Lead's verdict governs the run and nothing is left running
+    const tasks = ledger.state().tasks
+    expect(tasks.every(task => task.status !== 'running')).toBe(true)
+    expect(tasks.find(task => task.id === 'root')?.status).toBe('done')
+    expect(tasks.find(task => task.id === 'a')?.status).toBe('done')
+    expect(tasks.find(task => task.id === 'b')?.status).toBe('done')
+    expect(tasks.find(task => task.id === 'a')?.executions.at(-1)?.result).toBe('succeeded')
+  })
+
+  it('operator settles a stuck running card and it returns to the todo column', () => {
+    // Given a cascade whose executions the Host can no longer observe
+    const ledger = new HostTaskLedger(tempRoot(), () => NOW)
+    seedTree(ledger)
+    const runs = ledger.applyRequest('run-1', { kind: 'run', taskId: 'root' }).runs ?? []
+    expect(runs).toHaveLength(3)
+
+    // When the operator force-closes the run
+    ledger.applyRequest('settle-1', { kind: 'settle', taskId: 'root' }, 'session-operator')
+
+    // Then nothing is left running, the verdict is cancelled rather than
+    // succeeded, the manual reason is recorded, and the cards can run again
+    const tasks = ledger.state().tasks
+    expect(tasks.every(task => task.status !== 'running')).toBe(true)
+    expect(tasks.find(task => task.id === 'root')?.status).toBe('todo')
+    expect(tasks.find(task => task.id === 'a')?.executions.at(-1)?.result).toBe('cancelled')
+    expect(tasks.find(task => task.id === 'root')?.executions.at(-1)?.error).toContain('closed manually by session-operator')
+    expect(() => ledger.applyRequest('rerun-1', { kind: 'rerun', taskId: 'root' })).not.toThrow()
+  })
+
   it('operator plain run keeps every member on its own independent session', () => {
     // Given a root without the opt-in
     const ledger = new HostTaskLedger(tempRoot(), () => NOW)
@@ -297,6 +339,42 @@ describe('Agent Team runs', () => {
 
     // When the user runs it
     // Then the run is refused instead of silently dropping the subtask pin
+    expect(() => ledger.applyRequest('run-1', { kind: 'run', taskId: 'root' })).toThrow(/team run cannot honor/)
+    expect(ledger.state().tasks.every(task => task.status === 'todo')).toBe(true)
+  })
+
+  it('operator team run carries a subtask pin the confirmed Lead already covers', () => {
+    // Given a team-mode root confirmed at full access and a subtask that pins a
+    // narrower permission of its own, still above the session default
+    const ledger = new HostTaskLedger(tempRoot(), () => NOW, { sessionDefaultPermission: 'read-only' })
+    ledger.applyRequest('seed-root', {
+      kind: 'create', id: 'root', input: { title: 'root', description: '', prompt: 'root', teamRun: true, permission: 'danger-full-access' },
+    })
+    ledger.applyRequest('seed-a', {
+      kind: 'create', id: 'a', input: { title: 'a', description: '', prompt: 'a', parentId: 'root', permission: 'workspace-write' },
+    })
+    ledger.applyRequest('confirm', { kind: 'confirm-permission', taskId: 'root' })
+
+    // When the user runs it
+    const runs = ledger.applyRequest('run-1', { kind: 'run', taskId: 'root' }).runs ?? []
+
+    // Then the teammate is dispatched: the Lead session it inherits from is at
+    // least as wide as the pin, so nothing the card asked for is dropped
+    expect(runs.map(run => [run.task.id, run.dispatch ?? 'session'])).toEqual([['root', 'session'], ['a', 'teammate']])
+  })
+
+  it('operator team run refuses a confirmed subtask pin above the Lead session permission', () => {
+    // Given a team-mode root with no pin of its own and a subtask the human
+    // already confirmed above the session default
+    const ledger = new HostTaskLedger(tempRoot(), () => NOW, { sessionDefaultPermission: 'read-only' })
+    ledger.applyRequest('seed-root', { kind: 'create', id: 'root', input: { title: 'root', description: '', prompt: 'root', teamRun: true } })
+    ledger.applyRequest('seed-a', {
+      kind: 'create', id: 'a', input: { title: 'a', description: '', prompt: 'a', parentId: 'root', permission: 'danger-full-access' },
+    })
+    ledger.applyRequest('confirm', { kind: 'confirm-permission', taskId: 'a' })
+
+    // When the user runs it
+    // Then it is refused rather than run at the Lead's narrower permission
     expect(() => ledger.applyRequest('run-1', { kind: 'run', taskId: 'root' })).toThrow(/team run cannot honor/)
     expect(ledger.state().tasks.every(task => task.status === 'todo')).toBe(true)
   })
@@ -362,6 +440,24 @@ describe('Agent Team runs', () => {
     expect(cascade).not.toContain('Agent Team 的 Lead')
   })
 
+  it('operator reading a cron-triggered run sees its firing instant, zone and expression', () => {
+    // Given a plain card and a scheduled-run provenance
+    const root = createTask({ title: 'root', description: '', prompt: 'do it' }, NOW, 'root')
+    const triggeredAt = Date.UTC(2026, 8, 29, 1, 0)
+
+    // When the prompt is built for a cron trigger
+    const scheduled = promptText(root, { schedule: { triggeredAt, timeZone: 'Asia/Shanghai', cron: '0 9 * * *' } })
+
+    // Then the run is told when it fired and in which zone its clock is read
+    expect(scheduled).toContain('定时规则自动触发')
+    expect(scheduled).toContain('2026-09-29T01:00:00.000Z')
+    expect(scheduled).toContain('Asia/Shanghai')
+    expect(scheduled).toContain('0 9 * * *')
+    expect(scheduled).toContain('do it')
+    // A manual run carries no scheduling section at all.
+    expect(promptText(root)).toBe('do it')
+  })
+
   it('operator teammate names stay kebab-case and unique per run', () => {
     // Given CJK, mixed-case and short titles with two different run tokens
     // When the names are derived
@@ -369,6 +465,57 @@ describe('Agent Team runs', () => {
     expect(teammateName('收集 公开混凝土数据!', 'a1b2c3d4-ffff')).toBe('subtask-a1b2c3d4')
     expect(teammateName('Collect Carbon Factors', 'a1b2c3d4-ffff')).toBe('collect-carbon-factors-a1b2c3d4')
     expect(teammateName('b', 'zzzz')).not.toBe(teammateName('b', 'yyyy'))
+  })
+
+  it('operator team run gives every CJK-titled subtask its own teammate name', () => {
+    // Given the reported run: five CJK-only titles in one run group, where the
+    // generic prefix collapsed all of them onto one teammate name and Agent
+    // Teams refused every member after the first
+    const titles = ['科研支线一：机器学习预测强度论文', '科研支线二：低碳混凝土论文', '第三阶段：系统扩展与企业应用', '专利申请工作', '收集公开数据']
+    // When the names are derived with the member ids this run dispatches
+    const names = titles.map((title, index) => teammateName(title, 'a1b2c3d4-ffff', `member-${index}`))
+    // Then the Team never sees a duplicate name
+    expect(new Set(names).size).toBe(names.length)
+    expect(names.every(name => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(name))).toBe(true)
+    // Two members that share a slug (identical or same-leading-word titles) differ too
+    expect(teammateName('AI 强度预测', 'g1', 'member-a')).not.toBe(teammateName('AI 配比优化', 'g1', 'member-b'))
+    expect(teammateName('same', 'g1', 'member-a')).not.toBe(teammateName('same', 'g1', 'member-b'))
+    // And the derivation is a pure function of the member id, so the Lead prompt
+    // and the spawn request always agree on the same name
+    expect(teammateName('科研支线一：机器学习预测强度论文', 'a1b2c3d4-ffff', 'member-0'))
+      .toBe(teammateName('科研支线一：机器学习预测强度论文', 'a1b2c3d4-ffff', 'member-0'))
+  })
+
+  it('operator reopening a board whose team run was left decided-but-open sees it folded at boot', () => {
+    // Given an on-disk ledger where the Lead's own verdict is recorded while its
+    // teammates are still open: the state a board can be left in when the
+    // teammate sessions never expose a verdict of their own
+    const dir = tempRoot()
+    const first = new HostTaskLedger(dir, () => NOW)
+    first.applyRequest('seed-root', { kind: 'create', id: 'root', input: { title: 'root', description: '', prompt: 'root', teamRun: true } })
+    first.applyRequest('seed-a', { kind: 'create', id: 'a', input: { title: 'a', description: '', prompt: 'a', parentId: 'root' } })
+    first.applyRequest('seed-b', { kind: 'create', id: 'b', input: { title: 'b', description: '', prompt: 'b', parentId: 'root' } })
+    const runs = first.applyRequest('run-1', { kind: 'run', taskId: 'root' }).runs ?? []
+    for (const run of runs) first.attachSession(run.task.id, run.execution.id, 'session-' + run.task.id)
+    first.dispose()
+    const file = join(dir, 'ledger-v2.json')
+    const document = JSON.parse(readFileSync(file, 'utf8')) as {
+      tasks: Array<{ id: string; executions: Array<{ ownResult?: string }> }>
+    }
+    const rootCard = document.tasks.find(task => task.id === 'root')
+    if (rootCard === undefined) throw new Error('expected the root card in the ledger')
+    rootCard.executions[0].ownResult = 'succeeded'
+    writeFileSync(file, JSON.stringify(document, null, 2))
+
+    // When the board is reopened
+    const reopened = new HostTaskLedger(dir, () => NOW)
+
+    // Then the decided run is folded instead of holding the running column
+    const tasks = reopened.state().tasks
+    expect(tasks.every(task => task.status !== 'running')).toBe(true)
+    expect(tasks.find(task => task.id === 'root')?.status).toBe('done')
+    expect(tasks.find(task => task.id === 'a')?.executions.at(-1)?.result).toBe('succeeded')
+    expect(tasks.find(task => task.id === 'b')?.executions.at(-1)?.result).toBe('succeeded')
   })
 
   it('operator cron on a team card refuses when a subtask pins a permission', () => {

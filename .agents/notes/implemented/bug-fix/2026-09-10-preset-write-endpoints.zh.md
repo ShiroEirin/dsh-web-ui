@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-在 dsh-market.com 上给预设点赞返回 HTTP 400，Worker 只回答 "invalid-params"。商店从 [Community agent presets distributed through the Workshop](2026-09-09-community-agent-presets.zh.md) 起就已经在发布预设 manifest，`market/worker/src/asset-allowlist.js` 的 manifest 允许名单里也早已列出 `preset`——但写接口对客户端声明的 kind 走的是手工维护的 `KINDS` 集合，其中仍然只有 `skin`、`pet`、`plugin`。因此每一次预设点赞、每一次预设安装上报都在参数校验处就被拒，根本走不到 Turnstile 或允许名单。同一套「只有三种 kind」的假设还硬编码在 `readStats` 与 `readInstalls` 的桶初始化里，而它们会跳过没有桶的 kind 行，所以即使真存在预设计数行，也会在 `/api/stats` 中被丢弃。
+在 dsh-market.com 上给预设点赞返回 HTTP 400，Worker 只回答 "invalid-params"。商店从 [Community agent presets distributed through the Workshop](../feature/2026-09-09-community-agent-presets.zh.md) 起就已经在发布预设 manifest，`market/worker/src/asset-allowlist.js` 的 manifest 允许名单里也早已列出 `preset`——但写接口对客户端声明的 kind 走的是手工维护的 `KINDS` 集合，其中仍然只有 `skin`、`pet`、`plugin`。因此每一次预设点赞、每一次预设安装上报都在参数校验处就被拒，根本走不到 Turnstile 或允许名单。同一套「只有三种 kind」的假设还硬编码在 `readStats` 与 `readInstalls` 的桶初始化里，而它们会跳过没有桶的 kind 行，所以即使真存在预设计数行，也会在 `/api/stats` 中被丢弃。
 
 预设中心那条 note 中「预设点赞与安装计数照常工作」的说法是错的：它验证的是允许名单，而不是 kind 门。
 

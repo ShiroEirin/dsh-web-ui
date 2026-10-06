@@ -173,7 +173,11 @@ describe('task content editing before execution (issue #1110)', () => {
     await act(async () => { save.click() })
     expect(updateTask).toHaveBeenCalledOnce()
     expect(updateTask).toHaveBeenCalledWith('t1', { title: 'Renamed', description: 'new desc', prompt: 'new prompt' })
-    expect(container.querySelector('[role="dialog"][aria-label="编辑任务"]')).toBeNull()
+    // The save closes the overlay on its exit leg: the surface leaves once its
+    // reversible exit transition has run, not on the click's own tick.
+    await vi.waitFor(() => {
+      expect(container.querySelector('[role="dialog"][aria-label="编辑任务"]')).toBeNull()
+    })
   })
 
   it('keeps the modal open and does not save a blank title', async () => {
@@ -226,5 +230,65 @@ describe('session reuse toggle (#1419)', () => {
     expect(checkbox.checked).toBe(true)
     await act(async () => { checkbox.click() })
     expect(updateTask).toHaveBeenCalledWith('t1', { reuseSession: false })
+  })
+})
+
+describe('goal run toggle', () => {
+  function goalCheckbox(container: HTMLElement): HTMLInputElement {
+    const label = [...container.querySelectorAll('label')].find(node => node.textContent?.includes('以 dsh 内置的 /goal 开始执行任务'))
+    if (label === undefined) throw new Error('no /goal option in the detail view')
+    return label.querySelector('input') as HTMLInputElement
+  }
+
+  it('user opening a card that never touched the option sees it checked and unchecking pins a plain turn', async () => {
+    // Given a card that never touched the option (absent = on by default)
+    const updateTask = vi.fn(async () => true)
+    const { container } = await renderDetail(task(), updateTask)
+
+    // When the detail view renders it
+    const checkbox = goalCheckbox(container)
+
+    // Then the checkbox shows the default, and unchecking writes the opt-out
+    expect(checkbox.checked).toBe(true)
+    await act(async () => { checkbox.click() })
+    expect(updateTask).toHaveBeenCalledWith('t1', { goalRun: false })
+  })
+
+  it('user changing the schedule zone persists it through the controller', async () => {
+    // Given a card whose rule is pinned to a zone
+    const { container, controller } = await renderDetail(task({
+      schedule: { enabled: true, cron: '0 9 * * *', timeZone: 'Asia/Shanghai', nextRunAt: undefined, lastTriggeredAt: undefined },
+    }))
+
+    // When the user picks a different zone and then the Host default
+    const zoneSelect = [...container.querySelectorAll<HTMLSelectElement>('select')]
+      .find(candidate => candidate.getAttribute('aria-label') === '时区')!
+    expect(zoneSelect.value).toBe('Asia/Shanghai')
+    await act(async () => {
+      zoneSelect.value = 'Europe/London'
+      zoneSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await act(async () => {
+      zoneSelect.value = ''
+      zoneSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+
+    // Then each choice is written as an action, and clearing sends null
+    expect(controller.setSchedule).toHaveBeenCalledWith('t1', { timeZone: 'Europe/London' })
+    expect(controller.setSchedule).toHaveBeenCalledWith('t1', { timeZone: null })
+  })
+
+  it('user opening an opted-out card sees it unchecked and re-checking restores the default', async () => {
+    // Given a card that stored the /goal opt-out
+    const updateTask = vi.fn(async () => true)
+    const { container } = await renderDetail(task({ goalRun: false }), updateTask)
+
+    // When the detail view renders it
+    const checkbox = goalCheckbox(container)
+
+    // Then it shows unchecked, and re-checking writes the default back
+    expect(checkbox.checked).toBe(false)
+    await act(async () => { checkbox.click() })
+    expect(updateTask).toHaveBeenCalledWith('t1', { goalRun: true })
   })
 })

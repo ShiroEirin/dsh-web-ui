@@ -1,8 +1,21 @@
-# dsh-liangshen — LiangShen Mode (minimal persona + programmatic tool transport)
+# dsh-liangshen · Minimal LiangShen Persona & Programmatic Tool Transport for DeepSeek Harness (DSH)
 
 English | [中文](README.zh.md)
 
-Ships the LiangShen preset as a one-command plugin of the dsh-web family: at activation the host half declares the bundled preset to the harness's agent-preset registry (declare = enabled), so new sessions can pick "梁神模式" from the preset picker, and its browser half adds a slot-machine lever beside the model selector on the new-session screen for switching that mode on and off. The preset keeps a minimal persona with standing working discipline and the session workspace directory in the system prompt, lets the harness deliver AGENTS.md-style workspace instructions as its own user-role messages, and delivers its tool surface as a durable user message after the user's message — the way the harness injects the skill catalog, naming exactly the tools that request opens. The wire keeps one presentation for the whole session (`presentation: 'both'` by default): the native roster and the `run_code` transport sit co-resident — ordinary single-step work goes through direct native calls, while programmatic batch computation, wide fan-out, and multi-step data shaping go through `run_code`. A deployment without a mounted code runtime degrades to the native surface with a one-time warning instead of presenting a transport the request cannot carry. Tools held back by paging (default pattern `mcp__*`) are unreachable until activated: they appear in the catalog as namespace summaries, and under `ptc` they stay out of the generated SDK as well, because the page is a registry restriction rather than only a wire filter. `tool_activate` loads one namespace back onto the whole surface. Built entirely on the official NPM SDK — no dsh source changes.
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-liangshen?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>Minimal LiangShen Persona & Programmatic Tool Transport for DeepSeek Harness (DSH)</strong><br>
+  <em>Minimal Persona · Native & run_code Dual Transport · Gentle MCP Paging · Runtime Degradation Fuse · Fact Register</em>
+</p>
+
+An all-in-one plugin for DeepSeek Harness (DSH) Web GUI and desktop client: declares the built-in "LiangShen Mode" preset to the official agent-preset registry upon activation and offers a slot-machine lever toggle alongside the model selector in the blank conversation page. Keeps system prompts concise to a minimal persona with strict operational disciplines while workspace instructions arrive via user turns. Tools operate under a unified presentation contract (defaulting to `both`: cohabiting native tools with `run_code` for batching and fan-outs). Features gentle MCP namespace paging, runtime degradation safety fuses, and a key fact register for long-horizon context retention.
 
 ## Why
 
@@ -130,7 +143,7 @@ All fields are editable in the web settings surface (plugin config) or through t
 - The preset carries the same trust level as shell access — review `presets/liangshen/` before installing;
 - The plugin makes no network requests and adds no telemetry;
 - Do not switch presets mid-conversation;
-- Requires DSH 0.1.7-rc.2+ (preset mechanism, the `system-prompt/assemble` waterfall, the persona `prefix` schema, and the PTC presentation API).
+- Requires DSH 0.2.0-rc.2+ (preset mechanism, the `system-prompt/assemble` waterfall, the persona `prefix` schema, and the PTC presentation API).
 
 ## License
 

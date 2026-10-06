@@ -5,7 +5,9 @@
  * unit-testable in isolation.
  */
 import type { FreezeSnapshot } from './freeze-snapshot.ts'
+import type { ExecutionVerification } from './verification.ts'
 import type { TaskHandover, TaskHandoverInput } from './handover.ts'
+import { normalizeTaskIntegrations, type TaskBoardExtensionPayload } from './extension.ts'
 
 /** Task lifecycle status, one per kanban column. */
 export type TaskStatus = 'backlog' | 'todo' | 'running' | 'done' | 'failed'
@@ -55,6 +57,14 @@ export interface ExecutionRecord {
   ownResult?: ExecutionOutcome
   /** Human failure text that arrived with {@link ownResult}. */
   ownError?: string
+  /**
+   * Goal acceptance state of this execution (task-board goal verification).
+   * Fixed when the execution starts and never rewritten from later settings:
+   * the contract is frozen here, the attempts accrue here, and the settlement
+   * rule reads the pass record here. Absent on an execution that started
+   * before the feature existed, which keeps it on the historical verdict.
+   */
+  verification?: ExecutionVerification
 }
 
 /**
@@ -87,6 +97,13 @@ export interface ScheduleRule {
   enabled: boolean
   /** 5-field cron expression: `分 时 日 月 周`. */
   cron: string
+  /**
+   * IANA zone the cron wall clock is read in (issue #1722). Absent means the
+   * Host process zone, which is what a rule written before zones were
+   * persisted keeps using; the Host stamps its own zone at ledger migration so
+   * a later `TZ` change cannot silently move an existing rule.
+   */
+  timeZone?: string
   /** Next due instant (ms epoch); maintained by the scheduler/controller. */
   nextRunAt: number | undefined
   /** Instant of the latest scheduled trigger (ms epoch). */
@@ -279,6 +296,30 @@ export interface TaskRecord {
    */
   teamRun?: boolean
   /**
+   * Start every execution of this task with dsh's built-in `/goal` command,
+   * armed with the composed execution prompt as its objective. The session then
+   * keeps working automatic continuation rounds until the agent marks the goal
+   * complete, and this board settles the execution on the goal's own end
+   * instead of at the first turn end. Absent means ON — the option is checked
+   * by default, so only an explicit `false` runs the task as a single plain
+   * turn. A session whose `/goal` command is refused still runs the prompt.
+   */
+  goalRun?: boolean
+  /**
+   * Run this task's goal executions WITHOUT the board's acceptance gate.
+   *
+   * Absent means INHERIT: the execution's applicability is decided by the
+   * board-wide `goalVerification` switch frozen at start, exactly as a card
+   * that never touched this option behaves. Only an explicit `true` opts the
+   * card out, and the execution records `applicability: 'disabled'` so the
+   * report says plainly that nothing certified this run.
+   *
+   * The opt-out is per execution, not per run: flipping it never rewrites the
+   * verdict rule of an execution already open, and a rerun or a scheduled
+   * occurrence reads the card's current value when it freezes its contract.
+   */
+  skipVerification?: boolean
+  /**
    * Frozen context snapshot for a continuation card; absent on plain tasks.
    * Sanitized before it enters the ledger (redaction, slash-command taint,
    * 8 KiB per-field cap) by the protocol gate and re-normalized on load.
@@ -309,6 +350,20 @@ export interface TaskRecord {
    * absent means on-board.
    */
   archivedAt?: number
+  /**
+   * Opaque external-provider metadata, keyed by extension id; optional and
+   * additive so existing tasks require no ledger migration. The board stores
+   * and forwards it without interpreting the keys — each provider owns the
+   * shape and validation of its own entry.
+   */
+  integrations?: Record<string, TaskBoardExtensionPayload>
+  /**
+   * Whether the card is held off the board: it exists in the ledger (and its
+   * execution history is intact) but no column ever renders it. Providers
+   * create hidden cards for work they materialize but do not want displayed;
+   * absent means on-board.
+   */
+  hidden?: boolean
 }
 
 /**
@@ -342,7 +397,7 @@ export interface NewTaskInput {
    * inherits the parent's unset execution targets.
    */
   parentId?: string
-  /** Workspace the execution must run in; empty/absent = the recent workspace. */
+  /** Workspace the execution must run in; empty/absent = the creating session's workspace for a root task, else the recent workspace at execution time. */
   workspaceId?: string
   /** Agent preset the execution session must be composed from; empty/absent = deployment default. */
   mode?: string
@@ -355,11 +410,22 @@ export interface NewTaskInput {
   /** Run the subtree as an Agent Team (Team Lead session plus one teammate per direct subtask). */
   teamRun?: boolean
   /**
-   * Optional scheduled-run rule requested at creation time (the new-task
-   * dialog): an enable flag plus a 5-field cron expression. The create use
-   * case arms it only when enabled and the expression is valid.
+   * Start the execution with dsh's built-in `/goal`. Absent/true keeps the
+   * default (goal run); an explicit false requests a single plain turn.
    */
-  schedule?: { enabled: boolean; cron: string }
+  goalRun?: boolean
+  /**
+   * Run this task's goal executions without the acceptance gate; absent
+   * inherits the board-wide `goalVerification` switch.
+   */
+  skipVerification?: boolean
+  /**
+   * Optional scheduled-run rule requested at creation time (the new-task
+   * dialog): an enable flag, a 5-field cron expression, and the IANA zone its
+   * wall clock is read in (absent means the Host zone). The create use case
+   * arms it only when enabled and the expression is valid.
+   */
+  schedule?: { enabled: boolean; cron: string; timeZone?: string }
   /**
    * Optional frozen context snapshot (goal/progress/next, sanitized by the
    * protocol gate) turning the new task into a continuation card.
@@ -375,6 +441,12 @@ export interface NewTaskInput {
    * ahead of the execution prompt; a bare name changes nothing at run time.
    */
   tags?: TaskTag[]
+  /** Opaque external-provider metadata keyed by extension id. */
+  integrations?: Record<string, TaskBoardExtensionPayload>
+  /** Column the created card opens in; absent means the board default (todo). */
+  status?: TaskStatus
+  /** Create the card off-board (held in the ledger, never rendered). */
+  hidden?: boolean
 }
 
 /** The five kanban columns, in display order. */
@@ -386,8 +458,20 @@ export const COLUMNS: readonly { status: TaskStatus; label: string }[] = [
   { status: 'failed', label: '已失败' },
 ]
 
-/** Statuses a user may move a card to manually (execution states are owned by the runner). */
-export const MANUAL_STATUSES: readonly TaskStatus[] = ['backlog', 'todo']
+/**
+ * Statuses a card may be moved to by hand: every column. The board UI and the
+ * agent tool surface share this one list, so no column can be manual on one
+ * surface and locked on the other.
+ *
+ * The column is a board statement, not a claim about a run. A hand-written
+ * `done`/`failed` declares that the work finished (or failed) outside a
+ * Host-run execution — human hands, an external system — and a hand-written
+ * `running` says the work is under way without a tracked session. None of them
+ * creates an {@link ExecutionRecord}, which is what keeps a declaration
+ * distinguishable from a recorded outcome in the card's execution history; the
+ * next settled run overwrites the column with the real one.
+ */
+export const MANUAL_STATUSES: readonly TaskStatus[] = ['backlog', 'todo', 'running', 'done', 'failed']
 
 /** Statuses the runner may move a card to from 'running'. */
 export const RUNNER_SETTLE_STATUSES: readonly TaskStatus[] = ['done', 'failed']
@@ -402,9 +486,35 @@ export function isTaskStatus(value: unknown): value is TaskStatus {
   return typeof value === 'string' && (ALL_STATUSES as readonly string[]).includes(value)
 }
 
-/** Whether a manual move target is allowed from the given status. */
+/**
+ * Whether the manual move `from` -> `to` is a legal *column* change: any
+ * column, and never the one the card already shows.
+ *
+ * Whether the card may be moved at all is a separate question. The lock an
+ * executing card carries belongs to its open execution, never to the column
+ * text, so it is {@link canMoveTask} — not this predicate — that expresses it.
+ */
 export function canMoveManually(from: TaskStatus, to: TaskStatus): boolean {
-  return from !== 'running' && (MANUAL_STATUSES as readonly TaskStatus[]).includes(to)
+  return from !== to && (MANUAL_STATUSES as readonly TaskStatus[]).includes(to)
+}
+
+/**
+ * Whether the board may move `task` to `to` by hand: the card is on-board,
+ * holds no open execution, and the target is a legal column change. The ledger,
+ * the detail view's status buttons and the board's drop handler all decide
+ * through this one predicate, so no two surfaces can disagree about a card.
+ */
+export function canMoveTask(task: TaskRecord, to: TaskStatus): boolean {
+  return task.archivedAt === undefined && !hasOpenExecution(task) && canMoveManually(task.status, to)
+}
+
+/**
+ * Whether the task still has an execution the runner has not settled. This —
+ * not the `running` column — is what "the runner owns this card" means: a card
+ * parked in `running` by hand has no session and stays fully movable.
+ */
+export function hasOpenExecution(task: TaskRecord): boolean {
+  return task.executions.some(execution => execution.endedAt === undefined)
 }
 
 /** Normalize one optional execution-target string: trim; blank collapses to undefined. */
@@ -434,13 +544,14 @@ export function freezeOf(
 /** Create a task from user input. */
 export function createTask(input: NewTaskInput, now: number, id: string): TaskRecord {
   const tags = normalizeTags(input.tags)
+  const integrations = normalizeTaskIntegrations(input.integrations)
   return {
     id,
     title: input.title.trim(),
     description: input.description.trim(),
     prompt: input.prompt.trim(),
     parentId: normalizeTargetId(input.parentId),
-    status: 'todo',
+    status: input.status ?? 'todo',
     createdAt: now,
     updatedAt: now,
     executions: [],
@@ -449,10 +560,20 @@ export function createTask(input: NewTaskInput, now: number, id: string): TaskRe
     permission: isTaskPermission(input.permission) ? input.permission : undefined,
     model: normalizeTargetId(input.model),
     reuseSession: input.reuseSession === true ? true : undefined,
-  teamRun: input.teamRun === true ? true : undefined,
+    teamRun: input.teamRun === true ? true : undefined,
+    // Default ON: only an explicit false is stored, so a card that never
+    // touched the option (and every card written before the field existed)
+    // keeps starting its runs with /goal.
+    goalRun: input.goalRun === false ? false : undefined,
+    // Default OFF: only an explicit true is stored, so a card that never
+    // touched the option inherits the board-wide acceptance switch exactly as
+    // every card written before the field existed does.
+    skipVerification: input.skipVerification === true ? true : undefined,
     ...(input.freeze === undefined ? {} : { freeze: freezeOf(input.freeze, now) }),
     ...(input.handover === undefined ? {} : { handover: { ...input.handover, bundledAt: now } }),
     ...(tags === undefined ? {} : { tags }),
+    ...(integrations === undefined ? {} : { integrations }),
+    ...(input.hidden === true ? { hidden: true } : {}),
   }
 }
 
@@ -476,11 +597,18 @@ export function withSchedule(
   const schedule: ScheduleRule = {
     enabled: current?.enabled ?? false,
     cron: current?.cron ?? '',
+    ...(current?.timeZone === undefined ? {} : { timeZone: current.timeZone }),
     nextRunAt: current?.nextRunAt,
     lastTriggeredAt: current?.lastTriggeredAt,
   }
   if ('enabled' in patch) schedule.enabled = patch.enabled ?? false
   if ('cron' in patch) schedule.cron = patch.cron ?? ''
+  // An explicit `undefined` drops the stored zone (back to the Host zone);
+  // an absent key keeps it.
+  if ('timeZone' in patch) {
+    if (patch.timeZone === undefined) delete schedule.timeZone
+    else schedule.timeZone = patch.timeZone
+  }
   if ('nextRunAt' in patch) schedule.nextRunAt = patch.nextRunAt
   if ('lastTriggeredAt' in patch) schedule.lastTriggeredAt = patch.lastTriggeredAt
   return { ...task, updatedAt: now, schedule }

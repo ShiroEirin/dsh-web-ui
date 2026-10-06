@@ -1,0 +1,43 @@
+{
+  "note": "before = the skin without the frame rule; after = the shipped patches.css",
+  "before": {
+    "htmlBackground": "rgb(232, 236, 245)",
+    "bodyBackground": "rgba(0, 0, 0, 0)",
+    "frameBackground": "rgb(29, 37, 57)",
+    "artLoaded": true,
+    "pixels": {
+      "columnCentre": [
+        29,
+        37,
+        57,
+        255
+      ],
+      "distinctColoursAcrossColumn": 1
+    },
+    "errors": []
+  },
+  "after": {
+    "htmlBackground": "rgb(232, 236, 245)",
+    "bodyBackground": "rgba(0, 0, 0, 0)",
+    "frameBackground": "rgba(0, 0, 0, 0)",
+    "artLoaded": true,
+    "pixels": {
+      "columnCentre": [
+        21,
+        11,
+        22,
+        255
+      ],
+      "distinctColoursAcrossColumn": 184
+    },
+    "errors": []
+  },
+  "verdict": {
+    "frameOpaqueUpstream": true,
+    "frameTransparentAfter": true,
+    "illustrationVisibleUpstream": false,
+    "illustrationVisibleAfter": true,
+    "artLoaded": true,
+    "noConsoleErrors": true
+  }
+}

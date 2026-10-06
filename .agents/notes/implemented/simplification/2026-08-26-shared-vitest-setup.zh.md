@@ -16,8 +16,13 @@ Status: implemented
 
 ## Consequences
 
-加载器修复只需改一处并运行 `node scripts/sync-shared.mjs`；分叉会在 CI 失败。同步表增至 103 份副本。测试行为无变化——四个套件运行的 setup 代码与之前相同。
+加载器修复只需改一处并运行 `node scripts/sync-shared.mjs`；分叉会在 CI 失败。同步表当前为 110 份副本。测试行为无变化——四个套件运行的 setup 代码与之前相同。
+
+漂移套件保留两道守卫，且两者的事实都必须从清单派生，而不是复述清单：
+
+- 副本计数用例固定表的总量与两个分桶，使清单的意外变动可见，而不是被静默接受；
+- `checkSync`/`applySync` 用例通过遍历 `copyEntries()` 并写入它命名的每个源文件来构建假树。手写源清单在 `shared/host/detached-work.ts` 加入时就已漂移：`checkSync` 随即以 ENOENT 崩溃，而不是报告漂移——而这恰恰是该门禁存在要捕获的唯一失效模式。
 
 ## Testing
 
-`pnpm test:scripts`（同步表与漂移套件）、`pnpm docs:check`，以及 shared（74）、dsh-web-settings（66）、dsh-tool-describe-image（374）、dsh-remote-web-ui（397，先构建包以产出 lib/mobile.js）的完整测试套件——全部通过。
+`pnpm test:scripts`（同步表与漂移套件；改用清单派生的假树后 372 个用例全部通过）、`pnpm docs:check`，以及 shared、dsh-web-settings、dsh-remote-web-ui 的完整测试套件——全部通过。

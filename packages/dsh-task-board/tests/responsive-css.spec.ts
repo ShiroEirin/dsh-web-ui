@@ -62,3 +62,29 @@ describe('board responsive css', () => {
     expect(css).toMatch(/\.detailFooter\s*\{[^}]*flex-wrap:\s*wrap/s)
   })
 })
+
+describe('task form regions (create/edit dialogs)', () => {
+  it('user opening a task dialog gets a shell that itself never scrolls', () => {
+    // Given the task board stylesheet
+    // When a task dialog shell renders its body
+    const modal = css.match(/^\.modal\s*\{([^}]*)\}/m)?.[1] ?? ''
+    const body = css.match(/^\.modalBody\s*\{([^}]*)\}/m)?.[1] ?? ''
+
+    // Then the shell keeps its height fixed and only the body owns the fallback
+    expect(modal).toContain('overflow: hidden')
+    expect(modal).toContain('max-height: calc(100vh - 96px)')
+    expect(body).toContain('overflow-y: auto')
+    expect(body).toContain('min-height: 0')
+  })
+
+  it('user expanding a region gets a chevron drawn from borders rather than a glyph', () => {
+    // Given the task board stylesheet
+    // When a form region renders its header
+    const chevron = css.match(/^\.formSectionChevron\s*\{([^}]*)\}/m)?.[1] ?? ''
+
+    // Then the chevron is drawn with borders and rotated when the region opens
+    expect(chevron).toContain('border-left: 5px solid')
+    expect(css).toMatch(/\.formSection\[data-open='true'\] \.formSectionChevron\s*\{[^}]*transform: rotate\(90deg\)/s)
+  })
+})
+

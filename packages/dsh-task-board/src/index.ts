@@ -19,15 +19,21 @@ import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { LlmRuntime } from '@deepseek-ai/dsh-llm'
 import { TaskBoardHostService, type HostTimerFace, type TaskBoardTeamDispatcher } from './host-service.ts'
 import { parseTaskDraft, TaskParseError } from './host-ai.ts'
-import { TASK_PERMISSIONS, type TaskPermission } from './core/tasks.ts'
+import { TASK_PERMISSIONS, isTaskPermission, type TaskPermission } from './core/tasks.ts'
 import { DEFAULT_SUBTASK_DEPTH, SUBTASK_DEPTH_MAX, SUBTASK_DEPTH_MIN } from './core/subtask.ts'
+import { DEFAULT_SESSION_POLL_SECONDS, SESSION_POLL_MAX_SECONDS, SESSION_POLL_MIN_SECONDS } from './core/poll-cadence.ts'
 import { DEFAULT_SESSION_PERMISSION } from './core/handover.ts'
-import { buildTaskBoardTools } from './host/agent-tools.ts'
+import { buildTaskBoardTools, TASK_BOARD_TOOL_NAMES } from './host/agent-tools.ts'
+import { PLUGIN_TOOL_SECTION_ORDERS, visibleToolText } from './tool-surface.ts'
 import { makeTaskBoardRoutes } from './host-routes.ts'
+import { TASK_BOARD_SERVICE_NAME, type TaskBoardExtension } from './core/extension.ts'
 import { mountOnce } from './mount-once.ts'
+import { createGoalVerificationGate, type GoalFace } from './host/verification-gate.ts'
+import { normalizeCatalog, type ModelCatalogView, type VerificationSettings } from './core/verification.ts'
+import { probeWorkspaceChanges } from './host/workspace-evidence.ts'
 
-/** Order of the announcement section within the tool-guidance band. */
-const SECTION_ORDER = 200
+/** Order of the announcement section within the shared tool-guidance band. */
+const SECTION_ORDER = PLUGIN_TOOL_SECTION_ORDERS['task-board']
 
 /** Default environment variable holding the authenticated proxy token. */
 export const DEFAULT_PROXY_TOKEN_ENV = 'DSH_TASK_BOARD_PROXY_TOKEN'
@@ -68,9 +74,12 @@ export interface Config {
   /** Environment variable whose value the authenticated proxy injects upstream. */
   proxyTokenEnv?: string
   /**
-   * The deployment's session-default permission. A card whose effective
-   * permission (handover bundle or pin) is above this value requires a human
-   * confirmation before it may run; cron refuses unconfirmed cards.
+   * An explicit baseline for the permission confirmation gate. Left unset, the
+   * board follows the Host's own default permission preset — the value new DSH
+   * sessions start at — and falls back to `read-only` when the deployment
+   * serves no permission catalog. A card whose effective permission (handover
+   * bundle or pin) is above the baseline requires a human confirmation before
+   * it may run; cron refuses unconfirmed cards.
    */
   sessionDefaultPermission?: TaskPermission
   /**
@@ -81,11 +90,43 @@ export interface Config {
    */
   maxSubtaskDepth?: Volatile<number>
   /**
+   * How often, in seconds, the Host re-reads the DSH session roster while the
+   * board has something to reconcile: a running card, an open execution, or an
+   * active provider extension. An idle board with none of those does not poll
+   * at all, so this cadence only bounds how quickly a running card settles.
+   */
+  sessionPollSeconds?: Volatile<number>
+  /**
    * Continuable-subagent provider the Agent Teams service uses to compose a
    * teammate. Matches the Agent Teams tool plugin's `freshProvider` default;
    * only team-mode runs use it.
    */
   teamProvider?: string
+  /**
+   * Goal acceptance for executions this board starts (default ON). When on,
+   * update_goal(action: complete) inside a task execution is refused until an
+   * acceptance pass is recorded for that execution: the three coding criteria,
+   * a 0.65 threshold, two rounds per criterion with the A/B slots swapped, and
+   * at most two acceptances per execution — the first failure returns its
+   * findings to the fixing agent, the second ends the cycle. The switch only
+   * affects goal-form executions of the board; plain chat and a task pinned to
+   * goalRun: false are untouched. When a separate third-party verifier also
+   * runs its own automatic acceptance, both judges score independently: this
+   * one gates completion, the other only steers, and no public interface lets
+   * the two share a verdict.
+   */
+  goalVerification?: Volatile<boolean>
+  /**
+   * Judge model for goal acceptance as provider/model. Blank inherits the HOST's
+   * own model catalog default — never the card's pinned execution model.
+   */
+  goalVerificationModel?: Volatile<string>
+  /**
+   * Reasoning effort for the judge. Blank inherits the host default level; an
+   * effort the resolved model does not declare is dropped instead of being
+   * sent, and the fallback to the model's own default is reported.
+   */
+  goalVerificationReasoningEffort?: Volatile<string>
 }
 
 /**
@@ -95,21 +136,59 @@ export interface Config {
 export const DEFAULT_TEAM_PROVIDER = 'spawn'
 
 /**
- * The schema is left to inference rather than annotated with `z<Config>`: a
- * volatile field's parsed output is a `Volatile` reference while its accepted
- * input stays the plain value, so the two sides no longer share one shape and
- * the annotation would reject the schema the Host must be given.
+ * Profile-patch shape of {@link Config}: what the Host validates the row's
+ * config against, before the schema turns volatile fields into live references
+ * and applies defaults. Declared separately because the two sides no longer
+ * share one shape, so the schema is annotated `z<ConfigInput, Config>` — the
+ * same split `dsh-git-graph` uses. The annotation is also what keeps the
+ * emitted declaration portable: an unannotated schema holding a nested object
+ * array infers a type that cannot be named without reaching into a transitive
+ * dependency's own types.
  */
-export const Config = z.object({
+export interface ConfigInput {
+  /** Announce the board in the system prompt. */
+  announceToAgent?: boolean
+  /** Master switch for the plugin. */
+  enabled?: boolean
+  /** Prevent idle system sleep while sessions run or schedules are armed. */
+  preventIdleSleep?: boolean
+  /** Canonical reverse-proxy Host authorities. */
+  trustedProxyHosts?: string[]
+  /** Environment variable whose value the authenticated proxy injects. */
+  proxyTokenEnv?: string
+  /** Explicit baseline for the permission confirmation gate; unset follows the Host default. */
+  sessionDefaultPermission?: TaskPermission
+  /** Subtask depth limit, 1..3. */
+  maxSubtaskDepth?: number
+  /** Roster-poll cadence in seconds while the board has work to reconcile. */
+  sessionPollSeconds?: number
+  /** Continuable-subagent provider the Agent Teams service composes a teammate from. */
+  teamProvider?: string
+  /** Goal acceptance switch. */
+  goalVerification?: boolean
+  /** Judge model route for goal acceptance; blank inherits the host default. */
+  goalVerificationModel?: string
+  /** Judge reasoning effort; blank inherits the host default. */
+  goalVerificationReasoningEffort?: string
+}
+
+export const Config: z<ConfigInput, Config> = z.object({
   announceToAgent: z.boolean().default(false).volatile(),
   enabled: z.boolean().default(true).volatile(),
   preventIdleSleep: z.boolean().default(false).volatile(),
   trustedProxyHosts: z.array(z.string()).default([]),
   proxyTokenEnv: z.string().min(1).default(DEFAULT_PROXY_TOKEN_ENV),
-  sessionDefaultPermission: z.union(TASK_PERMISSIONS).default(DEFAULT_SESSION_PERMISSION),
+  sessionDefaultPermission: z.union(TASK_PERMISSIONS),
   maxSubtaskDepth: z.number().min(SUBTASK_DEPTH_MIN).max(SUBTASK_DEPTH_MAX).default(DEFAULT_SUBTASK_DEPTH).volatile(),
+  sessionPollSeconds: z.number().min(SESSION_POLL_MIN_SECONDS).max(SESSION_POLL_MAX_SECONDS).default(DEFAULT_SESSION_POLL_SECONDS).volatile(),
   teamProvider: z.string().min(1).default(DEFAULT_TEAM_PROVIDER),
+  goalVerification: z.boolean().default(true).volatile(),
+  goalVerificationModel: z.string().default('').volatile(),
+  goalVerificationReasoningEffort: z.string().default('').volatile(),
 })
+
+/** Schema default for the goal-acceptance switch, re-read for hand-built contexts. */
+export const DEFAULT_GOAL_VERIFICATION = true
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
@@ -160,6 +239,13 @@ export function resolveProxyAccess(config: Config | undefined, env: NodeJS.Proce
 /** The registry face the agent tools register into. */
 interface AgentToolRegistry {
   register(definition: ToolDefinition): () => void
+  /** Scoped lookup; present on the real registry, absent on a stub that only registers. */
+  get?(name: string, scope?: unknown): unknown
+}
+
+/** The lookup half of a resolved registry, when it exposes one. */
+function lookupOf(registry: AgentToolRegistry | undefined): { get: (name: string, scope?: unknown) => unknown } | undefined {
+  return registry !== undefined && typeof registry.get === 'function' ? { get: registry.get.bind(registry) } : undefined
 }
 
 /**
@@ -202,6 +288,33 @@ export function resolveHostTimers(ctx: Context): HostTimerFace | undefined {
 
 /** Schema default, re-read for hand-built test contexts (the loader applies them normally). */
 const DEFAULT_ANNOUNCE = false
+
+/** The subset of the official permission-preset service the board reads. */
+interface PermissionPresetsFace {
+  catalog(): { defaultPreset?: unknown }
+}
+
+/**
+ * The Host's own default permission preset, mapped into the board's vocabulary.
+ *
+ * This is the value new DSH sessions start at (the deployment's `permission`
+ * settings row), so a board that follows it treats an ordinary card exactly as
+ * the Host would. Absent when the deployment serves no permission catalog, or
+ * its default is a current-session identity (`auto`) that names no fixed
+ * sandbox mode; the caller then keeps the fail-safe baseline.
+ * @param ctx - the plugin context.
+ * @returns the Host default as a board permission, or undefined when unreadable.
+ */
+export function resolveHostDefaultPermission(ctx: Context): TaskPermission | undefined {
+  try {
+    const presets = ctx.get('permissionPresets') as PermissionPresetsFace | undefined
+    if (presets === undefined || typeof presets.catalog !== 'function') return undefined
+    const preset = presets.catalog()?.defaultPreset
+    return isTaskPermission(preset) ? preset : undefined
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * How long one teammate may take to reach its durable active or failed edge.
@@ -317,11 +430,37 @@ function applyImpl(ctx: Context, config?: Config): void {
   const preventIdleSleep = (): boolean => readConfigField(config?.preventIdleSleep, false)
   /** Current subtask depth limit (read live: the settings card edits it in place). */
   const maxSubtaskDepth = (): number => readConfigField(config?.maxSubtaskDepth, DEFAULT_SUBTASK_DEPTH)
+  /** Current roster-poll cadence in seconds (read live: the settings card edits it in place). */
+  const sessionPollSeconds = (): number => readConfigField(config?.sessionPollSeconds, DEFAULT_SESSION_POLL_SECONDS)
+  /**
+   * The baseline the permission confirmation gate judges against: the row's own
+   * `sessionDefaultPermission` when the deployment pins one, otherwise the Host's
+   * default preset. Read per call through the ledger, so a Host Settings change
+   * reaches the running board without remounting the row; the fail-safe default
+   * still applies when no catalog is available.
+   */
+  const sessionDefaultPermission = (): TaskPermission =>
+    config?.sessionDefaultPermission ?? resolveHostDefaultPermission(ctx) ?? DEFAULT_SESSION_PERMISSION
 
+  /** Live acceptance settings the contract of each new execution freezes. */
+  const verificationSettings = (): VerificationSettings => ({
+    enabled: readConfigField(config?.goalVerification, DEFAULT_GOAL_VERIFICATION),
+    model: readConfigField(config?.goalVerificationModel, ''),
+    reasoningEffort: readConfigField(config?.goalVerificationReasoningEffort, ''),
+  })
+  // The catalog reader needs the service, and the service needs the reader;
+  // the reader only runs after start(), so a late holder is enough.
+  let hostForCatalog: TaskBoardHostService | undefined
+  const verificationCatalog = async (): Promise<ModelCatalogView | undefined> => {
+    const runner = hostForCatalog?.runner
+    return runner === undefined ? undefined : normalizeCatalog(await runner.modelCatalog())
+  }
   const host = new TaskBoardHostService(ctx.typertGateway, {
     workspaceRegistry: ctx.workspaceRegistry,
-    sessionDefaultPermission: config?.sessionDefaultPermission ?? DEFAULT_SESSION_PERMISSION,
+    sessionDefaultPermission,
     maxSubtaskDepth: maxSubtaskDepth(),
+    verificationSettings,
+    verificationCatalog,
     timers: resolveHostTimers(ctx),
     team: buildTeamDispatcher(ctx, config?.teamProvider ?? DEFAULT_TEAM_PROVIDER),
     commandDispatcher: {
@@ -332,22 +471,41 @@ function applyImpl(ctx: Context, config?: Config): void {
       },
     },
   })
+  hostForCatalog = host
   // Configuration before start(): a disabled row must not take the first
   // scheduler tick, which would roll schedules the board is not running.
-  host.setConfiguration(enabled(), preventIdleSleep())
+  host.setConfiguration(enabled(), preventIdleSleep(), sessionPollSeconds())
   host.start()
+
+  // External providers. The board publishes its registration service so any
+  // provider package can resolve it and admit itself; the board itself knows
+  // no provider vocabulary. A capture-only test context implements no service
+  // registry and the board still serves its own surfaces.
+  if (typeof (ctx as { provide?: unknown }).provide === 'function') {
+    ctx.provide(TASK_BOARD_SERVICE_NAME, {
+      registerExtension: (extension: TaskBoardExtension) => host.registerExtension(extension),
+      isExtensionEnabled: (extensionId: string) => host.extensions.isActive(extensionId),
+    })
+  }
 
   // Agent tools: the same Host ledger the browser drives, so any session can
   // list, create, link, run and settle board work. Registration follows the
   // master switch (a disabled board answers no tool call), and the mount
-  // effect below owns the disposers.
+  // effect below owns the disposers. Provider tools register through the
+  // extension registry, which follows the same gate and rebinds when the tool
+  // registry appears late.
   let disposeTools: (() => void) | undefined
   const setToolsEnabled = (active: boolean): void => {
     if (!active) {
+      // Releasing is the whole job on the way down. Rebinding the extension
+      // registry here would re-register every provider tool, and the teardown
+      // path runs this while the fiber is already unloading, so each of those
+      // re-registrations is a request the host can only refuse.
       disposeTools?.()
       disposeTools = undefined
       return
     }
+    host.extensions.setToolRegistry(() => resolveToolRegistry(ctx))
     if (disposeTools !== undefined) return
     const registry = resolveToolRegistry(ctx)
     if (registry === undefined) return
@@ -364,6 +522,9 @@ function applyImpl(ctx: Context, config?: Config): void {
   if (typeof scopedInject === 'function') {
     scopedInject.call(ctx, ['tools'], () => {
       setToolsEnabled(enabled())
+      // The extension registry follows the same rebinding: a registry that
+      // appears (or is replaced) after a provider started adopts its tools.
+      host.extensions.setToolRegistry(() => resolveToolRegistry(ctx))
       // Cordis unloads and re-runs this callback when the injected service's
       // provider fiber changes, and the old registry dies with its provider.
       // Releasing the guard here is what lets the callback register into the
@@ -378,6 +539,42 @@ function applyImpl(ctx: Context, config?: Config): void {
   ctx.effect(() => {
     const disposers: Array<() => void> = []
     try {
+      // The goal acceptance gate: the OFFICIAL tool pre-execution lifecycle,
+      // installed before the tool body runs, so a completion claim cannot take
+      // effect without a matching acceptance pass record.
+      const gate = createGoalVerificationGate({
+        ledger: host.ledger,
+        llm: () => resolveLlmRuntime(ctx),
+        goals: () => {
+          try {
+            return ctx.get('goals') as GoalFace | undefined
+          } catch {
+            return undefined
+          }
+        },
+        // The host's own observation of what a turn changed on disk, when this
+        // deployment records it; the acceptance degrades to the trajectory alone
+        // when it does not.
+        workspaceChanges: () => probeWorkspaceChanges(ctx),
+        logger: {
+          warn: (message: string, ...rest: unknown[]) => {
+            const logger = (ctx as { logger?: { warn?: (...args: unknown[]) => void } }).logger
+            if (typeof logger?.warn === 'function') logger.warn(message, ...rest)
+            else console.warn(message, ...rest)
+          },
+        },
+      })
+      // A capture-only context may implement no listener registry (it returns
+      // no disposer), so the handle is pushed only when it really is one.
+      const offGate = ctx.on('tools/pre-execute', async (exec, next) => {
+        const decision = await gate({ name: exec.name, arguments: exec.arguments, agent: exec.agent, signal: exec.signal })
+        return decision ?? next()
+      })
+      if (typeof offGate === 'function') disposers.push(offGate)
+      else if (typeof (offGate as { dispose?: unknown } | undefined)?.dispose === 'function') {
+        const handle = offGate as { dispose(): void }
+        disposers.push(() => { handle.dispose() })
+      }
       const routes = makeTaskBoardRoutes(host, resolveProxyAccess(config), {
         parseTask: async (request, signal) => {
           const llm = resolveLlmRuntime(ctx)
@@ -402,7 +599,7 @@ function applyImpl(ctx: Context, config?: Config): void {
   }, 'task-board: host ledger, scheduler, and routes')
 
   let disposeSection: (() => void) | undefined
-  let applied: { enabled: boolean; announceToAgent: boolean; preventIdleSleep: boolean; maxSubtaskDepth: number } | undefined
+  let applied: { enabled: boolean; announceToAgent: boolean; preventIdleSleep: boolean; maxSubtaskDepth: number; sessionPollSeconds: number } | undefined
 
   // Apply the current values to the host service and the announcement. A
   // commit that changes nothing visible is a no-op, so following a coarse
@@ -410,13 +607,19 @@ function applyImpl(ctx: Context, config?: Config): void {
   // under one disposer: re-registering first tears the old one down so a
   // duplicate-name registration never throws.
   const sync = (): void => {
-    const next = { enabled: enabled(), announceToAgent: announceToAgent(), preventIdleSleep: preventIdleSleep(), maxSubtaskDepth: maxSubtaskDepth() }
-    if (applied !== undefined && applied.enabled === next.enabled && applied.announceToAgent === next.announceToAgent && applied.preventIdleSleep === next.preventIdleSleep && applied.maxSubtaskDepth === next.maxSubtaskDepth) {
+    const next = {
+      enabled: enabled(),
+      announceToAgent: announceToAgent(),
+      preventIdleSleep: preventIdleSleep(),
+      maxSubtaskDepth: maxSubtaskDepth(),
+      sessionPollSeconds: sessionPollSeconds(),
+    }
+    if (applied !== undefined && applied.enabled === next.enabled && applied.announceToAgent === next.announceToAgent && applied.preventIdleSleep === next.preventIdleSleep && applied.maxSubtaskDepth === next.maxSubtaskDepth && applied.sessionPollSeconds === next.sessionPollSeconds) {
       return
     }
     applied = next
     host.ledger.setMaxSubtaskDepth(next.maxSubtaskDepth)
-    host.setConfiguration(next.enabled, next.preventIdleSleep)
+    host.setConfiguration(next.enabled, next.preventIdleSleep, next.sessionPollSeconds)
     setToolsEnabled(next.enabled)
     if (disposeSection !== undefined) {
       disposeSection()
@@ -426,7 +629,11 @@ function applyImpl(ctx: Context, config?: Config): void {
     disposeSection = ctx.systemPrompt.section({
       name: 'plugin:task-board',
       order: SECTION_ORDER,
-      text: TASK_BOARD_GUIDANCE,
+      // The announcement names the task_board_* tools, so it renders only while
+      // at least one of them is reachable: a runtime that serves no tool
+      // registry, or a restriction that withholds them, must not leave guidance
+      // telling the model to call tools this session cannot see.
+      text: visibleToolText(lookupOf(resolveToolRegistry(ctx)), TASK_BOARD_TOOL_NAMES, TASK_BOARD_GUIDANCE),
     })
   }
 

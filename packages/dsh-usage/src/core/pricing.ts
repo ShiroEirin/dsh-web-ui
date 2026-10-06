@@ -4,10 +4,19 @@
  * at fold time (the provider bills each request in the period the request ran
  * in, so pricing at the fold is the honest estimate).
  *
- * Policy (api-docs.deepseek.com pricing page, effective 2026-09-10 12:00
- * Beijing): peak hours are Beijing time Monday-Friday 09:00-12:00 and
- * 14:00-18:00; every other hour (nights, weekends) is off-peak and billed at
- * half the peak price. All prices here are CNY per million tokens.
+ * Policy (api-docs.deepseek.com pricing page): peak hours are Beijing time
+ * Monday-Friday 09:00-12:00 and 14:00-18:00, excluding Chinese public
+ * holidays; every other hour is off-peak and billed at half the peak price.
+ * The published rule counts a calendar day, not the working schedule: a
+ * Saturday or Sunday is off-peak in full even on an adjusted workday, and a
+ * public holiday is off-peak in full even on a Monday-Friday. All prices
+ * here are CNY per million tokens.
+ *
+ * Public-holiday dates are not derivable from the rule, so the rule takes them as
+ * a `PublicHolidayCalendar`. The default is the published table in `./holidays.ts`,
+ * covering 2020 through ${HOLIDAY_TABLE_LAST_YEAR}; a caller with newer dates
+ * passes its own. A holiday weekday therefore prices off-peak, which is the half
+ * of the published rule that is easy to get wrong.
  *
  * The published rows are `deepseek-flash` (DeepSeek-V4.1-Flash) and
  * `deepseek-v4-pro` (DeepSeek-V4-Pro-0813). The retired flash ids
@@ -18,6 +27,7 @@
  */
 
 import type { UsageTokenTotals } from './types.ts'
+import { CHINESE_PUBLIC_HOLIDAYS, HOLIDAY_TABLE_LAST_YEAR } from './holidays.ts'
 
 /** One peak window in minutes-of-day, Beijing time. */
 interface PeakWindow {
@@ -72,31 +82,81 @@ function withinWindow(minuteOfDay: number): PeakWindow | undefined {
 }
 
 /**
+ * Supplies the Chinese public-holiday dates the peak rule excludes. The dates
+ * are not derivable from any rule (the State Council publishes them per year),
+ * so this repository ships no table of its own: the default calendar is empty,
+ * and a caller that has real dates passes them in. A date is compared as a
+ * Beijing-time `YYYY-MM-DD` string, which is the granularity the published
+ * rule needs (a holiday is off-peak for the whole day, so times never matter).
+ */
+export interface PublicHolidayCalendar {
+  /** True when the Beijing-time calendar day `date` is a Chinese public holiday. */
+  isPublicHoliday(date: string): boolean
+}
+
+/**
+ * The default calendar: the published Chinese public-holiday table, so a holiday
+ * weekday prices off-peak instead of over-reporting at the peak rate. A year the
+ * table does not cover holds no dates and falls back to peak on weekdays, which
+ * is the safe direction to be wrong in: the estimate reads high rather than low.
+ */
+export const CN_PUBLIC_HOLIDAYS: PublicHolidayCalendar = {
+  isPublicHoliday: (date) => {
+    const year = date.slice(0, 4)
+    if (Number(year) > HOLIDAY_TABLE_LAST_YEAR) return false
+    return CHINESE_PUBLIC_HOLIDAYS[year]?.includes(date) ?? false
+  },
+}
+
+/** The Beijing-time `YYYY-MM-DD` calendar day of `ms` (UTC+8 has no DST, so the shift is exact). */
+function beijingDate(ms: number): string {
+  const shifted = new Date(ms + BEIJING_UTC_OFFSET_MS)
+  const month = `${shifted.getUTCMonth() + 1}`.padStart(2, '0')
+  const day = `${shifted.getUTCDate()}`.padStart(2, '0')
+  return `${shifted.getUTCFullYear()}-${month}-${day}`
+}
+
+/**
+ * Whether `ms` falls on a peak-eligible Beijing day: Monday-Friday that is
+ * not a public holiday. A Saturday or Sunday is never eligible, including on
+ * an adjusted workday — the provider counts the calendar day, not the
+ * working schedule.
+ */
+function isPeakDay(ms: number, calendar: PublicHolidayCalendar): boolean {
+  const shifted = new Date(ms + BEIJING_UTC_OFFSET_MS)
+  const weekday = shifted.getUTCDay()
+  if (weekday < 1 || weekday > 5) return false
+  return !calendar.isPublicHoliday(beijingDate(ms))
+}
+
+/**
  * The DeepSeek billing period at `ms`, plus when it next flips. The clock is
  * Beijing time regardless of the host timezone (UTC+8 has no DST, so a fixed
  * shift is exact). `boundaryMs` is the instant the current period ends — the
  * window's close while peaking, the next window's open otherwise.
  */
-export function deepseekPeriodAt(ms: number): { peak: boolean; boundaryMs: number } {
+export function deepseekPeriodAt(ms: number, calendar: PublicHolidayCalendar = CN_PUBLIC_HOLIDAYS): { peak: boolean; boundaryMs: number } {
   const shifted = new Date(ms + BEIJING_UTC_OFFSET_MS)
-  const weekday = shifted.getUTCDay()
   const minuteOfDay = shifted.getUTCHours() * 60 + shifted.getUTCMinutes()
-  const current = weekday >= 1 && weekday <= 5 ? withinWindow(minuteOfDay) : undefined
+  const current = isPeakDay(ms, calendar) ? withinWindow(minuteOfDay) : undefined
   if (current !== undefined) {
     return { peak: true, boundaryMs: ms + (current.to - minuteOfDay) * 60_000 - shifted.getUTCSeconds() * 1000 - shifted.getUTCMilliseconds() }
   }
-  // Next window start: later today (weekday only), else the following days'
-  // first morning window; the scan bound makes a malformed clock terminate.
+  // Next window start: later today (on a peak-eligible day), else the first
+  // peak-eligible day's morning window; the scan bound makes a malformed clock
+  // terminate.
   for (let dayOffset = 0; dayOffset < 8; dayOffset += 1) {
-    const day = new Date(ms + BEIJING_UTC_OFFSET_MS + dayOffset * 86_400_000)
-    if (day.getUTCDay() < 1 || day.getUTCDay() > 5) continue
+    const dayStartMs = ms + dayOffset * 86_400_000
+    if (!isPeakDay(dayStartMs, calendar)) continue
+    const day = new Date(dayStartMs + BEIJING_UTC_OFFSET_MS)
     const realDayStart = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) - BEIJING_UTC_OFFSET_MS
     for (const window of PEAK_WINDOWS) {
       if (dayOffset === 0 && window.from <= minuteOfDay) continue
       return { peak: false, boundaryMs: realDayStart + window.from * 60_000 }
     }
   }
-  // Unreachable (the scan covers a full week); a conservative off-peak answer.
+  // Unreachable (the scan covers a full week of peak-eligible days); a
+  // conservative off-peak answer.
   return { peak: false, boundaryMs: ms + 86_400_000 }
 }
 
@@ -112,9 +172,9 @@ function priceFor(model: string, atMs: number): ModelPrice {
  * row; ids from other providers never reach this function (the service gates
  * by route family). Rounded to micro-CNY so the ledger stays readable.
  */
-export function deepseekModelSpend(model: string, totals: Readonly<UsageTokenTotals>, atMs: number): number {
+export function deepseekModelSpend(model: string, totals: Readonly<UsageTokenTotals>, atMs: number, calendar: PublicHolidayCalendar = CN_PUBLIC_HOLIDAYS): number {
   const price = priceFor(model, atMs)
-  const period = deepseekPeriodAt(atMs)
+  const period = deepseekPeriodAt(atMs, calendar)
   const column = period.peak ? 'peak' : 'offPeak'
   const spend = (totals.cacheReadTokens * price.cacheHit[column]
     + (totals.inputTokens + totals.cacheWriteTokens) * price.inputMiss[column]

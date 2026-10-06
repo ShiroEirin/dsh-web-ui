@@ -75,7 +75,7 @@ a little moonlight warmth so it reads as brighter than the sky.
 
 ## Backgrounds you add yourself
 
-The canvas yields: `body[data-dsh-wallpaper-active]::after` and
+The canvas yields: `body[data-we-wallpaper]::after` and
 `body[data-dsh-backdrop-active]::after` clear the layer entirely, so a wallpaper or
 backdrop of your own is never painted over.
 

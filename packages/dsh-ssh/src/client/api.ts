@@ -76,6 +76,136 @@ function query(params: Record<string, string | number | undefined>): string {
   return text === '' ? '' : '?' + text
 }
 
+/** The location facts a terminal socket URL is built from. */
+interface PageLocation {
+  /** Page scheme with its colon (for example `https:` or `dsh-app:`). */
+  protocol: string
+  /** Page authority, empty for a scheme that carries none. */
+  host: string
+}
+
+/**
+ * The WebSocket URL the terminal route is reached at, or undefined when this
+ * page cannot carry one.
+ *
+ * A web page resolves the socket against its own origin, exactly as before.
+ *
+ * A page delivered by an application on this machine (the official DSH Desktop
+ * shell serves its Web GUI from `dsh-app://app/`) cannot carry a socket on its
+ * own scheme: the protocol handler forwards HTTP to the local Host but has no
+ * upgrade to forward. That is exactly the case the official transport hook
+ * covers - the shell publishes `__DSH_TRANSPORT__.streamBaseUrl`, the loopback
+ * authority of the Host it owns and already forwards every other request to
+ * (issue #1744). The socket is therefore dialed there instead, with the `ws`/
+ * `wss` scheme derived from that base, which is what the shell's
+ * `onBeforeSendHeaders` hook expects to see before it attaches its
+ * authority-bound credential.
+ *
+ * The base is used only on an application-delivered page. A web page that
+ * somehow carries the hook (the remote channel grants `ownsHost` to a paired
+ * LAN page, and that page is fenced behind a pairing channel) keeps resolving
+ * against its own origin, so this cannot reroute gated traffic onto a host the
+ * page is not entitled to reach. A blank authority is treated the same as an
+ * application scheme with no base: there is nothing to dial, and the caller
+ * gets the actionable reason instead of a socket that can only fail.
+ *
+ * @param location - the page location to read.
+ * @param search - the query string carrying `alias` or `session`.
+ * @param streamBaseUrl - `__DSH_TRANSPORT__.streamBaseUrl`, when the shell published one.
+ * @returns the absolute `ws:`/`wss:` URL, or undefined when the page cannot carry one.
+ */
+export function terminalSocketUrl(
+  location: PageLocation,
+  search: string,
+  streamBaseUrl?: string | undefined,
+): string | undefined {
+  if (WEB_PAGE_PROTOCOLS.includes(location.protocol)) {
+    const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
+    return scheme + '://' + location.host + SSH_API.terminal + search
+  }
+  // Application-delivered page: the shell-owned Host authority is the only
+  // origin the socket can reach. An unparsable or non-network base is ignored
+  // rather than guessed at, so the caller reports the actionable reason.
+  const base = hostAuthorityOf(streamBaseUrl)
+  if (base === undefined) return undefined
+  const scheme = base.protocol === 'https:' ? 'wss' : 'ws'
+  return scheme + '://' + base.authority + SSH_API.terminal + search
+}
+
+/**
+ * The authority and scheme of a shell-owned Host base, or undefined when the
+ * value is absent, unparsable, or not a network origin this Host can serve
+ * (an application scheme could only resolve back to the page that has no
+ * socket transport in the first place).
+ * @param base - the raw `streamBaseUrl` as published by the transport hook.
+ */
+function hostAuthorityOf(base: string | undefined): { protocol: string; authority: string } | undefined {
+  if (base === undefined || base === '') return undefined
+  let url: URL
+  try {
+    url = new URL(base)
+  } catch {
+    return undefined
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined
+  // A base carrying userinfo or credentials would put them on the wire.
+  if (url.username !== '' || url.password !== '') return undefined
+  if (url.host === '') return undefined
+  return { protocol: url.protocol, authority: url.host }
+}
+
+/**
+ * The shell-owned Host authority the page is told to reach, read from the
+ * official transport hook. The global is written by the shell before any boot
+ * entry runs, so it is absent on every page it does not own.
+ * @param globals - the global object to read (defaults to the real one).
+ * @returns the published base URL, or undefined when the page carries none.
+ */
+function transportStreamBaseUrl(
+  globals: { __DSH_TRANSPORT__?: { streamBaseUrl?: unknown } } = globalThis as never,
+): string | undefined {
+  const published = (globals as { __DSH_TRANSPORT__?: { streamBaseUrl?: unknown } }).__DSH_TRANSPORT__?.streamBaseUrl
+  return typeof published === 'string' ? published : undefined
+}
+
+/**
+ * Schemes a network page can be delivered with. Every other scheme belongs to
+ * an application on this machine, which is the same classification the remote
+ * channel and the update seat use (`isWebPageProtocol` / `isApplicationDeliveredPage`).
+ */
+const WEB_PAGE_PROTOCOLS: readonly string[] = [
+  'http:',
+  'https:',
+  'blob:',
+  'data:',
+  'about:',
+  'filesystem:',
+]
+
+/**
+ * A terminal connection that never opened: it reports one failure once the
+ * view has attached its `onExit`, so the tab shows why instead of sitting on a
+ * spinner, and every later frame is a no-op.
+ */
+function failedTerminal(reason: string): TerminalConnection {
+  const connection: TerminalConnection = {
+    onReady: undefined,
+    onOutput: undefined,
+    onExit: undefined,
+    onAuthPrompt: undefined,
+    send: () => undefined,
+    resize: () => undefined,
+    sendAuthResponse: () => undefined,
+    detach: () => undefined,
+    close: () => undefined,
+  }
+  // The view binds onExit after the open() call returns, so the failure is
+  // delivered on the next microtask - never synchronously, which would race
+  // the handler the caller is about to assign.
+  queueMicrotask(() => { connection.onExit?.(null, reason) })
+  return connection
+}
+
 /** One open terminal connection (WebSocket JSON frames). */
 export interface TerminalConnection {
   /** Fired on the ready frame (shell is up); carries the host session id and alias. */
@@ -375,9 +505,19 @@ export class SshApi {
 
   /** One terminal socket over either an alias (open) or a session id (attach). */
   private terminalSocket(search: string): TerminalConnection {
-    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const url = scheme + '://' + window.location.host + SSH_API.terminal + search
-    const socket = new WebSocket(url)
+    const target = terminalSocketUrl(window.location, search, transportStreamBaseUrl())
+    if (target === undefined) {
+      // This page has no WebSocket transport at all: an application-delivered
+      // page whose shell published no Host authority to dial. Say so plainly
+      // instead of opening a socket that can only report "connection error".
+      return failedTerminal(tt('terminal.noWebSocket'))
+    }
+    let socket: WebSocket
+    try {
+      socket = new WebSocket(target)
+    } catch (error) {
+      return failedTerminal(error instanceof Error ? error.message : String(error))
+    }
     // A deliberate detach/close must not surface as a transport error: the
     // view tears down silently, and only an UNEXPECTED close reports exit.
     let leaving = false

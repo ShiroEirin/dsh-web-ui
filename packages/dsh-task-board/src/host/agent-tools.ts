@@ -39,7 +39,7 @@ export interface TaskBoardToolHost {
   /** Current board snapshot (tasks + scheduler + power + deployment constants). */
   snapshot(): TaskBoardSnapshot
   /** Submit one confirmed Host action; returns the resulting snapshot. */
-  apply(requestId: string, action: TaskBoardAction, initiator?: string): TaskBoardSnapshot
+  apply(requestId: string, action: TaskBoardAction, initiator?: string): TaskBoardSnapshot | Promise<TaskBoardSnapshot>
 }
 
 /** Registered tool names, in registration order. */
@@ -94,6 +94,8 @@ function scheduleView(schedule: ScheduleRule): Record<string, unknown> {
   return {
     enabled: schedule.enabled,
     cron: schedule.cron,
+    // Absent means the rule follows the Host zone, which the board view reports.
+    ...(schedule.timeZone === undefined ? {} : { timeZone: schedule.timeZone }),
     ...(schedule.nextRunAt === undefined ? {} : { nextRunAt: schedule.nextRunAt }),
     ...(schedule.lastTriggeredAt === undefined ? {} : { lastTriggeredAt: schedule.lastTriggeredAt }),
   }
@@ -150,6 +152,10 @@ function taskSummary(
     ...(task.model === undefined ? {} : { model: task.model }),
     ...(task.reuseSession === true ? { reuseSession: true } : {}),
     ...(task.teamRun === true ? { teamRun: true } : {}),
+    // Default-ON switch: only the opt-out is a deviation worth reporting.
+    ...(task.goalRun === false ? { goalRun: false } : {}),
+    // Default-OFF opt-out: the deviation is what a reader must be told.
+    ...(task.skipVerification === true ? { skipVerification: true } : {}),
     ...(task.schedule === undefined ? {} : { schedule: scheduleView(task.schedule) }),
     ...(task.freeze === undefined ? {} : { continuationCard: true }),
     ...(task.permissionConfirmedAt === undefined ? {} : { permissionConfirmedAt: task.permissionConfirmedAt }),
@@ -256,7 +262,6 @@ function buildSetParentTool(host: TaskBoardToolHost): ToolDefinition {
       'Pass an empty parentId to detach.',
       'The Host refuses the link when the parent is unknown or archived, when the moved task is one of its own descendants, when the resulting depth exceeds the deployment subtask limit (default one level, maximum three), or while the task has an unsettled execution (its link may still be a running cascade parent pointer).',
       'Running a task runs its whole subtree concurrently; a parent card settles only after its own turn and every direct subtask settle.',
-      'Triggers: 任务看板, task board, 看板, 子任务, subtask, 关联任务, link task, 解除关联, detach.',
     ].join(' '),
     parameters: {
       taskId: { type: 'string', required: true, description: 'The task whose parent link changes.' },
@@ -265,7 +270,7 @@ function buildSetParentTool(host: TaskBoardToolHost): ToolDefinition {
     output: { schema: { type: 'json' }, render: renderJson },
     async execute(args, exec) {
       try {
-        const snapshot = host.apply(
+        const snapshot = await host.apply(
           crypto.randomUUID(),
           { kind: 'set-parent', taskId: args.taskId, parentId: args.parentId === '' ? null : args.parentId },
           callingSessionId(exec),
@@ -290,7 +295,6 @@ function buildRunTool(host: TaskBoardToolHost): ToolDefinition {
       'A card whose effective permission is above the deployment session default is refused with confirmation-required until a HUMAN confirms the binding in the board UI; this tool cannot confirm it.',
       'A card whose task carries teamRun instead starts ONE Team Lead session and the Host spawns a teammate per subtask inside it, so those cards run as an Agent Team rather than as independent sessions; that mode needs the deployment Agent Teams service and is refused when it is missing.',
       'Executions consume real API quota. Sessions are created asynchronously, so read their ids and outcomes back with task_board_get.',
-      'Triggers: 任务看板, task board, 看板, 执行任务, run task, 重新执行, rerun, 子任务, subtask.',
     ].join(' '),
     parameters: {
       taskId: { type: 'string', required: true, description: 'The task to run; running a root task runs its whole subtree.' },
@@ -300,7 +304,7 @@ function buildRunTool(host: TaskBoardToolHost): ToolDefinition {
     async execute(args, exec) {
       const before = host.snapshot()
       try {
-        const snapshot = host.apply(
+        const snapshot = await host.apply(
           crypto.randomUUID(),
           { kind: args.rerun === true ? 'rerun' : 'run', taskId: args.taskId },
           callingSessionId(exec),
@@ -334,18 +338,19 @@ function buildManageTool(host: TaskBoardToolHost): ToolDefinition {
   return defineTool({
     name: 'task_board_manage',
     description: [
-      'Move, archive, restore, or delete one task board card.',
-      'move-todo and move-backlog are the manual column moves; a running card cannot be moved.',
+      'Move, archive, restore, delete, or settle one task board card.',
+      'move-backlog, move-todo, move-running, move-done and move-failed are the manual column moves and cover every column; a card the runner is executing (one with an open execution) cannot be moved.',
+      'A manual move writes the card column only and never fabricates an execution record, so the card reports a declaration rather than evidence of a run: done/failed declare work finished (or failed) outside a Host-run execution — human work, an external system, a decision made elsewhere — and running says the work is under way without a tracked session. Use task_board_run when the work should actually run in a session here.',
+      'settle force-closes the open execution of a card the board can no longer observe (a stuck running card) and records it cancelled with the caller as the reason, so the card returns to the todo column and can be run again.',
       'archive takes the whole subtask tree off the board and is refused while any member has an unsettled execution; restore brings the task, its ancestors and its subtree back; delete removes one card and is refused while it still has subtasks (detach or delete them first) or while it runs.',
       'It cannot confirm a permission binding: the confirmation gate is a human act performed in the board UI.',
-      'Triggers: 任务看板, task board, 看板, 归档, archive, 删除任务, delete task, 移动任务, move task.',
     ].join(' '),
     parameters: {
       taskId: { type: 'string', required: true, description: 'The task to act on.' },
       action: {
         type: 'string',
         required: true,
-        enum: ['move-todo', 'move-backlog', 'archive', 'restore', 'delete'],
+        enum: ['move-todo', 'move-backlog', 'move-running', 'move-done', 'move-failed', 'archive', 'restore', 'delete', 'settle'],
         description: 'The lifecycle operation to perform.',
       },
     },
@@ -355,7 +360,11 @@ function buildManageTool(host: TaskBoardToolHost): ToolDefinition {
       const actions: Record<string, TaskBoardAction> = {
         'move-todo': { kind: 'move', taskId: args.taskId, status: 'todo' },
         'move-backlog': { kind: 'move', taskId: args.taskId, status: 'backlog' },
+        'move-running': { kind: 'move', taskId: args.taskId, status: 'running' },
+        'move-done': { kind: 'move', taskId: args.taskId, status: 'done' },
+        'move-failed': { kind: 'move', taskId: args.taskId, status: 'failed' },
         archive: { kind: 'archive', taskId: args.taskId },
+        settle: { kind: 'settle', taskId: args.taskId },
         restore: { kind: 'restore', taskId: args.taskId },
         delete: { kind: 'delete', taskId: args.taskId },
       }
@@ -365,7 +374,7 @@ function buildManageTool(host: TaskBoardToolHost): ToolDefinition {
         return refused('task-not-found', 'no task with id ' + args.taskId)
       }
       try {
-        const snapshot = host.apply(crypto.randomUUID(), action, initiator)
+        const snapshot = await host.apply(crypto.randomUUID(), action, initiator)
         if (args.action === 'delete') return json({ ok: true, action: args.action, taskId: args.taskId })
         const task = snapshot.tasks.find(item => item.id === args.taskId)
         if (task === undefined) return refused('task-not-found', 'no task with id ' + args.taskId)
@@ -381,33 +390,40 @@ function buildScheduleTool(host: TaskBoardToolHost): ToolDefinition {
   return defineTool({
     name: 'task_board_schedule',
     description: [
-      'Arm, change, or disarm a task scheduled runs (5-field cron in the Host local time zone; day-of-month and day-of-week use OR semantics).',
+      'Arm, change, or disarm a task scheduled runs (5-field cron; day-of-month and day-of-week follow Vixie semantics: both restricted means OR, otherwise AND).',
+      'The cron wall clock is read in the rule stored IANA time zone; omit timeZone to use the Host zone reported by task_board_list/task_board_get. DST gaps are skipped and an ambiguous fall-back time fires once, at the earlier instant.',
       'A due scheduled task runs the same cascade a manual run does, so a root task runs its whole subtask tree.',
       'A schedule whose tree contains an unconfirmed above-default permission is refused and rolls to its next occurrence; the reason is reported in the list board summary as schedulerError.',
       'Missed occurrences during Host downtime are skipped, never queued; a task that is already running skips its occurrence.',
-      'Triggers: 任务看板, task board, 看板, 定时任务, schedule, cron, 每天执行.',
     ].join(' '),
     parameters: {
       taskId: { type: 'string', required: true, description: 'The task whose schedule changes.' },
       enabled: { type: 'boolean', description: 'Arm (true) or disarm (false) the schedule.' },
       cron: { type: 'string', description: '5-field cron expression: minute hour day-of-month month day-of-week.' },
+      timeZone: {
+        type: 'string',
+        description: 'IANA zone the cron wall clock is read in (for example Asia/Shanghai). Omit to keep the stored zone, or pass an empty string to clear it back to the Host zone.',
+      },
     },
     output: { schema: { type: 'json' }, render: renderJson },
     async execute(args, exec) {
-      if (args.enabled === undefined && args.cron === undefined) {
-        return refused('nothing-to-change', 'pass enabled and/or cron')
+      if (args.enabled === undefined && args.cron === undefined && args.timeZone === undefined) {
+        return refused('nothing-to-change', 'pass enabled and/or cron and/or timeZone')
       }
       // A missing card must read as a missing card: the ledger reports an
       // unknown id through the same refusal as a malformed cron.
       if (!host.snapshot().tasks.some(task => task.id === args.taskId)) {
         return refused('task-not-found', 'no task with id ' + args.taskId)
       }
-      const patch: { enabled?: boolean; cron?: string } = {
+      const patch: { enabled?: boolean; cron?: string; timeZone?: string | null } = {
         ...(args.enabled === undefined ? {} : { enabled: args.enabled }),
         ...(args.cron === undefined ? {} : { cron: args.cron }),
+        // An empty string is the documented way to clear the stored zone, so
+        // the model never has to emit an explicit null through JSON args.
+        ...(args.timeZone === undefined ? {} : { timeZone: args.timeZone === '' ? null : args.timeZone }),
       }
       try {
-        const snapshot = host.apply(crypto.randomUUID(), { kind: 'set-schedule', taskId: args.taskId, patch }, callingSessionId(exec))
+        const snapshot = await host.apply(crypto.randomUUID(), { kind: 'set-schedule', taskId: args.taskId, patch }, callingSessionId(exec))
         const task = snapshot.tasks.find(item => item.id === args.taskId)
         if (task === undefined) return refused('task-not-found', 'no task with id ' + args.taskId)
         return json({
@@ -431,7 +447,6 @@ function buildListTool(host: TaskBoardToolHost): ToolDefinition {
       'Filters: status column, parentId (direct subtasks), rootsOnly, tag, free-text query, and archived inclusion.',
       'Returns each task id, title, column, parent/subtask link, execution targets, schedule and latest run outcome, plus the board summary (revision, time zone, subtask depth limit, session-default permission).',
       'Use task_board_get for one task in full, task_board_create to add work, and task_board_run to execute it.',
-      'Triggers: 任务看板, task board, 看板, 子任务, subtask, task list, 定时任务, scheduled task.',
     ].join(' '),
     parameters: {
       status: { type: 'string', enum: ['backlog', 'todo', 'running', 'done', 'failed'], description: 'Only cards in this column.' },
@@ -477,7 +492,6 @@ function buildGetTool(host: TaskBoardToolHost): ToolDefinition {
     description: [
       'Read one task board card in full: prompt, description, labels, column, parent link, direct subtasks, execution targets, schedule, permission gate state, and the last ten execution attempts with their session ids and outcomes.',
       'Use it before running or editing a card, and after a run to read the settled outcome.',
-      'Triggers: 任务看板, task board, 看板, 子任务, subtask, task detail.',
     ].join(' '),
     parameters: {
       taskId: { type: 'string', required: true, description: 'Task id, as reported by task_board_list or task_board_create.' },
@@ -501,19 +515,20 @@ function buildCreateTool(host: TaskBoardToolHost): ToolDefinition {
       'A subtask inherits every execution target it does not override (workspace, agent preset, permission, model) from its parent, and inherits the parent human permission confirmation together with an inherited binding.',
       'The deployment caps subtask depth (default one level, maximum three): a subtask of a subtask is refused unless the board is configured deeper.',
       'The task lands in the todo column and does NOT run; call task_board_run to execute it.',
-      'Triggers: 任务看板, task board, 看板, 新建任务, create task, 子任务, subtask, 定时任务.',
     ].join(' '),
     parameters: {
       title: { type: 'string', required: true, description: 'Short display title (one line).' },
       description: { type: 'string', description: 'Longer human description shown in the detail view.' },
       prompt: { type: 'string', description: 'The instruction sent to the execution agent; the title is used when blank.' },
       parentId: { type: 'string', description: 'Parent task id, making this a subtask. Omit for a root task.' },
-      workspaceId: { type: 'string', description: 'Workspace id the execution must run in; omit to inherit the parent value or use the most recent workspace.' },
+      workspaceId: { type: 'string', description: 'Workspace id the execution must run in; omit to inherit the workspace this session is in (root task) or the parent value (subtask).' },
       mode: { type: 'string', description: 'Agent preset id the execution session is composed from; omit for the deployment default or the parent value.' },
       permission: { type: 'string', enum: [...TASK_PERMISSIONS], description: 'Permission preset for the execution session. Omit to inherit the parent binding; a value above the session default needs a human confirmation in the board UI before the card can run.' },
       model: { type: 'string', description: 'Pinned model as provider/model (or a model id); omit for the host default or the parent value.' },
       reuseSession: { type: 'boolean', description: 'Continue later runs in the previous execution session instead of a fresh conversation.' },
       teamRun: { type: 'boolean', description: 'Run this task as an Agent Team: running it starts one Team Lead session and the Host spawns a teammate per subtask inside it. Omit or false for one independent session per member. Refused when the deployment serves no Agent Teams service.' },
+      goalRun: { type: 'boolean', description: 'Start each run with dsh built-in /goal so the session keeps working continuation rounds until the goal completes. Default true (omit to keep it); pass false for a single plain turn.' },
+      skipVerification: { type: 'boolean', description: 'Run this task without the board acceptance gate: update_goal may mark the goal complete without a passing acceptance, and the execution record is marked skipped. Default false (omit to inherit the board-wide acceptance switch). Only affects executions started afterwards.' },
       tags: {
         type: 'array',
         description: 'Labels: the name renders as a badge and drives the board filter; promptPrefix is injected ahead of the execution prompt on every run.',
@@ -555,11 +570,13 @@ function buildCreateTool(host: TaskBoardToolHost): ToolDefinition {
         ...(args.model === undefined || args.model === '' ? {} : { model: args.model }),
         ...(args.reuseSession === true ? { reuseSession: true } : {}),
         ...(args.teamRun === true ? { teamRun: true } : {}),
+        ...(args.goalRun === false ? { goalRun: false } : {}),
+    ...(args.skipVerification === true ? { skipVerification: true } : {}),
         ...(tags.length === 0 ? {} : { tags }),
         ...(args.schedule === undefined ? {} : { schedule: { enabled: args.schedule.enabled, cron: args.schedule.cron } }),
       }
       try {
-        const snapshot = host.apply(crypto.randomUUID(), { kind: 'create', id, input }, callingSessionId(exec))
+        const snapshot = await host.apply(crypto.randomUUID(), { kind: 'create', id, input }, callingSessionId(exec))
         const task = snapshot.tasks.find(item => item.id === id)
         if (task === undefined) return refused('create-failed', 'the Host did not confirm the new task')
         return json({ ok: true, task: taskDetail(task, snapshot.tasks, snapshot.sessionDefaultPermission) })
@@ -578,7 +595,6 @@ function buildUpdateTool(host: TaskBoardToolHost): ToolDefinition {
       'Only the fields you pass change; pass an empty string to clear a target, or an empty labels array to clear the labels.',
       'Title, description and prompt freeze once the task has started executing; the execution targets stay editable because they only affect future runs.',
       'Changing the pinned permission re-arms the permission confirmation gate.',
-      'Triggers: 任务看板, task board, 看板, 修改任务, edit task, 子任务, 标签, tags.',
     ].join(' '),
     parameters: {
       taskId: { type: 'string', required: true, description: 'Task id to edit.' },
@@ -587,10 +603,26 @@ function buildUpdateTool(host: TaskBoardToolHost): ToolDefinition {
       prompt: { type: 'string', description: 'New execution prompt.' },
       workspaceId: { type: 'string', description: 'New workspace id; an empty string clears it.' },
       mode: { type: 'string', description: 'New agent preset id; an empty string clears it.' },
-      permission: { type: 'string', enum: [...TASK_PERMISSIONS, ''], description: 'New permission preset; an empty string clears it back to the session default.' },
+      // `enum` with a clearing value would advertise the empty string as a
+      // legal member of the enum. Some OpenAI-compatible gateways forward the
+      // tool schema to Gemini, which rejects an empty enum member outright
+      // ("cannot be empty") and fails the whole request - not just this tool -
+      // even for a plain greeting, because the schema ships with every call
+      // (issue #1748). Splitting the clear value into its own `const` branch
+      // keeps both the real enum intact and the wire representation valid for
+      // those gateways.
+      permission: {
+        oneOf: [
+          { type: 'string', enum: [...TASK_PERMISSIONS] },
+          { type: 'string', const: '' },
+        ],
+        description: 'New permission preset; an empty string clears it back to the session default.',
+      },
       model: { type: 'string', description: 'New pinned model; an empty string clears it.' },
       reuseSession: { type: 'boolean', description: 'Continue later runs in the previous execution session.' },
       teamRun: { type: 'boolean', description: 'Switches this task between a plain cascade (one session per member) and an Agent Team run (Lead session plus a teammate per subtask).' },
+      goalRun: { type: 'boolean', description: 'Whether each run starts with dsh built-in /goal (default true). Pass false to run one plain turn instead.' },
+      skipVerification: { type: 'boolean', description: 'Whether this task runs without the board acceptance gate (default false, inherit the board-wide switch). Pass true to opt out; pass false to opt back in. Only affects executions started afterwards.' },
       tags: {
         type: 'array',
         description: 'Replacement label set; an empty array clears all labels.',
@@ -619,6 +651,8 @@ function buildUpdateTool(host: TaskBoardToolHost): ToolDefinition {
       }
       if (has(args, 'reuseSession')) patch.reuseSession = args.reuseSession === true
       if (has(args, 'teamRun')) patch.teamRun = args.teamRun === true
+      if (has(args, 'goalRun')) patch.goalRun = args.goalRun === false ? false : true
+      if (has(args, 'skipVerification')) patch.skipVerification = args.skipVerification === true ? true : false
       if (has(args, 'tags')) {
         const tags = args.tags ?? []
         patch.tags = tags.length === 0
@@ -630,7 +664,7 @@ function buildUpdateTool(host: TaskBoardToolHost): ToolDefinition {
       }
       if (Object.keys(patch).length === 0) return refused('nothing-to-change', 'pass at least one field to update')
       try {
-        const snapshot = host.apply(crypto.randomUUID(), { kind: 'update', taskId: args.taskId, patch }, callingSessionId(exec))
+        const snapshot = await host.apply(crypto.randomUUID(), { kind: 'update', taskId: args.taskId, patch }, callingSessionId(exec))
         const task = snapshot.tasks.find(item => item.id === args.taskId)
         if (task === undefined) return refused('task-not-found', 'no task with id ' + args.taskId)
         return json({ ok: true, task: taskDetail(task, snapshot.tasks, snapshot.sessionDefaultPermission) })

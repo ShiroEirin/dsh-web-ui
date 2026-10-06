@@ -1,0 +1,403 @@
+/**
+ * 模型宿舍 (model-dorm) — dsh 皮肤 v2 样式表
+ *
+ * 契约：skin-manifest-v2 / L1 token 重映射
+ * 加载器会把每一条选择器强制作用域到 html[data-dsh-skin="model-dorm"]，
+ * 所以下面照官方壳层的写法写 :root / body 头即可，不需要自己加作用域。
+ *
+ * ── 这套配色是怎么来的（不是挑的，是量出来的）──────────────────────────
+ * 对 assets/source.png 实测（tools/palette.py / palette2.py）：
+ *   · 全画中位亮度 0.145，50.9% 的像素 L<0.15，亮部仅 4.0%
+ *     → 这是一张暗底图。所以 **暗色是主场**，亮色必须自己加暖纱。
+ *   · 主色族 = 暖紫褐：画面均值 #7f5f57 / #836771 / #94726 9，
+ *     最暗处 #32272b、#231a1c，中间调 #493637、#61515d。
+ *   · 夕阳高光（仅 4%）= #fbd9b3 / #fccc9c —— 亮色主题的奶油金就取这里。
+ *   · 饱和像素里红+橙占 80%（峰值 #903f12 / #68220b），
+ *     冷调对位是深蓝 #0e4d76 与紫 #472b65。
+ *   · 强调色 = #903f12 提亮 → #b4551a（亮色）/ #e39a55（暗色）。
+ *     深蓝紫不做点缀，只留给 info 与选中态：画里它们本来就是"暗部"。
+ *
+ * ── 两个不能搞错的约定 ──────────────────────────────────────────────
+ * 1) 主行动按钮四件套必须成套。--dsw-alias-brand-primary 是**强调色**，
+ *    不是按钮底色：拿它当 fill 又用白字会黑底黑字（官方契约
+ *    primary-action-tokens-v1 明确警告过）。所以暗色主题里，
+ *    按钮底色是亮琥珀 #e39a55，字色必须是**深色** #231a1c。
+ * 2) --dsw-skin-scrim 是加载器写在 document.body 上的 0..1 alpha
+ *    （来自设置里的「背景遮挡」0–100 滑杆）。它让面板纱层跟着滑杆走：
+ *    0 = 画面最清，1 = 最实。下面的 rgba() 第三参都挂在它上面。
+ *
+ * 想改配色：只动本文件的色值，或改 skin.json 的 accent。别改选择器结构。
+ */
+
+/* ══════════════════════════════════════════════════════════════════
+   L1 · 亮色（:root）— 用夕阳奶油金把暗画罩成暖纱
+   ══════════════════════════════════════════════════════════════════ */
+:root {
+  /* 画布：基线只 0.05 —— 画面几乎原样可见。
+     亮色底图（model-dorm-room-day.webp）是烘好的中高调（中位 L=0.462），
+     深色文字直接坐在上面也有 7.9:1，**不需要**靠纱层去压它。
+     之前给 0.55 是拿错了手段：均匀奶油纱盖在暗画上只会把明暗起伏一起抹平，
+     视觉上就是"图没了"。滑杆留给用户自己加遮挡，推到 100% 才 0.60。 */
+  --dsw-alias-bg-base: rgba(255, 246, 236, calc(0.05 + var(--dsw-skin-scrim, 0) * 0.55));
+  /* 面板：也做成玻璃。上一版亮色面板还是 0.93–0.95 的近实心奶油，画面只
+     透出 5–7%，而窗口大部分面积都被面板盖着 —— 这就是"暗色能看到画、
+     亮色看不到"的原因。day 底图最暗的 5% 像素也有 L=0.214，深色文字
+     (L=0.0145) 放在最暗角落仍有 4.1:1，余量极大，完全开得起玻璃。
+     layer-1 α=0.60：画面透出 40%，有效亮度 ~0.68，正文对比 ~12:1。 */
+  --dsw-alias-bg-layer-1: rgba(255, 250, 244, 0.60);
+  --dsw-alias-bg-layer-2: rgba(250, 240, 230, 0.64);
+  --dsw-alias-bg-layer-3: rgba(245, 231, 218, 0.68);
+  --dsw-alias-bg-module-platform: rgba(250, 240, 230, 0.64);
+  --dsw-alias-bg-mask-1: #4a332f40;
+  --dsw-alias-bg-mask-2: #4a332f26;
+  --dsw-alias-bg-mask-3: #4a332f59;
+  --dsw-alias-bg-mask-photo: #2a1d1ae0;
+  --dsw-alias-bg-multi-select: #e8d3bfcc;
+  --dsw-alias-bg-overlay: rgba(253, 246, 239, 0.90);
+  --dsw-alias-bg-skeleton: #4a332f0f;
+
+  /* 描边：一律取画面里的玫瑰褐 #6b4a3f，压到极低 alpha */
+  --dsw-alias-border-l1: #6b4a3f26;
+  --dsw-alias-border-l2: #6b4a3f38;
+  --dsw-alias-border-l2-darkmode-thin: #6b4a3f33;
+  --dsw-alias-border-l3: #6b4a3f52;
+  --dsw-alias-border-l4: #6b4a3f6b;
+  --dsw-alias-border-inverted: #fff8;
+  --dsw-alias-border-inverted2: #fffb;
+
+  /* 文字：最深只到画里的近黑暖褐 #2a1d1a，不用纯黑 */
+  --dsw-alias-label-primary: #2a1d1a;
+  --dsw-alias-label-primary-dimmed: #5a423b;
+  --dsw-alias-label-primary-foreground: #fff8f2;
+  --dsw-alias-label-primary-inverted: #fff8f2;
+  --dsw-alias-label-secondary: #6b4f47;
+  --dsw-alias-label-tertiary: #8d7168;
+  --dsw-alias-label-caption: #9b8078;
+  --dsw-alias-label-dimmed: #ac948b;
+
+  /* 强调：赭石 */
+  --dsw-alias-brand-primary: #b4551a;
+  --dsw-alias-brand-primary-invert: #fff8f2;
+  --dsw-alias-brand-primary-new-colorprimary-new-color: #b4551a;
+  --dsw-alias-brand-text: #2a1d1a;
+
+  /* 主行动按钮四件套（成套！fill / hover / dimmed / foreground） */
+  --dsw-alias-button-primary-fill: #b4551a;
+  --dsw-alias-button-primary-hover: #c86a2c;
+  --dsw-alias-button-primary-dimmed: #ecd3bd;
+  --dsw-alias-button-contrast-fill: #3a2a26;
+  --dsw-alias-button-elevated-fill: #fffaf4;
+  --dsw-alias-button-floating-fill: #fffaf4;
+  --dsw-alias-button-floating-hover: #f4e6d8;
+  --dsw-alias-button-ghost-active-fill: #e8d3bf;
+  --dsw-alias-button-ghost-active-hover: #dcc2aa;
+  --dsw-alias-button-ghost-active-border: #c39a78;
+  --dsw-alias-button-info-fill: #2f6f9e;
+  --dsw-alias-button-info-hover: #3f83b5;
+  --dsw-alias-button-tool-bar-fill: #b4551a80;
+  --dsw-alias-button-tool-bar-hover: #b4551a99;
+  --dsw-alias-button-tool-bar-fill-invisible: #b4551a5c;
+
+  /* 交互态 */
+  --dsw-alias-interactive-bg-hover: #b4551a14;
+  --dsw-alias-interactive-bg-hover-solid: #f0dcc9;
+  --dsw-alias-interactive-bg-hover-accent: #b4551a2e;
+  --dsw-alias-interactive-bg-hover-danger: #c000000f;
+  --dsw-alias-interactive-bg-active: #b4551a24;
+
+  /* 状态色：success 用画面里那点绿 #2a2e1e 提亮成鼠尾草绿，
+     error 取红色族峰值 #68220b 提亮，info 取深蓝 #0e4d76 —— 全是画面里的 */
+  --dsw-alias-state-error-primary: #b03a24;
+  --dsw-alias-state-error-secondary: #d4614a;
+  --dsw-alias-state-idle-primary: #9b8078;
+  --dsw-alias-state-warn-primary: #b57d12;
+  --dsw-alias-state-warn-secondary: #d19f3c;
+  --dsw-alias-state-warn-tertiary: #f8eed6;
+  --dsw-alias-state-warn-label: #8a5f0c;
+  --dsw-alias-state-success-primary: #3f7a4a;
+  --dsw-alias-state-success-secondary: #5d9c68;
+  --dsw-alias-state-success-tertiary: #dceade;
+  --dsw-alias-state-business-primary: #2f6f9e;
+  --dsw-alias-state-business-tertiary: #d8e7f2;
+
+  /* Markdown / 代码块 */
+  --dsw-alias-markdown-code-block: #f4e8dc99;
+  --dsw-alias-markdown-code-block-banner: #f4e8dc94;
+  --dsw-alias-markdown-inline-code: #efe0d299;
+  --dsw-alias-markdown-citation: #f0e2d399;
+  --dsw-alias-markdown-tag: #efe0d299;
+  --dsw-alias-markdown-placeholder: #f4e8dc94;
+  --dsw-alias-markdown-code-segment-selected: #fffc;
+  --dsw-alias-markdown-code-segment-unselected: #f6ece199;
+
+  /* 滚动条 */
+  --dsw-alias-scrollbar-bg-l1: #e3cdb8;
+  --dsw-alias-scrollbar-bg-l2: #e3cdb8;
+  --dsw-alias-scrollbar-hover-l1: #c39a78;
+  --dsw-alias-scrollbar-hover-l2: #c39a78;
+
+  /* 气泡 / 浮层 */
+  --dsw-specific-bubble: #e8d3bf;
+  --dsw-specific-bubble-highlight: #d9bda2;
+  --dsw-alias-toast-bg: #3a2a26;
+  --dsw-alias-tooltip-bg: #fffdf0;
+
+  /* 第二批：补上影响可见效果的缺口。
+     最要紧的是 --dsw-alias-link —— 不覆盖的话链接还是官方蓝，跟暖调打架。
+     故意**不覆盖**的：--dsw-elevation-*、--dsw-corner-shape、--dsw-mask-blur、
+     --dsw-menu-backdrop-filter（结构类，不是配色）；--dsw-linear-gradient-think /
+     --dsw-linear-think-select（名字表明是渐变，官方值格式与色标位置无法在本地验证，
+     配错了会难看，交给加载器派生更稳）。 */
+  --dsw-alias-link: #a8481a;
+  --dsw-alias-label-error: #b03a24;
+  --dsw-alias-label-primary-bluish: #3c5a72;
+  --dsw-alias-bg-layer-4: rgba(232, 214, 198, 0.95);
+  --dsw-alias-bg-document-preview: rgba(250, 240, 230, 0.94);
+  --dsw-alias-bg-mask-drop: #4a332f59;
+  --dsw-alias-label-document-preview: #4a352e;
+  --dsw-hovercard-bg: rgba(255, 250, 244, 0.92);
+  /* 输入框/菜单要实一点：它们叠在别的面板上，太透会双重混色看不清 */
+  --dsw-specific-input-major: rgba(255, 250, 244, 0.80);
+  --dsw-specific-login-input: rgba(255, 250, 244, 0.80);
+  --dsw-specific-menu: rgba(253, 244, 234, 0.92);
+  --dsw-specific-selector: rgba(244, 226, 208, 0.85);
+  /* 侧栏是窗口里面积最大的一块面板，必须最透，不然整面都是奶油 */
+  --dsw-specific-sidebar-fill: rgba(250, 240, 230, 0.40);
+  --dsw-specific-sidebar-nav-item-hover: #b4551a14;
+  --dsw-specific-sidebar-nav-item-active: #b4551a24;
+  --dsw-specific-sidebar-nav-item-active-accent: #b4551a;
+  --dsw-specific-tip: #f8eed6;
+  --dsw-alias-code-diff-added: #dceade;
+  --dsw-alias-code-diff-deleted: #f6ded8;
+  --dsw-alias-file-diff-added-bg: #e6f0e8;
+  --dsw-alias-file-diff-added-gutter: #cfe3d3;
+  --dsw-alias-file-diff-added-marker: #3f7a4a;
+  --dsw-alias-file-diff-deleted-bg: #f8e6e1;
+  --dsw-alias-file-diff-deleted-gutter: #f0cfc7;
+  --dsw-alias-file-diff-deleted-marker: #b03a24;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   L1 · 暗色（body[data-ds-dark-theme]）— 主场：暖紫褐薄玻璃
+   官方暗色标记在 document.body 上，照官方写法即可。
+   ══════════════════════════════════════════════════════════════════ */
+body[data-ds-dark-theme] {
+  /* 画布：基线同样只 0.05 —— 暗色底图（model-dorm-room-night.webp）已烘到
+     中位 L=0.217，让房间原样发光即可，不再叠深色。 */
+  --dsw-alias-bg-base: rgba(22, 15, 18, calc(0.05 + var(--dsw-skin-scrim, 0) * 0.55));
+  /* 面板：从「近黑 0.86–0.90」改成「暖紫褐中调 0.58–0.62」。
+     这是"整体太暗 / 图不透"的直接原因 —— 原来 0.86 的近乎不透明深色
+     把画挡掉了 86%，有效亮度只剩 0.078。现在底色本身提亮（不再是近黑），
+     透明度也放开，画能透出约 40%，有效亮度约 0.14–0.17（约两倍），
+     而浅色文字的对比度仍然守得住（见 tools/validate.mjs 的合成核算）。 */
+  --dsw-alias-bg-layer-1: rgba(100, 74, 82, 0.58);
+  --dsw-alias-bg-layer-2: rgba(114, 85, 93, 0.60);
+  --dsw-alias-bg-layer-3: rgba(120, 89, 97, 0.62);
+  --dsw-alias-bg-module-platform: rgba(114, 85, 93, 0.60);
+  --dsw-alias-bg-mask-1: #0d080a59;
+  --dsw-alias-bg-mask-2: #0d080a2e;
+  --dsw-alias-bg-mask-3: #0d080a73;
+  --dsw-alias-bg-mask-photo: #0d080ae0;
+  --dsw-alias-bg-multi-select: rgba(100, 74, 82, 0.80);
+  --dsw-alias-bg-overlay: rgba(58, 42, 47, 0.94);
+  --dsw-alias-bg-skeleton: #ffd9b80f;
+
+  --dsw-alias-border-l1: #ffd9b81f;
+  --dsw-alias-border-l2: #ffd9b833;
+  --dsw-alias-border-l2-darkmode-thin: #ffd9b82e;
+  --dsw-alias-border-l3: #ffd9b84a;
+  --dsw-alias-border-l4: #ffd9b866;
+  --dsw-alias-border-inverted: #231a1c8c;
+  --dsw-alias-border-inverted2: #231a1c66;
+
+  /* 文字：面板提亮 + 放开透明后，文字也得跟着提亮。下面这套是照
+     「面板有效亮度 0.14–0.16」算出来的（正文 L=0.917）：
+     layer-1 约 5.1:1、layer-2 约 4.8:1、layer-3 约 4.7:1，都过了 4.5:1。
+     这里体现的是一个真实取舍：**画面越透，文字对比越低**（底图 L=0.217
+     比面板还亮，透得越多有效亮度越高）。所以补法是提亮文字，不是牺牲透明度。 */
+  --dsw-alias-label-primary: #fdf4ec;
+  --dsw-alias-label-primary-dimmed: #ddc9bd;
+  /* 关键：暗色下按钮底是亮琥珀，所以字色必须深 */
+  --dsw-alias-label-primary-foreground: #231a1c;
+  --dsw-alias-label-primary-inverted: #231a1c;
+  --dsw-alias-label-secondary: #e6d5ca;
+  --dsw-alias-label-tertiary: #cfb8ac;
+  --dsw-alias-label-caption: #bfa69a;
+  --dsw-alias-label-dimmed: #b0978c;
+
+  --dsw-alias-brand-primary: #e39a55;
+  --dsw-alias-brand-primary-invert: #231a1c;
+  --dsw-alias-brand-primary-new-colorprimary-new-color: #e39a55;
+  --dsw-alias-brand-text: #f6e8dd;
+
+  --dsw-alias-button-primary-fill: #e39a55;
+  --dsw-alias-button-primary-hover: #f0ac6c;
+  --dsw-alias-button-primary-dimmed: #5c4634;
+  --dsw-alias-button-contrast-fill: #f6e8dd;
+  --dsw-alias-button-elevated-fill: #3a2d31;
+  --dsw-alias-button-floating-fill: #3a2d31;
+  --dsw-alias-button-floating-hover: #4a3a3e;
+  --dsw-alias-button-ghost-active-fill: #4a3a3e;
+  --dsw-alias-button-ghost-active-hover: #584649;
+  --dsw-alias-button-ghost-active-border: #7a6259;
+  --dsw-alias-button-info-fill: #6ba6d4;
+  --dsw-alias-button-info-hover: #85b8e0;
+  --dsw-alias-button-tool-bar-fill: #f6e8dd80;
+  --dsw-alias-button-tool-bar-hover: #f6e8dd99;
+  --dsw-alias-button-tool-bar-fill-invisible: #f6e8dd5c;
+
+  --dsw-alias-interactive-bg-hover: #ffd9b814;
+  --dsw-alias-interactive-bg-hover-solid: #4a3a3e;
+  --dsw-alias-interactive-bg-hover-accent: #e39a552e;
+  --dsw-alias-interactive-bg-hover-danger: #e0745c1f;
+  --dsw-alias-interactive-bg-active: #ffd9b824;
+
+  --dsw-alias-state-error-primary: #e0745c;
+  --dsw-alias-state-error-secondary: #c4553f;
+  --dsw-alias-state-idle-primary: #8a7168;
+  --dsw-alias-state-warn-primary: #e0a94f;
+  --dsw-alias-state-warn-secondary: #c98f34;
+  --dsw-alias-state-warn-tertiary: #4a3a22;
+  --dsw-alias-state-warn-label: #e8bb6e;
+  --dsw-alias-state-success-primary: #7fb98a;
+  --dsw-alias-state-success-secondary: #5d9c68;
+  --dsw-alias-state-success-tertiary: #26382a;
+  --dsw-alias-state-business-primary: #6ba6d4;
+  --dsw-alias-state-business-tertiary: #22323e;
+
+  --dsw-alias-markdown-code-block: #1d151899;
+  --dsw-alias-markdown-code-block-banner: #1d151894;
+  --dsw-alias-markdown-inline-code: #2b202399;
+  --dsw-alias-markdown-citation: #2b202399;
+  --dsw-alias-markdown-tag: #2b202399;
+  --dsw-alias-markdown-placeholder: #1d151894;
+  --dsw-alias-markdown-code-segment-selected: #ffd9b826;
+  --dsw-alias-markdown-code-segment-unselected: #1d151899;
+
+  --dsw-alias-scrollbar-bg-l1: #3a2d31;
+  --dsw-alias-scrollbar-bg-l2: #3a2d31;
+  --dsw-alias-scrollbar-hover-l1: #6b5350;
+  --dsw-alias-scrollbar-hover-l2: #6b5350;
+
+  --dsw-specific-bubble: #5c484d;
+  --dsw-specific-bubble-highlight: #6e565c;
+  --dsw-alias-toast-bg: #f6e8dd;
+  --dsw-alias-tooltip-bg: #f6e8dd;
+
+  /* 第二批（见亮色块末尾的说明）：暗色下链接用更亮的琥珀才在暖紫褐上读得清 */
+  --dsw-alias-link: #e8a866;
+  --dsw-alias-label-error: #e0745c;
+  --dsw-alias-label-primary-bluish: #a8c4d8;
+  --dsw-alias-bg-layer-4: rgba(142, 106, 115, 0.64);
+  --dsw-alias-bg-document-preview: rgba(44, 32, 36, 0.92);
+  --dsw-alias-bg-mask-drop: #0d080a80;
+  --dsw-alias-label-document-preview: #d8c2b6;
+  --dsw-hovercard-bg: rgba(62, 45, 50, 0.94);
+  --dsw-specific-input-major: rgba(72, 53, 59, 0.70);
+  --dsw-specific-login-input: rgba(72, 53, 59, 0.70);
+  --dsw-specific-menu: rgba(62, 45, 50, 0.92);
+  --dsw-specific-selector: rgba(88, 66, 73, 0.72);
+  /* 侧栏要能透出更多画面（它是面积最大的一块面板） */
+  --dsw-specific-sidebar-fill: rgba(52, 36, 41, 0.42);
+  --dsw-specific-sidebar-nav-item-hover: #ffd9b814;
+  --dsw-specific-sidebar-nav-item-active: #e39a5524;
+  --dsw-specific-sidebar-nav-item-active-accent: #e39a55;
+  --dsw-specific-tip: #4a3a22;
+  --dsw-alias-code-diff-added: #26382a;
+  --dsw-alias-code-diff-deleted: #4a2a26;
+  --dsw-alias-file-diff-added-bg: #1f2f23;
+  --dsw-alias-file-diff-added-gutter: #2b4030;
+  --dsw-alias-file-diff-added-marker: #7fb98a;
+  --dsw-alias-file-diff-deleted-bg: #38211e;
+  --dsw-alias-file-diff-deleted-gutter: #4a2b26;
+  --dsw-alias-file-diff-deleted-marker: #e0745c;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   页面底色与文字基色
+   这两条只设 color / background-color，不碰布局，安全。
+   ══════════════════════════════════════════════════════════════════ */
+:root {
+  color: #2a1d1a;
+  background-color: #fbe9d8;
+}
+
+body[data-ds-dark-theme] {
+  color: #f6e8dd;
+  /* 故意用不透明底（跟 blue-fantasy 一样）：装饰层画在它上面，所以不影响
+     背景图；但万一背景图加载失败，仍然是一套完整可读的暗色，而不是
+     深色文字压在奶油底上。 */
+  background-color: #161013;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   滚动条 —— 官方壳层在 body 上画，所以这条也挂在 body
+   ══════════════════════════════════════════════════════════════════ */
+body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+body::-webkit-scrollbar-track {
+  background: #f4e2d0;
+}
+
+body::-webkit-scrollbar-thumb {
+  background: #d3ae8c;
+  border: 2px solid #f4e2d0;
+  border-radius: 5px;
+}
+
+body::-webkit-scrollbar-thumb:hover {
+  background: #b4551a;
+}
+
+body::-webkit-scrollbar-corner {
+  background: #f4e2d0;
+}
+
+body[data-ds-dark-theme]::-webkit-scrollbar-track,
+body[data-ds-dark-theme]::-webkit-scrollbar-corner {
+  background: #1d1417;
+}
+
+body[data-ds-dark-theme]::-webkit-scrollbar-thumb {
+  background: #4a3a3e;
+  border-color: #1d1417;
+}
+
+body[data-ds-dark-theme]::-webkit-scrollbar-thumb:hover {
+  background: #e39a55;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   选中文本 / 焦点环
+   ══════════════════════════════════════════════════════════════════ */
+body::selection {
+  color: #fff8f2;
+  background: #b4551a;
+}
+
+body[data-ds-dark-theme]::selection {
+  color: #231a1c;
+  background: #e39a55;
+}
+
+body[data-ds-dark-theme] :focus-visible {
+  outline-color: var(--dsw-alias-brand-primary);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   L2 · 唯一一处语义属性微调
+   data-dsh-part="dialog" 由皮肤中心的兼容适配器从 [role="dialog"]
+   锚定打标。只加毛玻璃与描边，不改尺寸/位置 —— 即使打标失效也只是
+   少一层模糊，不会坏。
+   ══════════════════════════════════════════════════════════════════ */
+[data-dsh-part="dialog"] {
+  backdrop-filter: blur(14px);
+  border-color: #6b4a3f40;
+}
+
+body[data-ds-dark-theme] [data-dsh-part="dialog"] {
+  border-color: #ffd9b838;
+}

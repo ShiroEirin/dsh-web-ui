@@ -22,11 +22,13 @@ import { UsageSectionCard, type UsageSectionFace, type UsageSettings } from './U
 import { mountUsageFootCard, openUsageSettings } from './foot-card-mount.tsx'
 import { NS, en, zh, t } from './locales.ts'
 import { createServedEntryForm } from './settings-entry-form.ts'
-import type { UsageOverviewView } from '../core/types.ts'
+import type { UsageDayResponse, UsageDayView, UsageOverviewView } from '../core/types.ts'
 
 /** The host usage API as the browser sees it (same-origin JSON endpoints). */
 interface UsageHttpApi {
   overview(): Promise<UsageOverviewView>
+  /** One retained local day (YYYY-MM-DD), the day pickers' detail fetch. */
+  day(date: string): Promise<UsageDayView>
   refresh(): Promise<UsageOverviewView>
 }
 
@@ -47,6 +49,7 @@ const usageApi: UsageHttpApi = {
   // `<base href="./">`, so a sub-path deployment resolves these against its
   // entry directory instead of escaping to the origin root.
   overview: () => usageFetch('api/dsh-usage/overview', 'GET'),
+  day: async (date: string) => (await usageFetch<UsageDayResponse>('api/dsh-usage/day?date=' + encodeURIComponent(date), 'GET')).day,
   refresh: () => usageFetch('api/dsh-usage/refresh', 'POST'),
 }
 
@@ -156,7 +159,12 @@ export function apply(ctx: ClientContext): void {
     })
   }
 
-  const face = (): UsageSectionFace => ({ store, poll, refresh, settings: settingsForm })
+  // The day pickers fetch their own day: the overview carries today (always
+  // live) plus the list of recorded days, and one selected day is a single
+  // small local request the 10 s poll has no reason to repeat.
+  const loadDay = (date: string): Promise<UsageDayView> => usageApi.day(date)
+
+  const face = (): UsageSectionFace => ({ store, poll, refresh, loadDay, settings: settingsForm })
 
   // Sidebar foot card: the compact usage glance seated below the shell's
   // Settings row. It shares the section's store and poll path (the sequence

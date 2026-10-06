@@ -318,13 +318,41 @@ describe('startMobileAdapt', () => {
     // portal layer hosts the settings modal, which must stay reachable.
     expect(css).toContain('[class$="_overlayLayer"] [class$="_workbench"]{display:none !important}')
     expect(css).not.toContain('[class$="_overlayLayer"]{display:none')
-    // The compact picker: icon entries for model/effort inline in the tools
-    // row (parallel to the permission trigger); the trailing line collapses.
-    expect(css).toContain('body.dsh-remote-compact-picker [class$="_composerSeat"] [class$="_trailing"] [class$="_trigger"]')
-    expect(css).toContain('body.dsh-remote-compact-picker [class$="_composerSeat"] [class$="_trailing"]{flex-basis:auto;position:static;min-height:0;padding:0;width:0}')
-    expect(css).toContain('#dshRemoteModelPick,#dshRemoteEffortPick{width:26px;height:32px')
+    // The v79 compact picker is removed: the portrait composer keeps the
+    // official text trigger, so no synthesized button ids and no
+    // compact-picker body class may reappear in the sheet.
+    expect(css).not.toContain('dsh-remote-compact-picker')
+    expect(css).not.toContain('dshRemoteModelPick')
+    expect(css).not.toContain('dshRemoteEffortPick')
     // The dsh-LAN _body gap compaction must stay out: it clips message text.
     expect(css).not.toContain('_body"]{gap:6px}')
+  })
+
+  it('user in portrait gets the settings-modal column switch gated to the portrait body class', async () => {
+    media.portrait = true
+    media.coarse = true
+    setWidth(390)
+    const start = await freshStart()
+    // Given the layer is installed in a portrait touch viewport, when it
+    // injects the adaptation stylesheet, then the settings-modal column
+    // switch is unreachable without the portrait body class.
+    start()
+    const css = document.querySelector('style[data-plugin-css="dsh-remote-web-ui/mobile-adapt.css"]')?.textContent ?? ''
+    // The v68 settings-modal rules reshape the official two-column panel. The
+    // overlay portal is shared with every other dialog, so an unscoped rule
+    // collapsed the DESKTOP settings panel into a stacked column while the tag
+    // sat in <head>. Each rule must carry the portrait gate.
+    // Parse the sheet into (selector, block) pairs and assert on the selector
+    // ALONE: a substring check would also match the longer gated selectors,
+    // so one reverted rule could hide behind its six scoped siblings.
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(m => [m[1]!.trim(), m[2]!] as const)
+    const overlayRules = rules.filter(([selector]) => selector.includes('[class$="_overlay"]'))
+    // The 7 settings-modal rules. The workbench suppression keys on
+    // _overlayLayer (a different portal) and is checked by the test above.
+    expect(overlayRules.length).toBe(7)
+    for (const [selector] of overlayRules) {
+      expect(selector, selector).toMatch(/^body\.dsh-remote-portrait /)
+    }
   })
 
   it('treats only the application frame as the app frame, not a nested _frame surface', async () => {
@@ -525,7 +553,7 @@ describe('startMobileAdapt', () => {
     expect(document.documentElement.style.getPropertyValue('--dsh-remote-header-actions-reserve')).toBe('')
   })
 
-  it('drills into the picker sheet by structure when the cell labels are localized', async () => {
+  it('injects no compact picker buttons into the composer tools row', async () => {
     vi.useFakeTimers()
     try {
       media.portrait = true
@@ -533,48 +561,53 @@ describe('startMobileAdapt', () => {
       setWidth(390)
       const start = await freshStart()
       start()
+      // Given a composer seat whose trailing trigger the removed compact picker
+      // used to wire against, when the sync tick runs, then the tools row stays
+      // free of the synthesized model/effort icon buttons and the body carries
+      // no compact-picker gate.
       const seat = document.createElement('div')
       seat.className = 'app_composerSeat'
       const tools = document.createElement('div')
       tools.className = 'x_tools'
       const trailing = document.createElement('div')
       trailing.className = 'x_trailing'
-      // The official trigger carries the `_trigger` class and wraps the
-      // `_triggerEffort` marker (the layer forwards to it, then drills).
       trailing.innerHTML = '<div class="x_trigger"><div class="x_triggerEffort"></div></div>'
       seat.append(tools, trailing)
       document.body.appendChild(seat)
-      await vi.advanceTimersByTimeAsync(600)
-      const modelBtn = document.getElementById('dshRemoteModelPick')
-      const effortBtn = document.getElementById('dshRemoteEffortPick')
-      expect(modelBtn).not.toBeNull()
-      expect(effortBtn).not.toBeNull()
-      // A localized (ru) sheet: no zh/en label matches, so the chevron-cell
-      // order is the anchor — model first, effort second.
-      const menu = document.createElement('div')
-      menu.className = 'x_menu'
-      const clicks: number[] = []
-      const cells = ['Модель', 'Уровень рассуждений'].map((label, index) => {
-        const cell = document.createElement('button')
-        cell.className = 'x_cell'
-        cell.textContent = label
-        const chevron = document.createElement('svg')
-        chevron.setAttribute('class', 'x_cellChevron')
-        cell.appendChild(chevron)
-        cell.addEventListener('click', () => { clicks.push(index) })
-        menu.appendChild(cell)
-        return cell
-      })
-      seat.appendChild(menu)
-      modelBtn!.click()
-      await vi.advanceTimersByTimeAsync(400)
-      expect(clicks).toEqual([0])
-      effortBtn!.click()
-      await vi.advanceTimersByTimeAsync(400)
-      expect(clicks).toEqual([0, 1])
+      await vi.advanceTimersByTimeAsync(1200)
+      expect(document.getElementById('dshRemoteModelPick')).toBeNull()
+      expect(document.getElementById('dshRemoteEffortPick')).toBeNull()
+      expect(tools.querySelectorAll('button')).toHaveLength(0)
+      expect(document.body.classList.contains('dsh-remote-compact-picker')).toBe(false)
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('operator gets the send button contained by the composer card on a narrow phone', async () => {
+    media.portrait = true
+    media.coarse = true
+    setWidth(390)
+    const start = await freshStart()
+    start()
+    ;(window as unknown as { __dshRemoteAdapt?: { evaluate: () => void } }).__dshRemoteAdapt?.evaluate()
+    // Given the trailing line is forced onto its own row at flex-basis:100% and
+    // carries 116px of side padding (38 left for the command button, 78 right
+    // for the send button), when the sheet is read, then that line is
+    // border-box: under the default content-box the padding is added to the
+    // 100% basis, the line overflows the card by exactly 116px, and the
+    // absolutely-positioned send button is dragged outside the card and past
+    // the viewport edge (issue #1818). The card geometry itself must stay
+    // untouched - the button moves back in, the card does not grow.
+    const tag = document.querySelector('style[data-plugin-css="dsh-remote-web-ui/mobile-adapt.css"]')
+    const css = tag?.textContent ?? ''
+    const trailing = css.split('}').find(rule => rule.includes('[class$="_composerSeat"] [class$="_trailing"]{'))
+    expect(trailing).toContain('box-sizing:border-box')
+    expect(trailing).toContain('flex-basis:100%')
+    expect(trailing).toContain('padding-right:78px')
+    // The button keeps its in-card right edge offset, so it lands inside the
+    // padded content box rather than at the screen edge.
+    expect(css).toContain('[class$="_composerSeat"] [class$="_primary"]{position:absolute;right:8px')
   })
 
   it('reads injected-surface labels from the wired translate seat, not the browser language', async () => {
@@ -593,26 +626,11 @@ describe('startMobileAdapt', () => {
       // Wire the seat the way the plugin apply does once ctx.locale is bound.
       const labels: Record<string, string> = {
         'mobile.whale.open': 'Открыть боковую панель',
-        'mobile.composer.pickModel': 'Выбрать модель',
-        'mobile.composer.pickEffort': 'Выбрать уровень рассуждений',
       }
       adapt!.translate = (key) => labels[key] ?? key
-      // A composer seat so the compact picker mounts on the next tick.
-      const seat = document.createElement('div')
-      seat.className = 'app_composerSeat'
-      const tools = document.createElement('div')
-      tools.className = 'x_tools'
-      const trailing = document.createElement('div')
-      trailing.className = 'x_trailing'
-      trailing.innerHTML = '<div class="x_triggerEffort"></div>'
-      seat.appendChild(tools)
-      seat.appendChild(trailing)
-      document.body.appendChild(seat)
       await vi.advanceTimersByTimeAsync(600)
       expect(whale?.title).toBe(labels['mobile.whale.open'])
       expect(whale?.getAttribute('aria-label')).toBe(labels['mobile.whale.open'])
-      expect(document.getElementById('dshRemoteModelPick')?.title).toBe(labels['mobile.composer.pickModel'])
-      expect(document.getElementById('dshRemoteEffortPick')?.title).toBe(labels['mobile.composer.pickEffort'])
     } finally {
       vi.useRealTimers()
     }
@@ -686,6 +704,78 @@ describe('startMobileAdapt', () => {
       // The toggle click never flipped the frame, so the face takes over.
       await vi.advanceTimersByTimeAsync(400)
       expect(faceSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('user gets an overlay arriving while the layer is active picked up on the next tick', async () => {
+    // Given an active portrait layer with the sidebar collapsed, so the whale
+    // (the only portrait sidebar entry) is showing.
+    vi.useFakeTimers()
+    try {
+      media.portrait = true
+      media.coarse = true
+      setWidth(390)
+      const frame = document.createElement('div')
+      frame.className = 'app_frame'
+      frame.setAttribute('data-dsh-frame', '')
+      frame.setAttribute('data-sidebar-collapsed', '')
+      document.body.appendChild(frame)
+      const start = await freshStart()
+      start()
+      const whale = document.getElementById('dshRemoteWhale') as HTMLElement
+      await vi.advanceTimersByTimeAsync(600)
+      expect(whale.style.display).not.toBe('none')
+
+      // When an official overlay appears (a class whose token ends in _overlay).
+      const overlay = document.createElement('div')
+      overlay.className = 'pI_x6G_overlay'
+      document.body.appendChild(overlay)
+
+      // Then the whale yields to it within one tick, not after a TTL.
+      await vi.advanceTimersByTimeAsync(600)
+      expect(whale.style.display).toBe('none')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('user gets a header that appeared while the layer was reverted seated on the first tick back', async () => {
+    // Given an active layer whose tick has already learned that no header
+    // exists (a session that has not rendered one yet caches the miss).
+    vi.useFakeTimers()
+    try {
+      media.portrait = true
+      media.coarse = true
+      setWidth(390)
+      const start = await freshStart()
+      start()
+      await vi.advanceTimersByTimeAsync(600)
+      expect(document.body.classList.contains('dsh-remote-header-seated')).toBe(false)
+      const adapt = (window as unknown as { __dshRemoteAdapt?: { setEnabled: (on: boolean) => void } }).__dshRemoteAdapt
+
+      // When the layer is reverted — nothing observes the document from here on
+      // — and the header then appears inside that blind window.
+      adapt?.setEnabled(false)
+      const header = document.createElement('div')
+      header.className = 'chat_header'
+      const cluster = document.createElement('div')
+      cluster.className = 'chat_titleCluster'
+      const actions = document.createElement('div')
+      actions.className = 'chat_headerActions'
+      cluster.appendChild(actions)
+      const tabs = document.createElement('div')
+      tabs.className = 'chat_tabs'
+      tabs.innerHTML = '<button class="chat_tab">Chat</button>'
+      header.append(cluster, tabs)
+      document.body.appendChild(header)
+
+      // Then re-enabling seats it on the first tick rather than serving the
+      // absent verdict recorded before the observer gap.
+      adapt?.setEnabled(true)
+      await vi.advanceTimersByTimeAsync(600)
+      expect(document.body.classList.contains('dsh-remote-header-seated')).toBe(true)
     } finally {
       vi.useRealTimers()
     }

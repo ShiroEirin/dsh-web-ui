@@ -3,6 +3,35 @@ html[data-dsh-skin="maid-atelier"] [id="root"] {
   position: relative;
 }
 
+/* The skin paints an opaque backdrop on the root element, so the host's
+   `contributes.backgroundMedia` layer (z-index: -2, appended to body) stops
+   propagating and is painted as an ordinary element background instead — which
+   happens AFTER the negative-z-index layers. The result was an entire window
+   of flat dark blue with the palace illustration invisible (issues #1745 A and
+   #1746).
+
+   `isolation: isolate` on body makes body its own stacking-context root: the
+   body background returns to the canvas step and the -2 layer paints again,
+   while the character stage (z-index 0) and the conversation panels (auto)
+   still sit above it. z-index is left alone on purpose — raising the layer to 0
+   would put it over the conversation itself.
+
+   This must stay on `body`, never on `html`/` :root`: the skin-center patch
+   pipeline prefixes every selector with `html[data-dsh-skin="<id>"] `, so a
+   `:root` rule would compile to a selector that can never match. */
+html[data-dsh-skin="maid-atelier"] body {
+  isolation: isolate;
+}
+
+/* Windows desktop host paints --dsw-specific-sidebar-fill on the whole-window
+   frame element. Because the frame is an ancestor of the conversation column,
+   it crushes the z-index: -2 background illustration. Set background to transparent.
+   Suffix matching on _frame handles the host CSS-module hash (e.g. ZTP-Xa_frame)
+   without being neutralized by the skin patch prefix pipeline (issue #1763). */
+html[data-dsh-skin="maid-atelier"] [class*="_frame"] {
+  background: transparent !important;
+}
+
 html[data-dsh-skin="maid-atelier"] body:before {
   content: "";
   position: fixed;
@@ -153,7 +182,7 @@ html[data-dsh-skin="maid-atelier"] body[data-maid-low-power] [data-maid-characte
 }
 
 html[data-dsh-skin="maid-atelier"] [data-skin-chrome="top-trim"] {
-  translate: var(--maid-sidebar-width) 0;
+  translate: var(--maid-sidebar-width, 280px) 0;
   z-index: 1;
   pointer-events: none;
   contain: paint;
@@ -193,6 +222,27 @@ html[data-dsh-skin="maid-atelier"] body[data-maid-composer-motion] [data-skin-tr
   will-change: transform;
 }
 
+/* #1742: the top trim is body-level (hooks.mjs appends
+   [data-skin-chrome="top-trim"] to <body>) with position: absolute, z-index 1
+   and a 76px band, and it shifts right by the sidebar width. The official
+   plugin manager is the main-slot occupant, and its head row starts at the
+   window's top edge (the page's own 28px padding-top), inside that band; the
+   page column paints no background of its own, so the navy tile and lace cover
+   the row while pointer-events: none only keeps it clickable (#1742).
+   z-index cannot resolve this: raising the page above the trim would hide the
+   skin's own conversation chrome just as well. The decoration yields on that
+   page instead. Hiding the layer is sufficient because the trim is decoration
+   only: it paints nothing the page needs.
+   The selector is scoped to the main outlet on purpose - panels mounted
+   elsewhere (settings surfaces live under [data-slot="sidebar.settings"]) keep
+   their trim, and an active conversation keeps the whole band untouched.
+   data-plugin-panel / data-plugin-detail are the manager's official stable
+   attributes; no hashed CSS-module class name is involved. */
+html[data-dsh-skin="maid-atelier"] body:has([data-slot="main"] [data-plugin-panel]) [data-skin-chrome="top-trim"],
+html[data-dsh-skin="maid-atelier"] body:has([data-slot="main"] [data-plugin-detail]) [data-skin-chrome="top-trim"] {
+  display: none;
+}
+
 html[data-dsh-skin="maid-atelier"] [data-skin-trim-layer="landing"]:after {
   content: "";
   left: calc((100% - var(--maid-sidebar-width) - 8px) / 2);
@@ -206,7 +256,7 @@ html[data-dsh-skin="maid-atelier"] [data-skin-trim-layer="landing"]:after {
 }
 
 html[data-dsh-skin="maid-atelier"] [data-skin-chrome="bottom-trim"] {
-  translate: var(--maid-sidebar-width) 0;
+  translate: var(--maid-sidebar-width, 280px) 0;
   z-index: 19;
   pointer-events: none;
   background: var(--maid-bottom-trim-art) left bottom / auto 30px repeat-x;
@@ -2283,6 +2333,11 @@ html[data-dsh-skin="maid-atelier"] [data-skin-chrome="titlebar-brand"] {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+}
+
+html[data-dsh-skin="maid-atelier"] [data-skin-chrome="titlebar-brand"] svg {
+  height: 18px;
+  flex: none;
 }
 
 html[data-dsh-skin="maid-atelier"] [data-skin-chrome="top-trim"] {

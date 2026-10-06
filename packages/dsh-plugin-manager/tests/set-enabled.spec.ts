@@ -248,7 +248,7 @@ describe('set-enabled id space', () => {
     }))
     writeFileSync(join(moduleDir, 'cordis.patch.yml'), [
       '- insert:',
-      '    - id: ui-plugin-manager',
+      '    - id: ui-plugin-manager-update-check',
       "      name: '@linxin666/dsh-client-ui-plugin-manager'",
       '',
     ].join('\n'))

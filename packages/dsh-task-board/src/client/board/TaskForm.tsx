@@ -4,10 +4,12 @@
  * NewTaskModal and the EditTaskModal. State stays in the owning modal; these
  * are controlled components.
  */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { TAG_NAME_MAX_LENGTH, TAG_PROMPT_MAX_LENGTH, TASK_TAG_LIMIT, normalizeTags, type TaskTag } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import { IconClose, IconPlus } from './icons.tsx'
+import { useDialog, type OverlayPhase } from './overlay.tsx'
 
 /** DOM id shared by the tag-name inputs and their datalist (one board at a time). */
 const TAG_NAME_LIST_ID = 'dsh-task-board-tag-names'
@@ -22,6 +24,7 @@ export function ModalShell({
   onSubmit,
   onClose,
   secondaryAction,
+  phase = 'open',
   children,
 }: {
   ariaLabel: string
@@ -33,19 +36,25 @@ export function ModalShell({
   onClose: () => void
   /** Optional second action beside the primary submit (e.g. create and run). */
   secondaryAction?: { label: string; onSubmit: () => void }
+  /** Which leg of the enter/exit motion pair the surface is on. */
+  phase?: OverlayPhase
   children: ReactNode
 }) {
+  const dialog = useDialog<HTMLFormElement>(onClose, phase)
   return (
-    <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+    <div className={css.modalBackdrop} data-state={phase} onMouseDown={dialog.onMouseDown}>
       <form
+        ref={dialog.attach}
         className={css.modal}
         role="dialog"
+        aria-modal="true"
         aria-label={ariaLabel}
+        tabIndex={-1}
         onSubmit={event => { event.preventDefault(); onSubmit() }}
       >
         <h2 className={css.modalTitle}>{title}</h2>
 
-        {children}
+        <div className={css.modalBody}>{children}</div>
 
         {error !== undefined && <p className={css.formError}>{error}</p>}
 
@@ -69,6 +78,51 @@ export function ModalShell({
         </footer>
       </form>
     </div>
+  )
+}
+
+/**
+ * One collapsible region of a task form (create/edit dialog UX): the form
+ * groups its configuration into a few regions instead of stacking every field
+ * in one long column, so a normal-sized dialog needs no scrollbar. A collapsed
+ * region keeps a one-line summary of the values it holds, so nothing is hidden
+ * without a trace; a region holding a blocking error is forced open by its
+ * owner (forceOpen) rather than reporting the error out of sight.
+ */
+export function CollapsibleSection({
+  title,
+  summary,
+  defaultOpen = false,
+  forceOpen = false,
+  children,
+}: {
+  title: string
+  /** One-line value preview rendered only while the region is collapsed. */
+  summary?: string | undefined
+  /** Whether the region starts expanded (the owner's default layout). */
+  defaultOpen?: boolean
+  /** Open regardless of the stored state: an error inside must stay visible. */
+  forceOpen?: boolean
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  const expanded = forceOpen || open
+  return (
+    <section className={css.formSection} data-dsh-part="form-section" data-open={expanded ? 'true' : undefined}>
+      <button
+        type="button"
+        className={css.formSectionHeader}
+        aria-expanded={expanded}
+        onClick={() => { setOpen(value => !value) }}
+      >
+        <span className={css.formSectionChevron} aria-hidden="true" />
+        <span className={css.formSectionTitle}>{title}</span>
+        {!expanded && summary !== undefined && summary !== '' && (
+          <span className={css.formSectionSummary}>{summary}</span>
+        )}
+      </button>
+      {expanded && <div className={css.formSectionBody}>{children}</div>}
+    </section>
   )
 }
 
@@ -106,7 +160,7 @@ export function TaskContentFields({
         <span className={css.fieldLabel}>{t('new.description')}</span>
         <textarea
           className={css.input}
-          rows={3}
+          rows={2}
           value={description}
           placeholder={t('new.descriptionPlaceholder')}
           onChange={event => onDescriptionChange(event.target.value)}
@@ -181,7 +235,7 @@ export function TaskTagFields({
             aria-label={t('new.tagRemove', { name: tag.name })}
             onClick={() => { onChange(tags.filter((_, position) => position !== index)) }}
           >
-            ×
+            <IconClose size={14} />
           </button>
         </div>
       ))}
@@ -194,7 +248,8 @@ export function TaskTagFields({
         disabled={tags.length >= TASK_TAG_LIMIT}
         onClick={() => { onChange([...tags, { name: '' }]) }}
       >
-        + {t('new.tagAdd')}
+        <IconPlus size={14} />
+        {t('new.tagAdd')}
       </button>
     </div>
   )

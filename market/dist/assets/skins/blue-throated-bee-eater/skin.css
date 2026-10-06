@@ -154,10 +154,10 @@ body[data-ds-dark-theme] {
 }
 
 /* Translucent glass state, only while a backdrop is visible (the skin's own
- * backgroundMedia, a Wallpaper Engine wallpaper via data-dsh-wallpaper-active,
+ * backgroundMedia, a Wallpaper Engine wallpaper via data-we-wallpaper,
  * or any source via the unified data-dsh-backdrop-active marker). Opaque by
  * default; the glass treatment below rides on these token overrides. */
-body:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) {
+body:is([data-dsh-backdrop-active], [data-we-wallpaper]) {
   --dsw-alias-bg-base: #eef6f98f;
   --dsw-alias-bg-layer-1: #ffffffbd;
   --dsw-alias-bg-layer-2: #e3f0f5b3;
@@ -165,7 +165,7 @@ body:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) {
   --dsw-specific-sidebar-fill: #e3f0f5c2;
 }
 
-body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) {
+body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-we-wallpaper]) {
   --dsw-alias-bg-base: #0c20299a;
   --dsw-alias-bg-layer-1: #122b36c2;
   --dsw-alias-bg-layer-2: #163541b8;
@@ -240,11 +240,11 @@ body[data-ds-dark-theme] [data-pane="sidebar"] [role="treeitem"][aria-selected="
  * opaque and flat when no backdrop is active (the restrained default). The
  * photo therefore reads through the composer, settings, dialogs, side panels
  * and pet bubble, never through the conversation text itself. */
-body:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) [data-dsh-surface="composer"],
-body:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) [data-dsh-surface="settings"],
-body:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) [data-dsh-part="dialog"],
-body:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) [data-dsh-part="panel"],
-body:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) [data-dsh-plugin="pet"] [data-dsh-part="bubble"] {
+body:is([data-dsh-backdrop-active], [data-we-wallpaper]) [data-dsh-surface="composer"],
+body:is([data-dsh-backdrop-active], [data-we-wallpaper]) [data-dsh-surface="settings"],
+body:is([data-dsh-backdrop-active], [data-we-wallpaper]) [data-dsh-part="dialog"],
+body:is([data-dsh-backdrop-active], [data-we-wallpaper]) [data-dsh-part="panel"],
+body:is([data-dsh-backdrop-active], [data-we-wallpaper]) [data-dsh-plugin="pet"] [data-dsh-part="bubble"] {
   -webkit-backdrop-filter: blur(20px) saturate(135%);
   backdrop-filter: blur(20px) saturate(135%);
   box-shadow:
@@ -254,11 +254,11 @@ body:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) [data-dsh-plugi
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 24%, rgba(255, 255, 255, 0) 48%);
 }
 
-body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) [data-dsh-surface="composer"],
-body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) [data-dsh-surface="settings"],
-body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) [data-dsh-part="dialog"],
-body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) [data-dsh-part="panel"],
-body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) [data-dsh-plugin="pet"] [data-dsh-part="bubble"] {
+body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-we-wallpaper]) [data-dsh-surface="composer"],
+body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-we-wallpaper]) [data-dsh-surface="settings"],
+body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-we-wallpaper]) [data-dsh-part="dialog"],
+body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-we-wallpaper]) [data-dsh-part="panel"],
+body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-we-wallpaper]) [data-dsh-plugin="pet"] [data-dsh-part="bubble"] {
   -webkit-backdrop-filter: blur(22px) saturate(120%);
   backdrop-filter: blur(22px) saturate(120%);
   box-shadow:
@@ -271,14 +271,14 @@ body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-dsh-wallpaper-acti
 /* Fallback when backdrop-filter is unsupported: lean on the translucent
  * token fills only, with a slightly stronger veil for readability. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  body:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) {
+  body:is([data-dsh-backdrop-active], [data-we-wallpaper]) {
     --dsw-alias-bg-base: #eef6f9c4;
     --dsw-alias-bg-layer-1: #ffffffd9;
     --dsw-alias-bg-layer-2: #e3f0f5d0;
     --dsw-alias-bg-layer-3: #d7e9f0c4;
   }
 
-  body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-dsh-wallpaper-active]) {
+  body[data-ds-dark-theme]:is([data-dsh-backdrop-active], [data-we-wallpaper]) {
     --dsw-alias-bg-base: #0c2029bd;
     --dsw-alias-bg-layer-1: #122b36d6;
     --dsw-alias-bg-layer-2: #163541cc;

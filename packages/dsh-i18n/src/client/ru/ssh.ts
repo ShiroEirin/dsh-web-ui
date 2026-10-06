@@ -118,6 +118,7 @@ export const ru: Record<string, string> = {
   'terminal.connecting': 'Подключение…',
   'terminal.disconnect': 'Отключиться',
   'terminal.error': 'Ошибка терминала: {error}',
+  'terminal.noWebSocket': 'Эта страница не может передавать WebSocket (оболочка приложения не опубликовала локальный адрес хоста для подключения). Откройте веб-интерфейс в браузере, чтобы пользоваться терминалом.',
   'terminal.exited': 'Терминал закрыт ({alias})',
   'terminal.placeholder': 'Выберите хост и нажмите «Подключить», чтобы открыть удалённый терминал.',
   'terminal.ready': 'Терминал подключён ({alias})',

@@ -27,7 +27,7 @@ export const REPO_ROOT = resolve(SCRIPT_DIR, '..')
  * live exactly once under shared/; consumers import the committed copy.
  */
 // Consumers of the settings card trio: one list, three derivations below.
-const SETTINGS_CONSUMERS = ['dsh-task-board', 'dsh-remote-web-ui', 'dsh-market', 'dsh-liangshen']
+const SETTINGS_CONSUMERS = ['dsh-task-board', 'dsh-task-board-github', 'dsh-remote-web-ui', 'dsh-market', 'dsh-liangshen']
 const SETTINGS_CARD_CONSUMERS = [...SETTINGS_CONSUMERS]
 // Consumers of the entry-bound form fallback: every package whose card binds a
 // family settings namespace through the shared forms service. It is a superset
@@ -83,17 +83,6 @@ const MANIFEST = [
     ],
   },
   {
-    // Async-boundary guard: routed HTTP handlers of every package with an
-    // in-process HTTP face adopt it; more packages adopt incrementally.
-    file: 'run-guarded.ts',
-    source: 'shared/host/run-guarded.ts',
-    targets: [
-      'packages/dsh-usage/src/host/run-guarded.ts',
-      'packages/dsh-task-board/src/host/run-guarded.ts',
-      'packages/dsh-git-graph/src/host/run-guarded.ts',
-    ],
-  },
-  {
     file: 'dsh-home.ts',
     source: 'shared/host/dsh-home.ts',
     targets: [
@@ -115,6 +104,18 @@ const MANIFEST = [
     targets: ['packages/dsh-git-graph/src/host/git-runner.ts'],
   },
   {
+    // Tool-surface conventions: the prompt-section order band, the
+    // visibility-gated guidance provider, and the per-agent scoped install
+    // lifecycle shared by every package that registers model-facing tools.
+    file: 'tool-surface.ts',
+    source: 'shared/host/tool-surface.ts',
+    targets: [
+      'packages/dsh-ssh/src/tool-surface.ts',
+      'packages/dsh-task-board/src/tool-surface.ts',
+      'packages/dsh-task-board-github/src/tool-surface.ts',
+    ],
+  },
+  {
     file: 'legacy-migration.ts',
     source: 'shared/host/legacy-migration.ts',
     targets: [
@@ -129,6 +130,7 @@ const MANIFEST = [
       'packages/dsh-remote-web-ui/src/mount-once.ts',
       'packages/dsh-liangshen/src/mount-once.ts',
       'packages/dsh-task-board/src/mount-once.ts',
+      'packages/dsh-task-board-github/src/mount-once.ts',
       'packages/dsh-git-graph/src/mount-once.ts',
       'packages/dsh-plugin-manager/src/mount-once.ts',
       'packages/dsh-web-settings/src/mount-once.ts',
@@ -185,7 +187,7 @@ const MANIFEST = [
   {
     file: 'loopback.ts',
     source: 'shared/host/loopback.ts',
-    targets: ['packages/dsh-ssh/src/loopback.ts', 'packages/dsh-git-graph/src/host/loopback.ts', 'packages/dsh-remote-web-ui/src/loopback.ts', 'packages/dsh-task-board/src/loopback.ts', 'packages/dsh-skill-explorer/src/loopback.ts', 'packages/dsh-plugin-manager/src/host/loopback.ts', 'packages/dsh-market/src/loopback.ts', 'packages/dsh-usage/src/host/loopback.ts', 'packages/dsh-session-archive/src/host/loopback.ts', 'packages/dsh-update/src/loopback.ts'],
+    targets: ['packages/dsh-ssh/src/loopback.ts', 'packages/dsh-git-graph/src/host/loopback.ts', 'packages/dsh-remote-web-ui/src/loopback.ts', 'packages/dsh-task-board/src/loopback.ts', 'packages/dsh-task-board-github/src/loopback.ts', 'packages/dsh-skill-explorer/src/loopback.ts', 'packages/dsh-plugin-manager/src/host/loopback.ts', 'packages/dsh-market/src/loopback.ts', 'packages/dsh-usage/src/host/loopback.ts', 'packages/dsh-session-archive/src/host/loopback.ts', 'packages/dsh-update/src/loopback.ts'],
   },
   {
     file: 'http.ts',
@@ -199,6 +201,7 @@ const MANIFEST = [
       'packages/dsh-plugin-manager/src/host/http.ts',
       'packages/dsh-remote-web-ui/src/http.ts',
       'packages/dsh-task-board/src/http.ts',
+      'packages/dsh-task-board-github/src/host/http.ts',
       'packages/dsh-usage/src/host/http.ts',
       'packages/dsh-session-archive/src/host/http.ts',
       'packages/dsh-update/src/http.ts',
@@ -215,6 +218,7 @@ const MANIFEST = [
       'packages/dsh-remote-web-ui/vitest.setup.ts',
       'packages/dsh-git-graph/vitest.setup.ts',
       'packages/dsh-task-board/vitest.setup.ts',
+      'packages/dsh-task-board-github/vitest.setup.ts',
       'packages/dsh-update/vitest.setup.ts',
     ],
   },
@@ -227,6 +231,11 @@ const MANIFEST = [
     targets: [
       'packages/dsh-web-all/src/client/body-mutations.ts',
       'packages/dsh-usage/src/client/body-mutations.ts',
+      // The plugin-manager toolbar is injected beside the official Plugins
+      // page's "Installed" heading (the page declares no seat there), so it
+      // re-seats itself with the same page-wide invalidation hub the sidebar
+      // foot card uses instead of paying for a second body observer.
+      'packages/dsh-plugin-manager/src/client/body-mutations.ts',
     ],
   },
   {
@@ -238,6 +247,21 @@ const MANIFEST = [
     targets: [
       'packages/dsh-plugin-manager/src/host/console-output.ts',
       'packages/dsh-update/src/console-output.ts',
+    ],
+  },
+  {
+    // Leaving the caller's async context: a Host mutation inside
+    // `hmr.runExclusive` that writes an HMR-watched file (cordis.patch.yml)
+    // makes the watcher's refresh re-enter the transaction and be refused with
+    // "HMR transactions cannot be nested". A bare deferral does not detach -
+    // see the module header - so the remote-web-ui LAN-bind write and the
+    // plugin-manager set-enabled write schedule through this one resource
+    // (#1751, #1754, #1816).
+    file: 'detached-work.ts',
+    source: 'shared/host/detached-work.ts',
+    targets: [
+      'packages/dsh-remote-web-ui/src/detached-work.ts',
+      'packages/dsh-plugin-manager/src/host/detached-work.ts',
     ],
   },
 ]

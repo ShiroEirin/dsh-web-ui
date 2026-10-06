@@ -3,7 +3,7 @@
  * next-run computation across minute/day/month/weekday boundaries.
  */
 import { describe, expect, it } from 'vitest'
-import { isValidCron, nextRunAtMs, parseCron } from '../src/core/schedule.ts'
+import { isValidCron, isValidTimeZone, nextRunAtMs, parseCron, resolveHostTimeZone } from '../src/core/schedule.ts'
 
 /** Local-time ms epoch helper. */
 function at(year: number, month: number, day: number, hour: number, minute: number, second = 0): number {
@@ -189,7 +189,9 @@ describe('nextRunAtMs', () => {
 function referenceNextRunAtMs(expr: string, fromMs: number): number | undefined {
   const schedule = parseCron(expr)
   if (schedule === null) return undefined
-  if (!schedule.dayWildcard && schedule.weekdayWildcard) {
+  // Only a starred day field paired with a restricted weekday can be
+  // impossible by construction (the AND branch).
+  if (schedule.dayStarred && schedule.weekdayStarred) {
     const maximumDay = new Map<number, number>([
       [1, 31], [2, 29], [3, 31], [4, 30], [5, 31], [6, 30],
       [7, 31], [8, 31], [9, 30], [10, 31], [11, 30], [12, 31],
@@ -208,7 +210,10 @@ function referenceNextRunAtMs(expr: string, fromMs: number): number | undefined 
     if (!schedule.months.has(day.getMonth() + 1)) continue
     const dayMatches = schedule.days.has(day.getDate())
     const weekdayMatches = schedule.weekdays.has(day.getDay())
-    const matchesDay = schedule.dayWildcard ? weekdayMatches : schedule.weekdayWildcard ? dayMatches : dayMatches || weekdayMatches
+    // Vixie: both fields restricted is OR; any other combination is AND.
+    const matchesDay = !schedule.dayStarred && !schedule.weekdayStarred
+      ? dayMatches || weekdayMatches
+      : dayMatches && weekdayMatches
     if (!matchesDay) continue
     for (const hour of hours) {
       for (const minute of minutes) {
@@ -224,3 +229,124 @@ function referenceNextRunAtMs(expr: string, fromMs: number): number | undefined 
     }
   }
 }
+
+
+/**
+ * Explicit-zone scheduling (issue #1722): the cron wall clock is read in the
+ * rule's own IANA zone, so the same expression resolves to different instants
+ * per zone and no longer follows the Host process TZ.
+ */
+describe('nextRunAtMs in an explicit time zone', () => {
+  it('operator scheduling in an explicit zone gets that zone wall clock', () => {
+    // Given a fixed instant and two different rule zones
+    const from = Date.UTC(2026, 0, 1, 0, 0)
+
+    // When the next run is computed for each zone
+    const shanghai = nextRunAtMs('0 9 * * *', from, 'Asia/Shanghai')
+    const utc = nextRunAtMs('0 9 * * *', from, 'UTC')
+
+    // Then each resolves 09:00 in its own zone, an 8-hour apart instant
+    expect(shanghai).toBe(Date.UTC(2026, 0, 1, 1, 0))
+    expect(utc).toBe(Date.UTC(2026, 0, 1, 9, 0))
+  })
+
+  it('operator scheduling a spring-forward gap time skips that missing day', () => {
+    // Given a 02:30 daily rule in New York on the day the clock jumps to 03:00
+    const from = Date.UTC(2026, 2, 7, 20, 0)
+
+    // When the next run is computed
+    const next = nextRunAtMs('30 2 * * *', from, 'America/New_York')
+
+    // Then the nonexistent 03-08 02:30 is skipped entirely
+    expect(next).toBe(Date.UTC(2026, 2, 9, 6, 30))
+  })
+
+  it('operator scheduling an ambiguous fall-back time fires once at the earlier instant', () => {
+    // Given a 01:30 daily rule in New York where the clock repeats 01:30
+    const from = Date.UTC(2026, 10, 1, 0, 0)
+
+    // When the next run is computed
+    const next = nextRunAtMs('30 1 * * *', from, 'America/New_York')
+
+    // Then the earlier (EDT) occurrence wins, so the rule fires once that day
+    expect(next).toBe(Date.UTC(2026, 10, 1, 5, 30))
+  })
+
+  it('operator omitting the zone falls back to the process zone', () => {
+    // Given a fixed instant
+    const from = Date.UTC(2026, 0, 1, 0, 0)
+
+    // When the next run is computed with and without an explicit zone
+    const implicit = nextRunAtMs('0 9 * * *', from)
+    const explicit = nextRunAtMs('0 9 * * *', from, resolveHostTimeZone())
+
+    // Then the two agree
+    expect(implicit).toBe(explicit)
+  })
+})
+
+/**
+ * Vixie day-field semantics. The previous implementation treated only a literal
+ * `*` as unrestricted, but Vixie selects the branch from whether the FIELD TEXT
+ * starts with `*`: a stepped star such as `*&#47;2` still restricts the dates it
+ * matches, so it ANDs with a restricted weekday instead of widening the match.
+ */
+describe('Vixie starred day-field semantics', () => {
+  it('operator combining a stepped day star with a weekday gets both constraints', () => {
+    // Given "Mondays that fall on an even-stepped day of month"
+    const from = Date.UTC(2026, 8, 29, 0, 0)
+
+    // When the next run is computed
+    const next = nextRunAtMs('0 0 */2 * 1', from, 'UTC')
+
+    // Then the next such Monday is selected, not the next stepped day
+    expect(next).toBe(Date.UTC(2026, 9, 5, 0, 0))
+  })
+
+  it('operator writing both day fields out gets OR semantics', () => {
+    // Given a restricted day-of-month and a restricted weekday
+    const from = Date.UTC(2026, 0, 5, 0, 0)
+
+    // When the next run is computed
+    const next = nextRunAtMs('0 9 15 * 1', from, 'UTC')
+
+    // Then the Monday matches on the weekday field alone
+    expect(next).toBe(Date.UTC(2026, 0, 5, 9, 0))
+  })
+
+  it('operator parsing an expression can see which day field is starred', () => {
+    // Given fully wildcard, fully written-out and stepped-star expressions
+    const allStar = parseCron('* * * * *')!
+    const written = parseCron('* * 1-31 * 1')!
+    const stepped = parseCron('* * */2 * 1')!
+
+    // When the starred flags are read
+    // Then only a field starting with '*' counts as starred
+    expect(allStar.dayStarred).toBe(true)
+    expect(allStar.weekdayStarred).toBe(true)
+    expect(written.dayStarred).toBe(false)
+    expect(written.weekdayStarred).toBe(false)
+    expect(stepped.dayStarred).toBe(true)
+  })
+})
+
+describe('isValidTimeZone', () => {
+  it('operator using UTC or a resolvable IANA name passes zone validation', () => {
+    // Given well-known zone names
+    // When each is validated
+    // Then every resolvable name is accepted
+    expect(isValidTimeZone('UTC')).toBe(true)
+    expect(isValidTimeZone('Asia/Shanghai')).toBe(true)
+    expect(isValidTimeZone('America/New_York')).toBe(true)
+  })
+
+  it('operator naming an unusable or untrimmed zone is rejected', () => {
+    // Given blank, unknown, mis-cased and padded names
+    // When each is validated
+    // Then none is accepted, so a bad zone cannot arm a rule
+    expect(isValidTimeZone('')).toBe(false)
+    expect(isValidTimeZone('Not/AZone')).toBe(false)
+    expect(isValidTimeZone('utc')).toBe(false)
+    expect(isValidTimeZone(' Asia/Shanghai')).toBe(false)
+  })
+})

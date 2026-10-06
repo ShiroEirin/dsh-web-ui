@@ -93,7 +93,7 @@ describe('task-board settings card fields', () => {
   it('user choosing a deeper subtask limit stages the numeric value the Host schema expects', async () => {
     // Given a card bound to a form whose depth already is the default
     const { form, ops } = depthForm({ maxSubtaskDepth: 1 })
-    const controller = new TaskBoardSettingsCardController(form as never)
+    const controller = new TaskBoardSettingsCardController(form as never, async () => false)
     const face = controller.inject()
 
     // When the user picks three levels and saves
@@ -109,7 +109,7 @@ describe('task-board settings card fields', () => {
   it('user clearing the subtask limit lets the deployment default apply again', async () => {
     // Given a card whose stored depth was overridden to two levels
     const { form, ops } = depthForm({ maxSubtaskDepth: 2 })
-    const controller = new TaskBoardSettingsCardController(form as never)
+    const controller = new TaskBoardSettingsCardController(form as never, async () => false)
     const face = controller.inject()
 
     // When the user resets the field to the inherited value and saves

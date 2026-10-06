@@ -20,6 +20,11 @@
     "source": "packages/dsh-task-board/src/client/index.ts"
   },
   {
+    "name": "@linxin666/dsh-client-ui-task-board-github",
+    "specifier": "@linxin666/dsh-client-ui-task-board-github/client",
+    "source": "packages/dsh-task-board-github/src/client/index.ts"
+  },
+  {
     "name": "@linxin666/dsh-client-ui-git-graph",
     "specifier": "@linxin666/dsh-client-ui-git-graph/client",
     "source": "packages/dsh-git-graph/src/client/index.ts"

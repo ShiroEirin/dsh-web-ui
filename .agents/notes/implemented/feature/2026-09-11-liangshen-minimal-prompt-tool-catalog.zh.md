@@ -16,8 +16,8 @@ preset 把官方 Minimal 的一行 persona——外加本模式的固定工作�
 
 - `presets/liangshen/minimal-prompt.mjs` 把每次组装出的提示词收窄到 persona 一段，匹配 `deployment:persona-prefix` 以及旧拼写 `deployment:persona` / `persona`。persona 的 prefix 承载一行 persona、本模式的固定工作纪律（思维循环即断、先理解需求与方案再实现、YAGNI/PDCA、代码不加注释），插件并在组装时追加会话工作区目录这一行方位信息（`Your working directory is <cwd>.`，从会话头读取）。plan mode 的 `plan:policy` 默认保留，因为该 section 是 plan mode 唯一的执行依据：退出工具在任何模式下都保持注册，也没有任何工具限制支撑它。若某次组装中没有任何 section 命中这些名字，插件降级为不裁剪的提示词并只告警一次，因此空系统提示词这类故障不会再静默发生。工作区指令由[其独立决策](2026-09-12-liangshen-agents-md-in-system-prompt.zh.md)承接。
 - `presets/liangshen/tool-catalog.mjs` 观察 `system-prompt/assemble` 瀑布的返回值，并把逐工具的「参数签名 + 一行摘要」作为持久 user 消息追加在用户消息之后，形状与 `dsh-tool-skill` 注入 skill 目录一致。发布从第一步开始，索引的是完整的注册表 PTC 面——条目取自注册表，而不取自当前请求带的是哪张 wire——因此渲染文本跨呈现边界保持稳定。渲染是「条目列表 + 呈现计划」的一个稳定纯函数，已发布副本又从持久日志读回，因此只有当渲染文本与该会话可见面上最后一条目录消息不同（工具集变化，或副本被压缩遮蔽）时才会重发。状态不驻留内存，resume 与 reload 因此重建出同一决定。
-- 注入消息的来源恰好是 `{ kind: 'plugin', plugin }`，与指令提示同形。`plugin` 是 v2→v3 迁移白名单与 v3 `MessageSourceMap` 都认的唯一注入 kind（[预设资产跟随当前 persona schema 与持久化消息来源](../../bug-fix/2026-09-10-preset-schema-and-message-source.zh.md)，issue #1455），而持久校验器对 `plugin` 允许的字段集是 `kind`、`plugin`、`form`、`sections`、`summary`——多带一个字段（例如存一份 `digest`）会被判为 unexpected member 而拒绝。
-- 运行时上下文、工作区指令与 skill 目录按 Standard 模式正常流动。`presets/liangshen/tool-bootstrap.mjs` 与其锚定门控、晋升、PTC 呈现、消息来源白名单、延迟注入、bootstrap 预算封顶、压缩重置一并删除（[PTC 转换指引](../../bug-fix/2026-08-25-workshop-and-runtime-fixes.zh.md)随之失去对象）。轨迹分类器移入 `tools/analyze-session.mjs`，在那里它只是测量，不再是门控。
+- 注入消息的来源恰好是 `{ kind: 'plugin', plugin }`，与指令提示同形。`plugin` 是 v2→v3 迁移白名单与 v3 `MessageSourceMap` 都认的唯一注入 kind（[预设资产跟随当前 persona schema 与持久化消息来源](../bug-fix/2026-09-10-preset-schema-and-message-source.zh.md)，issue #1455），而持久校验器对 `plugin` 允许的字段集是 `kind`、`plugin`、`form`、`sections`、`summary`——多带一个字段（例如存一份 `digest`）会被判为 unexpected member 而拒绝。
+- 运行时上下文、工作区指令与 skill 目录按 Standard 模式正常流动。`presets/liangshen/tool-bootstrap.mjs` 与其锚定门控、晋升、PTC 呈现、消息来源白名单、延迟注入、bootstrap 预算封顶、压缩重置一并删除（[PTC 转换指引](../bug-fix/2026-08-25-workshop-and-runtime-fixes.zh.md)随之失去对象）。轨迹分类器移入 `tools/analyze-session.mjs`，在那里它只是测量，不再是门控。
 
 ## Testing
 

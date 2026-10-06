@@ -1,5 +1,5 @@
 /**
- * Panel interaction tests (jsdom): the shell (header, tabs, back control), the
+ * Panel interaction tests (jsdom): the shell (header, tabs), the
  * last-good list policy when a refresh fails, mutation identity, the create
  * tab's lazy workspace resolution, the loading state, and the edit flow.
  */
@@ -94,16 +94,18 @@ async function typeInto(element: HTMLElement, value: string): Promise<void> {
 describe('SkillPanel shell', () => {
   afterEach(() => { document.body.innerHTML = '' })
 
-  it('user opening the panel sees the back control and a title without a workspace path (#1215)', async () => {
+  it('user opening the panel sees a title header with no back control and no workspace path (#1215, #1785)', async () => {
     // Given a panel listing one skill
     const api = fakeApi([async () => payload(['demo-skill'])])
     const mount_ = mount(api)
     await flush()
     // When the panel renders
-    const header = mount_.container.querySelector('[data-dsh-center-view-back]')?.parentElement
-    // Then the header carries the back control and the title, and no cwd path
-    expect(header?.textContent).toContain('技能中心')
-    expect(header?.textContent).toContain('返回会话')
+    const header = mount_.container.querySelector('h2')?.parentElement
+    // Then the header is the title alone: leaving the panel is the sidebar
+    // row's job, like the shell's own Plugins and Schedule pages, so no
+    // control here re-renders the whole center column
+    expect(header?.textContent).toBe('技能中心')
+    expect(mount_.container.querySelector('[data-dsh-center-view-back]')).toBeNull()
     expect(header?.textContent).not.toContain('cwd:')
     mount_.dispose()
   })
@@ -124,7 +126,7 @@ describe('SkillPanel shell', () => {
     mount_.dispose()
   })
 
-  it('user pressing the back control leaves the panel, and Escape does not', async () => {
+  it('user inside the panel has no in-page way out, and Escape does not close it either', async () => {
     // Given an open panel with one skill listed
     const api = fakeApi([async () => payload(['demo-skill'])])
     const mount_ = mount(api)
@@ -134,13 +136,13 @@ describe('SkillPanel shell', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     })
     expect(mount_.controller.getSnapshot().panelOpen).toBe(false)
-    // And when the user presses the back control, the panel closes
-    mount_.controller.open()
-    await act(async () => {
-      const back = mount_.container.querySelector('[data-dsh-center-view-back]') as HTMLButtonElement
-      back.click()
-    })
-    expect(mount_.controller.getSnapshot().panelOpen).toBe(false)
+    // And the rendered header offers no close affordance of its own, so the
+    // layout is never asked to re-select the conversation from in here
+    // (the click lag of issue #1785 had no other in-page trigger to remove)
+    const header = mount_.container.querySelector('h2')?.parentElement
+    expect(header?.querySelector('button')).toBeNull()
+    expect(mount_.container.querySelector('[data-dsh-center-view-back]')).toBeNull()
+    expect(mount_.container.textContent).not.toContain('返回会话')
     mount_.dispose()
   })
 

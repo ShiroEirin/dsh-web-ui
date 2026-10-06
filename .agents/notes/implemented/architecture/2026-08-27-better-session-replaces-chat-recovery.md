@@ -2,7 +2,7 @@
 
 Status: implemented
 
-Supersession check: no active Note owns session-edit capability strategy. [task-handoff-issue-316-edit-retry](../../../docs/archive/task-handoff-issue-316-edit-retry-2026-08-17.md) (archive) produced chat-recovery itself and is frozen history. The 2026-08-24 dock-chrome and 2026-08-25 workshop-fixes bug-fix Notes mention chat-recovery only as past-tense fix records inside unrelated subjects and stay untouched.
+Supersession check: no active Note owns session-edit capability strategy. [task-handoff-issue-316-edit-retry](../../../../docs/archive/task-handoff-issue-316-edit-retry-2026-08-17.md) (archive) produced chat-recovery itself and is frozen history. The 2026-08-24 dock-chrome and 2026-08-25 workshop-fixes bug-fix Notes mention chat-recovery only as past-tense fix records inside unrelated subjects and stay untouched.
 
 ## Problem
 

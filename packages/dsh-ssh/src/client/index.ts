@@ -54,7 +54,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Required services (fiber inject waiting — the runtime must be up first). */
-export const inject = ['slots', 'locale', 'configForms']
+export const inject = ['slots', 'locale', 'configForms', 'layout']
 
 /** Type-only surface (export discipline: no value exports beyond the plugin contract). */
 export type { PanelControllerSnapshot } from './panel/controller.ts'
@@ -98,7 +98,7 @@ export function apply(ctx: ClientContext): void {
   const controller = new PanelController({
     panel: {
       select: panelId => {
-        const layout = ctx.get('layout') as { selectPanel?: (id: string | null) => void } | undefined
+        const layout = (ctx as unknown as { get?(name: string): unknown }).get?.('layout') as { selectPanel?: (id: string | null) => void } | undefined
         layout?.selectPanel?.(panelId)
       },
     },
@@ -122,7 +122,7 @@ export function apply(ctx: ClientContext): void {
     disposers.push(registerSshPanel(ctx, controller, api, terminalFont))
     // The layout's panel selection is reconciled back into the controller, so
     // the panel follows the user clicking another panel row.
-    const layoutFace = ctx.get('layout') as { panelInfo?: { subscribe(listener: () => void): () => void; getSnapshot(): { activePanelId: unknown } } } | undefined
+    const layoutFace = (ctx as unknown as { get?(name: string): unknown }).get?.('layout') as { panelInfo?: { subscribe(listener: () => void): () => void; getSnapshot(): { activePanelId: unknown } } } | undefined
     if (layoutFace?.panelInfo !== undefined) {
       const sync = (): void => {
         const active = layoutFace.panelInfo!.getSnapshot().activePanelId

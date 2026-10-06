@@ -242,9 +242,9 @@ export function apply(ctx: ClientContext): void {
 
   const t = ctx.locale.bind(NS)
   // Hand the `remote` translate seat to the module-scope adaptation layer:
-  // the whale/compact-picker labels were rendered with the English fallback
-  // before any dictionary existed; the wiring plus the layer's own sync tick
-  // re-render them in the active locale.
+  // the whale label was rendered with the English fallback before any
+  // dictionary existed; the wiring plus the layer's own sync tick re-renders
+  // it in the active locale.
   if (adapt !== undefined) adapt.translate = t
   // The settings form this card edits. The family group's binder resolves a
   // family namespace to the profile entry that owns it and binds that entry's

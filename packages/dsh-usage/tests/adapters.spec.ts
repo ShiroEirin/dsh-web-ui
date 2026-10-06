@@ -30,6 +30,58 @@ describe('adapterFor', () => {
       }
     }
   })
+
+  it('operator keeps every family-only id out of the probe directory', () => {
+    // Given every adapter in the directory
+    const probed = new Set(PROVIDER_ADAPTERS.flatMap((adapter) => adapter.ids))
+    const familyOnly = new Set<string>()
+    // When the family-only ids are compared against the probed ids and
+    // against each other
+    for (const adapter of PROVIDER_ADAPTERS) {
+      for (const id of adapter.familyOnlyIds ?? []) {
+        // Then a family-only id claims no probe and belongs to one family,
+        // so accounting and probing can never disagree about a route
+        expect(probed.has(id), id).toBe(false)
+        expect(familyOnly.has(id), id).toBe(false)
+        familyOnly.add(id)
+      }
+    }
+  })
+})
+
+// #1772: the signed-in DeepSeek account route (llm-deepseek-account registers
+// `deepseek-account`) bills the same account as the official route, so the
+// family must own it for pricing and the whale-yuan bank. It holds no API key,
+// so the balance probe must not reach it: adding it to `ids` would let
+// credential resolution fall back to the family DEEPSEEK_API_KEY and print
+// the API-key account's money under the account route's name.
+describe('isDeepSeekProviderRoute (family membership wider than the probe directory)', () => {
+  it('user signed in to a DeepSeek account has their route recognized as the official family', () => {
+    // Given the account route and the two API-key routes
+    // When family membership is decided
+    // Then all three belong to the official DeepSeek family, so their calls
+    // are priced and mint whale yuan instead of falling outside both
+    expect(isDeepSeekProviderRoute('deepseek-account')).toBe(true)
+    expect(isDeepSeekProviderRoute('deepseek-official')).toBe(true)
+    expect(isDeepSeekProviderRoute('deepseek')).toBe(true)
+  })
+
+  it('operator sees the account route stay out of the probe directory', () => {
+    // Given a user signed in to a DeepSeek account on the account route
+    // When the route is resolved for probing, credential fallback, alias
+    // folding and the renderable provider row
+    // Then no adapter serves it, so it can never inherit the official
+    // API-key account's balance
+    expect(adapterFor('deepseek-account')).toBeUndefined()
+  })
+
+  it('operator sees no adapter claim the account route for probing', () => {
+    // Given the full adapter directory
+    // When each adapter is asked for the account route
+    // Then none claims it, so pricing and probing agree about the family
+    const claimants = PROVIDER_ADAPTERS.filter((adapter) => adapterFor('deepseek-account') === adapter)
+    expect(claimants).toEqual([])
+  })
 })
 
 // #1688: `deepseek` is both the official catalog entry and a common id for an

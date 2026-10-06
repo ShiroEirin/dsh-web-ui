@@ -4,8 +4,6 @@
 export const zh = {
   'entry.label': '远程访问',
   'mobile.whale.open': '打开侧边栏',
-  'mobile.composer.pickModel': '选择模型',
-  'mobile.composer.pickEffort': '选择推理等级',
   'title': '远程访问',
   'subtitle': '通过手机或另一台电脑配对，远程使用同一份 Web 界面（官方界面 + 移动端适配）',
   'card.title': '设备配对',
@@ -15,7 +13,7 @@ export const zh = {
   'status.disconnected': '已配对设备离线',
   'status.stopped': '已停止远程访问',
   'status.lanRequired': '此功能需要局域网绑定或公网地址才能使用',
-  'status.lanRequiredHint': '当前服务仅绑定在 127.0.0.1 且未配置公网地址，手机无法访问。请在本插件的设置卡片中打开“局域网访问”（装在全家桶里时在「设置 → Web 插件 → 远程访问设置」，单独安装时在设置 → 插件 → 本插件行），或用 dsh web --host 0.0.0.0 重新启动，或填写内网穿透的公网地址。',
+  'status.lanRequiredHint': '当前服务仅绑定在 127.0.0.1 且未配置公网地址，手机无法访问。请在本插件的设置卡片中打开“局域网访问”（装在全家桶里时在「设置 → Web 插件 → 远程访问」，单独安装时在设置 → 插件 → 本插件行），或用 dsh web --host 0.0.0.0 重新启动，或填写内网穿透的公网地址。',
   'status.loopbackRequired': '配对面板仅限本机使用',
   'status.loopbackRequiredHint': '请通过 http://127.0.0.1 打开此页面后重试；手机请使用配对链接访问。',
   'status.unreachable': '无法连接配对服务',
@@ -72,8 +70,8 @@ export const zh = {
   'relay.failed': '固定域名同步失败：{error}。正在自动重试，期间二维码可能使用临时地址。',
   'close.label': '关闭远程访问面板',
   // 插件设置卡片（家族 list 席位，或官方 plugins.bundle.config 席位）。
-  'settings.title': '远程访问设置',
-  'settings.description': '配对安全与设备限额。',
+  'settings.title': '远程访问',
+  'settings.description': '手机配对、公网隧道与设备限额。',
   'settings.enabled': '启用远程访问',
   'settings.enabledHint': '关闭后移除侧边栏入口并停用配对路由与局域网栅栏。',
   'settings.tokenTtlMs': '配对令牌有效期（毫秒）',
@@ -135,8 +133,6 @@ export type SettingsCardKey = RemoteKey
 export const en = {
   'entry.label': 'Remote access',
   'mobile.whale.open': 'Open sidebar',
-  'mobile.composer.pickModel': 'Pick model',
-  'mobile.composer.pickEffort': 'Pick reasoning effort',
   'title': 'Remote access',
   'subtitle': 'Pair a phone or another computer to share the same Web GUI (official UI + mobile adaptation)',
   'card.title': 'Pair a device',
@@ -203,8 +199,8 @@ export const en = {
   'relay.failed': 'Stable-hostname sync failed: {error}. Retrying automatically; the QR may use the ephemeral address meanwhile.',
   'close.label': 'Close remote access panel',
   // Plugin settings card (the family list seat, or the official bundle-config seat).
-  'settings.title': 'Remote access settings',
-  'settings.description': 'Pairing security and device limits.',
+  'settings.title': 'Remote access',
+  'settings.description': 'Phone pairing, public tunnel and device limits.',
   'settings.enabled': 'Enable remote access',
   'settings.enabledHint': 'When off, the sidebar entry is removed and pairing routes plus the LAN fence stop.',
   'settings.tokenTtlMs': 'Pairing token lifetime (ms)',

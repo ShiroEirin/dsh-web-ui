@@ -1,0 +1,293 @@
+{
+  "petManifestVersion": 2,
+  "id": "jyn-foxtail",
+  "displayName": "鲸鱼娘·狗尾巴草",
+  "license": "MIT",
+  "renderer": "frames2d",
+  "description": "鲸鱼娘的四个互动循环 + 一套打工/睡觉玩法，帧均为白底 H3 首尾帧锁定生成、25 帧 × 120ms = 3.00s：① 抽出狗尾巴草在胸前左右晃着逗你；② 端出一碗堆得老高的大米饭急头白脸地扒；③ 双手在胸前比心，一颗纸心在掌心上方轻轻跳；④ 吐舌头 + 手拉下眼睑做鬼脸。默认动作是待机轨道（站在原地左右来回摇摆，循环播放）；点击她时前三动作各有 33% 概率触发，三条都只播一遍就回到待机，而且每点一下都会 +3 好感度；待机小动作有四个（鬼脸 / 偷吃小鱼干 / 被自己喷嚏吓到 / 打哈欠伸懒腰）—— 每 10 秒判定一次、总命中约六成六，四个动作等权重随机挑一个，都只播一遍。打工的工作内容就是大口吃饭（端着大碗、没有筷子、腮帮子塞满）：10 秒一轮、五成成功率，成功是肚子吃得圆滚滚、拍拍肚子再竖个大拇指，失败是吃吐了、吐出来的是一道小彩虹；睡觉是搬出摇椅坐下、坐在上面轻轻来回摇，鼻子上的鼻涕泡随呼吸变大变小。除睡觉入场轨之外的十二条轨道都从同一个起手姿势开始、也收在同一个姿势上；睡觉入场轨是唯一的例外 —— 它从站姿演到坐姿，正好无缝接上坐姿循环轨。",
+  "author": "11726",
+  "version": "1.0.0",
+  "frames2d": {
+    "dir": "frames",
+    "defaultFrameMs": 120,
+    "tracks": {
+      "idle": {},
+      "tease": {
+        "loop": false,
+        "fallback": "idle"
+      },
+      "eat": {
+        "loop": false,
+        "fallback": "idle"
+      },
+      "heart": {
+        "loop": false,
+        "fallback": "idle"
+      },
+      "face": {
+        "loop": false,
+        "fallback": "idle"
+      },
+      "work": {},
+      "work-success": {
+        "loop": false,
+        "fallback": "work"
+      },
+      "work-fail": {
+        "loop": false,
+        "fallback": "work"
+      },
+      "sleep": {
+        "loop": false,
+        "fallback": "sleeping"
+      },
+      "sleeping": {},
+      "snack": {
+        "loop": false,
+        "fallback": "idle"
+      },
+      "sneeze": {
+        "loop": false,
+        "fallback": "idle"
+      },
+      "yawn": {
+        "loop": false,
+        "fallback": "idle"
+      }
+    },
+    "phases": {
+      "idle": "idle"
+    }
+  },
+  "gameplay": {
+    "stats": {
+      "mood": {
+        "max": 100,
+        "initial": 80,
+        "decayPerMinute": 0.5
+      },
+      "hunger": {
+        "max": 100,
+        "initial": 70,
+        "decayPerMinute": 1,
+        "workingDecayPerMinute": 5
+      },
+      "energy": {
+        "max": 100,
+        "initial": 100,
+        "decayPerMinute": 0.25
+      },
+      "affection": {
+        "max": 500,
+        "initial": 100,
+        "idleDecayPerMinute": 0.2
+      }
+    },
+    "hitBox": {
+      "x0": 0.0948,
+      "y0": 0.0174,
+      "x1": 0.9052,
+      "y1": 0.9826
+    },
+    "touch": {
+      "zones": [
+        {
+          "name": "head",
+          "y0": 0.0,
+          "y1": 0.34,
+          "branches": [
+            {
+              "probability": 0.33,
+              "state": "tease",
+              "stateMs": 3000,
+              "effects": [
+                {
+                  "stat": "affection",
+                  "amount": 8
+                }
+              ],
+              "phrases": [
+                "嘿嘿～看这边！",
+                "抓到你了没有呀？"
+              ]
+            },
+            {
+              "probability": 0.33,
+              "state": "eat",
+              "stateMs": 3000,
+              "effects": [
+                {
+                  "stat": "hunger",
+                  "amount": 20
+                },
+                {
+                  "stat": "affection",
+                  "amount": 3
+                }
+              ],
+              "phrases": [
+                "干饭干饭！",
+                "先扒两口再说～"
+              ]
+            },
+            {
+              "probability": 0.33,
+              "state": "heart",
+              "stateMs": 3000,
+              "effects": [
+                {
+                  "stat": "affection",
+                  "amount": 11
+                }
+              ],
+              "phrases": [
+                "给你一颗心～",
+                "啾！"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "body",
+          "y0": 0.34,
+          "y1": 1.0,
+          "branches": [
+            {
+              "probability": 0.33,
+              "state": "tease",
+              "stateMs": 3000,
+              "effects": [
+                {
+                  "stat": "mood",
+                  "amount": 8
+                },
+                {
+                  "stat": "affection",
+                  "amount": 3
+                }
+              ],
+              "phrases": [
+                "晃啊晃～想要吗？",
+                "抓不到抓不到～"
+              ]
+            },
+            {
+              "probability": 0.33,
+              "state": "eat",
+              "stateMs": 3000,
+              "effects": [
+                {
+                  "stat": "hunger",
+                  "amount": 20
+                },
+                {
+                  "stat": "affection",
+                  "amount": 3
+                }
+              ],
+              "phrases": [
+                "饿死了，先干为敬！",
+                "这碗我包了。"
+              ]
+            },
+            {
+              "probability": 0.33,
+              "state": "heart",
+              "stateMs": 3000,
+              "effects": [
+                {
+                  "stat": "affection",
+                  "amount": 11
+                }
+              ],
+              "phrases": [
+                "接住啦，这颗是给你的。",
+                "比个心～"
+              ]
+            }
+          ]
+        }
+      ],
+      "clickBoost": {
+        "stat": "mood",
+        "min": 0,
+        "max": 3
+      }
+    },
+    "idleDirector": {
+      "intervalMs": 10000,
+      "idleWeight": 2,
+      "maxMiss": 10,
+      "acts": [
+        {
+          "track": "face",
+          "weight": 1,
+          "phrases": [
+            "略～",
+            "看我的鬼脸！",
+            "嘿嘿，吓到了吗？"
+          ]
+        },
+        {
+          "track": "snack",
+          "weight": 1,
+          "phrases": [
+            "就吃一口……没人看见吧？",
+            "嘘——这条是我的。",
+            "呼，好险好险。"
+          ]
+        },
+        {
+          "track": "sneeze",
+          "weight": 1,
+          "phrases": [
+            "阿——嚏！",
+            "呜……被自己吓到了。",
+            "谁在念叨我？"
+          ]
+        },
+        {
+          "track": "yawn",
+          "weight": 1,
+          "phrases": [
+            "哈啊——",
+            "困死了……",
+            "再睡五分钟就好。"
+          ]
+        }
+      ]
+    },
+    "work": {
+      "state": "work",
+      "successState": "work-success",
+      "failState": "work-fail",
+      "tickMs": 10000,
+      "resultMs": {
+        "success": 3000,
+        "fail": 3000
+      },
+      "successProbability": 0.5,
+      "success": {
+        "effects": [
+          {
+            "currency": "treats",
+            "amount": 1
+          }
+        ]
+      }
+    },
+    "sleep": {
+      "state": "sleep",
+      "restore": {
+        "stat": "energy",
+        "amount": 4,
+        "intervalMs": 30000
+      }
+    },
+    "passiveIncome": {
+      "currency": "treats",
+      "amount": 1,
+      "intervalMs": 1800000
+    }
+  }
+}

@@ -2,6 +2,19 @@
 # profile roster. Applied as a profile bundle layer (the `dsh.bundle.patch`
 # manifest field); install with
 # `dsh plugin --profile web add link:<repo>/packages/dsh-plugin-manager`.
+#
+# The row id lives in the loader's GLOBAL id space, one entry per id with
+# later-wins and no diagnostic. The official @deepseek-ai/dsh-web-app bundle
+# already claims `ui-plugin-manager` for its own plugin page (the half that
+# registers the sidebar "Plugins" entry), so this package claims its own id
+# instead; sharing the official id dropped the official row silently and the
+# sidebar entry disappeared with the whole plugin management page.
+#
+# The row `name` must stay exactly the package name: the official
+# @deepseek-ai/dsh-client-modules mounts a package's browser half on the loader
+# row whose specifier resolves to that package's own manifest, so a subpath
+# name (the aggregate's `@linxin666/dsh-web-all/plugin-manager` shape) would
+# mount the host half only.
 - insert:
-    - id: ui-plugin-manager
+    - id: ui-plugin-manager-update-check
       name: '@linxin666/dsh-client-ui-plugin-manager'

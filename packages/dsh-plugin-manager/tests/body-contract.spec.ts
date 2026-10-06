@@ -55,7 +55,10 @@ function route(path: string) {
     on: (event: string, handler: (code?: number | null) => void) => { if (event === 'close') setTimeout(() => handler(0), 0) },
   })
   const gateway = new CliGateway(facts, {} as NodeJS.ProcessEnv, { findBinary: () => '/fake/dsh', spawnImpl: idleSpawn as never })
-  return makeGatewayRoutes({ facts, gateway, cliAvailable: () => true }).find(r => r.path === path)!.handler
+  // The install route resolves a bare spec against the registry before spawning
+  // (#1759), so this body-contract harness must not reach the network.
+  const routes = makeGatewayRoutes({ facts, gateway, cliAvailable: () => true, fetchManifest: async () => undefined })
+  return routes.find(r => r.path === path)!.handler
 }
 
 const invalidPayloads: Array<[string, Buffer]> = [

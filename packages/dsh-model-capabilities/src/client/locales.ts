@@ -56,6 +56,8 @@ export const zh = {
   'caps.error.partialEnable': '已启用，但清理存档失败：{error}',
   'caps.error.baseProfile': '该提供方在组合层也声明了配置，禁用无法让它下线，因此不提供此操作。',
   'caps.error.unavailable': '无法切换：未找到插件的存档设置项。',
+  'caps.seat.conflict': '「模型能力」面板未挂载：模型卡片的扩展插槽已被插件 {plugin} 占用，同一插槽只渲染一个扩展区。该插件卸载后本面板自动恢复。',
+  'caps.seat.unknownPlugin': '其他插件',
 }
 
 export type CapsKey = keyof typeof zh
@@ -108,6 +110,8 @@ export const en: Record<CapsKey, string> = {
   'caps.error.partialEnable': 'Enabled, but clearing the archive failed: {error}',
   'caps.error.baseProfile': 'The composition layer also declares this provider, so disabling cannot take it down; the action is not offered.',
   'caps.error.unavailable': 'Cannot toggle: the plugin archive settings entry is not served.',
+  'caps.seat.conflict': 'The Model capabilities panel is not mounted: another plugin ({plugin}) holds the provider-card extension seat, which renders one extension area per provider card. The panel returns as soon as that plugin is unloaded.',
+  'caps.seat.unknownPlugin': 'another plugin',
 }
 
 /**

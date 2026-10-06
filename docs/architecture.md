@@ -31,9 +31,9 @@ flowchart TB
 
 ```text
 dsh-web/
-├── packages/            # 插件 monorepo：功能插件与聚合包 dsh-web-all（皮肤/宠物/社区索引已迁出）
-│   ├── <name>/          # 独立 cordis bundle 包（host + client 两半区）
-│   └── skins/           # skin-center：唯一皮肤包，skins/ 下为纯资产皮肤目录
+├── packages/            # 插件 monorepo：功能插件与聚合包 dsh-web-all（皮肤/宠物/社区索引/预设中心已迁出为卫星仓）
+│   └── <name>/          # 独立 cordis bundle 包（host + client 两半区）
+├── satellites/          # 4 个卫星仓库 git submodules（dsh-skins、dsh-pet、dsh-community-plugins、dsh-presets）
 ├── shared/              # 跨包事实源：构建预设、平台模块表、host 与 client 运行时模块
 ├── scripts/             # 仓库维护工具（aggregate、sync-shared、market-build、verify-docs 等）
 ├── market/              # dsh-market.com：src 静态站源、shell 试穿壳、dist 提交产物、worker 边缘 API
@@ -78,7 +78,7 @@ flowchart LR
 flowchart LR
     A["aggregate.yml：patchFrom、deps、rows、inactive"] -- "node scripts/aggregate.mjs 生成" --> B["dsh-web-all：cordis.patch.yml + package.json"]
     B -- "dsh plugin --profile web add link" --> C["web profile（hoisted 布局）"]
-    C -- "web-ui-* 行逐条挂载" --> D["17 个家族子包（alpha 分支不挂外部插件行）"]
+    C -- "web-ui-* 行逐条挂载" --> D["14 个仓内家族子包 + 4 个卫星仓外部行"]
     E["mount-once 防重：双源只注册一次"] -.-> D
     F["inactive：ssh、liangshen、skill-explorer 出厂默认关闭"] -.-> D
 ```
@@ -175,16 +175,18 @@ flowchart LR
 | --- | --- |
 | dsh-web-all | 聚合载具包：一键装齐全家桶（含 compat 桥接层） |
 | dsh-web-settings | 设置页一级分区：家族插件启停开关与配置表单（`web-ui.plugin.item` 子槽） |
-| dsh-plugin-manager | 插件管理页：npm/git 安装、启停、冲突恢复 |
+| dsh-plugin-manager | 官方插件页的更新检查：单包区块、列表级检查/批量更新/重启工具条（安装、启停、卸载归官方页面） |
 | dsh-market | 创意工坊商店卡：浏览 dsh-market.com 并一键安装皮肤、宠物、插件、预设 |
 | dsh-preset-center | 社区预设：惰性库、启停、工坊 Presets 面板（独立仓，以已发布包消费；presets 目录按 submodule 钉扎进市场构建） |
 | dsh-community-plugins | community.json 社区插件索引数据源（独立仓，以已发布包消费；惰性 cordis 行） |
 | dsh-skins | 皮肤中心：皮肤资产、试穿、无刷新原子切换（独立仓，以已发布包消费） |
 | dsh-pet | 注册表驱动桌宠：响应模型活动、命名与好感度（独立仓，以已发布包消费） |
 | dsh-task-board | 宿主权威任务板：真实会话执行与 cron 调度 |
+| dsh-task-board-github | 任务看板外部提供方扩展：GitHub Issues 同步（默认开启，设置可关） |
 | dsh-git-graph | 空会话 git 分支选择器与提交图 |
 | dsh-ssh | 远程 SSH：PTY 终端、SFTP、端口转发与 agent 工具 |
 | dsh-remote-web-ui | 扫码配对远程访问与可撤销设备会话 |
+| dsh-update | 家族自更新：探测 npm 上的新版本并在当前 profile 内就地执行更新 |
 | dsh-session-archive | 会话归档：批量归档恢复、级联删除、自动清理策略 |
 | dsh-session-id | 侧栏底部 Session ID 面板（纯浏览器半区） |
 | dsh-usage | 用量统计：provider 余额、套餐配额与实时 token 流水 |

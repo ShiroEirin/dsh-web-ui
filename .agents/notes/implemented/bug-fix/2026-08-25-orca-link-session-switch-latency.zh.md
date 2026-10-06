@@ -30,7 +30,7 @@ Status: implemented
 
 ## 影响
 
-前台行为视觉完全一致：场景交叉淡化、角色帧、图标 art 与信号 chip 均照旧。隐藏标签页不再空烧帧循环与 weave。会话加载/切换的每批次成本从"12 次全树扫描 + 每 svg 90 键匹配 + 布局读取"降为短路与缓存查找。面向皮肤作者的规则固化在 `packages/skins/skin-center/contracts/performance-guidelines-v1.md`，未来的皮肤继承同一纪律。sprite transform 重构仍开放；移植决策（[orca-link v2 皮肤移植](../../feature/2026-08-25-orca-link-v2-skin-port.md)）保持不变：本修复是等价优化而非行为减配。
+前台行为视觉完全一致：场景交叉淡化、角色帧、图标 art 与信号 chip 均照旧。隐藏标签页不再空烧帧循环与 weave。会话加载/切换的每批次成本从"12 次全树扫描 + 每 svg 90 键匹配 + 布局读取"降为短路与缓存查找。面向皮肤作者的规则固化在 `packages/skins/skin-center/contracts/performance-guidelines-v1.md`，未来的皮肤继承同一纪律。sprite transform 重构仍开放；移植决策（[orca-link v2 皮肤移植](../feature/2026-08-25-orca-link-v2-skin-port.md)）保持不变：本修复是等价优化而非行为减配。
 
 ## 验证
 

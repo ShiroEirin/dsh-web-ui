@@ -2,6 +2,9 @@
  * The Web UI plugins first-level settings section. Renders a static heading
  * plus the family plugin cards directly (the nav entry already selects the
  * section, so there is no disclosure fold).
+ *
+ * The heading is the section's whole copy: a lede sentence restated the title
+ * the nav cell already shows, and it pushed the cards a paragraph down.
  */
 
 import type { ReactNode } from 'react'
@@ -20,7 +23,6 @@ export function WebUIPluginsSection(props: WebUIPluginsSectionProps): ReactNode 
   return (
     <div className={css.section}>
       <h2 className={css.heading} title={t('title')}>{t('title')}</h2>
-      <p className={css.lede} title={t('description')}>{t('description')}</p>
       <ul className={css.subcards}>
         {renderSlot('web-ui.plugin.item', {})}
       </ul>

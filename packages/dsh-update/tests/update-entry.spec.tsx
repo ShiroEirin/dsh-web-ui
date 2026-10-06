@@ -133,6 +133,41 @@ describe("UpdateEntry", () => {
     expect(fetch).not.toHaveBeenCalledWith("api/update/run", expect.anything())
   })
 
+  it("operator sees the DSH floor the available release requires (#1767)", async () => {
+    // Given an available release that declares a host floor the running host may not meet
+    const status: UpdateStatus = {
+      ...outdatedStatus(),
+      packages: [{ name: "@linxin666/dsh-web-all", current: "0.4.3", latest: "0.4.4", outdated: true, requiresDsh: ">=0.2.0-rc.1" }],
+    }
+    const { fetch } = mount(status)
+
+    // When the operator opens the panel
+    fireEvent.click(screen.getByRole("button", { name: /Check for updates$/ }))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("api/update/status"))
+
+    // Then the floor is named. A floor the host does not meet does not fail the
+    // install, it skips the whole row at boot, so without this line the user
+    // watches the plugins disappear with no warning at all
+    const row = await waitFor(() => {
+      const found = document.querySelector("[data-update-requires-dsh]");
+      expect(found?.getAttribute("data-update-requires-dsh")).toBe(">=0.2.0-rc.1");
+      return found;
+    });
+    expect(row?.textContent).toBe("Requires DSH >=0.2.0-rc.1");
+  })
+
+  it("operator sees no DSH floor line when the available release declares none", async () => {
+    // Given an available release that declares no host floor
+    const { fetch } = mount(outdatedStatus())
+
+    // When the operator opens the panel
+    fireEvent.click(screen.getByRole("button", { name: /Check for updates$/ }))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("api/update/status"))
+
+    // Then no requirement row is rendered, so nothing claims a floor that is not there
+    await waitFor(() => expect(document.querySelectorAll("button")).toHaveLength(3))
+    expect(document.querySelectorAll("[data-update-requires-dsh]")).toHaveLength(0)
+  })
   it("shows release-note sections and keeps component versions collapsible", async () => {
     const status: UpdateStatus = {
       ...outdatedStatus(),

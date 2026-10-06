@@ -9,6 +9,22 @@
   'use strict'
 
   // ---------- 背景特效层（WebGL，不可用时静默回退） ----------
+  // 背景动效开关的状态真源：localStorage（缺省即关闭）。市场应用层与 WebGL 层
+  // 读同一个键，刷新后不再被默认值覆盖回「开启」。
+  var MOTION_KEY = 'dsh-market-motion'
+  function readMotion() {
+    try {
+      var v = window.localStorage.getItem(MOTION_KEY)
+      return v === '1' || v === '0' ? v === '1' : null
+    } catch (e) { return null }
+  }
+  function writeMotion(on) {
+    try { window.localStorage.setItem(MOTION_KEY, on ? '1' : '0') } catch (e) { }
+  }
+  // 缺省关闭：全屏 WebGL 着色器常驻渲染是本页面最大的持续开销，而默认
+  // 呈现几乎不可辨（canvas 只有 .42 不透明度且被压暗压灰）。用户按需开启。
+  var motionWanted = readMotion() === true
+
   var canvas = document.getElementById('bgCanvas')
   var bgSeed = Math.random() * 1000
   var gl = null
@@ -19,7 +35,8 @@
   }
   if (gl) {
     var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
-    var bgEnabled = !reduceMotion
+    // 系统偏好「减少动效」永远压过用户选择；否则跟随持久化的选择。
+    var bgEnabled = motionWanted && !reduceMotion
     var W = 0, H = 0, time = 0, last = 0, raf = 0, running = false, contextLost = false
     var scroll = { target: window.scrollY || 0, smooth: window.scrollY || 0 }
     var clicks = []
@@ -110,7 +127,8 @@
         canvas.height = Math.max(1, Math.round(H * renderDpr))
         gl.viewport(0, 0, canvas.width, canvas.height)
         gl.uniform2f(uRes, canvas.width, canvas.height)
-        if (reduceMotion) draw()
+        // 系统「减少动效」时只保留一张静态帧，且只在动效确实开启时画。
+        if (reduceMotion && bgEnabled) draw()
       }
       window.addEventListener('resize', resize)
       window.addEventListener('pointerdown', function (e) {
@@ -169,17 +187,21 @@
       canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); contextLost = true; stop() })
       canvas.addEventListener('webglcontextrestored', function () {
         contextLost = false
-        try { buildResources(); resize(); draw(); start() } catch (err) { contextLost = true }
+        try { buildResources(); resize() } catch (err) { contextLost = true; return }
+        if (bgEnabled) { draw(); start() }
       })
+      // 这里只定尺寸、不画首帧：首帧由应用层 boot() 的 applyMotion() 决定，
+      // 缺省关闭时整个动画循环根本不启动。
       resize()
-      if (reduceMotion) { time = 7.2; draw() } else { draw(); start() }
-      canvas.classList.add('ready')
-      // 背景动效开关：关闭时停止 RAF（保留静态帧），恢复时重新绘制。
+      // 背景动效开关。关闭是真正的关闭：停 RAF、丢弃点击涟漪、让 canvas
+      // 退回 opacity 0（不留最后一帧当静态背景），重新开启才画第一帧。
       window.marketWave = {
         setEnabled: function (on) {
           bgEnabled = !!on
-          if (bgEnabled) { draw(); start() } else { stop() }
+          if (bgEnabled) { canvas.classList.add('ready'); draw(); start() }
+          else { stop(); clicks = []; canvas.classList.remove('ready') }
         },
+        isEnabled: function () { return bgEnabled },
       }
     }
   }
@@ -231,7 +253,7 @@
     subcat: 'all',
     savedOnly: false,
     limit: 12,
-    motionOn: true,
+    motionOn: motionWanted,
     item: null,
     data: { skin: [], pet: [], plugin: [], preset: [] },
     // 编辑推荐固定清单（{ kind, id } 引用），由 manifest/editor-picks.json 提供。
@@ -956,16 +978,24 @@
   // ---------- 背景动效开关 ----------
   var reduceQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null
   if (reduceQuery && reduceQuery.matches) state.motionOn = false
+  // 动效实际是否在跑：系统「减少动效」压过用户的持久化选择。
+  function motionEffective() { return state.motionOn && !(reduceQuery && reduceQuery.matches) }
   function applyMotion() {
+    var on = motionEffective()
     var ocean = document.querySelector('.ocean')
-    if (ocean) ocean.classList.toggle('paused', !state.motionOn)
-    if (window.marketWave && window.marketWave.setEnabled) window.marketWave.setEnabled(state.motionOn)
+    if (ocean) ocean.classList.toggle('paused', !on)
+    if (window.marketWave && window.marketWave.setEnabled) window.marketWave.setEnabled(on)
     var btn = $('#motion')
     if (!btn) return
     var forced = !!(reduceQuery && reduceQuery.matches)
     btn.disabled = forced
-    btn.setAttribute('aria-pressed', String(state.motionOn))
-    btn.textContent = forced ? '背景动效：已遵循系统设置' : '背景动效：' + (state.motionOn ? '开启' : '关闭')
+    btn.setAttribute('aria-pressed', String(on))
+    btn.title = on
+      ? '关闭背景动效：停止全屏 WebGL 渲染并释放动画循环'
+      : '开启背景动效：全屏 WebGL 液态噪波背景会持续占用 GPU'
+    btn.textContent = forced
+      ? '背景动效：已遵循系统设置'
+      : (on ? '背景动效：开启' : '背景动效：关闭')
   }
 
   // ---------- 事件绑定 ----------
@@ -1032,6 +1062,8 @@
     $('#motion').addEventListener('click', function () {
       if (reduceQuery && reduceQuery.matches) return
       state.motionOn = !state.motionOn
+      // 选择持久化：刷新后回到这里的选择，不再被缺省值覆盖回开启。
+      writeMotion(state.motionOn)
       applyMotion()
     })
     if (reduceQuery && reduceQuery.addEventListener) {

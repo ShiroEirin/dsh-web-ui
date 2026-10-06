@@ -25,6 +25,7 @@ import { createExternalLinkOpener } from './external-link.ts'
 import { createServedEntryForm } from './settings-entry-form.ts'
 import { en, zh, type MarketKey } from './locales.ts'
 import { bridgePluginManager } from './plugin-manager-bridge.ts'
+import { bridgeNativePluginFaces } from './native-plugin-faces.ts'
 import { reportDailyHeartbeat } from './telemetry.ts'
 
 export type {
@@ -35,6 +36,12 @@ export type {
   WorkshopPresetRecord,
 } from './MarketCard.tsx'
 export type { InstalledPluginItem, InstallProgressItem, PluginManagerService } from './plugin-manager-bridge.ts'
+export type {
+  NativePluginFacesSnapshot,
+  NativePluginManagerService,
+  NativeRemoteResult,
+  PluginNavigationService,
+} from './native-plugin-faces.ts'
 
 /**
  * Settings namespace the store card edits: the family identity of this plugin's
@@ -108,6 +115,13 @@ export function apply(ctx: ClientContext): void {
   }, 'dsh-web-ui-market: dictionaries')
 
   bridgePluginManager(ctx)
+
+  // The official surfaces the store reuses: the in-process plugin manager's
+  // remote face (the install writer, and the only writer on the packaged
+  // Desktop client) and the Plugins page's navigation face it hands management
+  // over to. Both stay optional; without them the store keeps the family face
+  // and the copy-command degradation.
+  bridgeNativePluginFaces(ctx)
 
   // The family binder resolves the family namespace to the profile entry id
   // the Host serves the store card's configuration under. Without it the shared

@@ -39,7 +39,7 @@ class FakeSessions {
 /** Host-like snapshot builder for transport fakes. */
 function snapshot(revision: number, tasks: TaskRecord[] = [], ledgerId = 'ledger-a'): TaskBoardSnapshot {
   return {
-    schemaVersion: 3,
+    schemaVersion: 5,
     revision,
     tasks,
     scheduler: { timeZone: 'UTC', ledgerId },
@@ -340,7 +340,14 @@ describe('view state', () => {
 describe('run loop', () => {
   it('requests a Host run and applies the confirmed running state', async () => {
     const initial = createTask({ title: '任务A', description: '', prompt: '干活' }, NOW, 'task-a')
-    const running = { ...initial, status: 'running' as const, updatedAt: NOW + 1 }
+    const running = {
+      ...initial,
+      status: 'running' as const,
+      updatedAt: NOW + 1,
+      executions: [{
+        id: 'e-open', sessionId: undefined, startedAt: NOW, endedAt: undefined, result: undefined, error: undefined,
+      }],
+    }
     const actions: TaskBoardAction[] = []
     const transport: TaskBoardTransport = {
       bootstrap: async () => snapshot(1, [initial]),
@@ -358,6 +365,28 @@ describe('run loop', () => {
     // A second run while the task is already running is ignored locally.
     expect(await controller.runTask('task-a')).toBe(false)
     expect(actions).toHaveLength(1)
+    controller.dispose()
+  })
+
+  it('operator runs a card parked in the running column by hand', async () => {
+    // Given a card parked in the running column with no execution behind it
+    const initial = createTask({ title: '任务A', description: '', prompt: '干活' }, NOW, 'task-a')
+    const parked = { ...initial, status: 'running' as const, updatedAt: NOW + 1 }
+    const actions: TaskBoardAction[] = []
+    const transport: TaskBoardTransport = {
+      bootstrap: async () => snapshot(1, [parked]),
+      state: async () => snapshot(1, [parked]),
+      action: async action => { actions.push(action); return snapshot(2, [parked]) },
+      subscribe: () => () => undefined,
+    }
+    const controller = new BoardController({ store: new InMemoryTaskStore(), sessions: new FakeSessions(), transport, now: () => NOW, uuid })
+    controller.start()
+    await controller.retryHostSync()
+
+    // When the operator asks for a run
+    // Then the Host request goes out: only an open execution blocks a launch
+    expect(await controller.runTask('task-a')).toBe(true)
+    expect(actions).toEqual([{ kind: 'run', taskId: 'task-a' }])
     controller.dispose()
   })
 

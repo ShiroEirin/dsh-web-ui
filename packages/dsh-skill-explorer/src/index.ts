@@ -14,7 +14,7 @@ import { sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { makeRoutes, ROUTES } from './routes.ts'
-import type { CollectOptions } from './collect.ts'
+import { customSkillDirsFromLoader, normalizeSkillRoots, type CollectOptions, type LoaderEntryLike } from './collect.ts'
 import { mountOnce } from './mount-once.ts'
 
 /** Stable cordis plugin name. */
@@ -36,6 +36,11 @@ interface SkillContext {
 /** Session list surface used to resolve active workspaces. */
 interface SessionList {
   list?: () => Array<{ header?: { cwd?: string } }>
+}
+
+/** Loader surface used to read the live skill provider rows. */
+interface LoaderSurface {
+  entries?: () => Iterable<LoaderEntryLike>
 }
 
 /** Plugin config. */
@@ -60,7 +65,28 @@ function applyImpl(ctx: Context, config?: Config): void {
   const skillCtx = ctx as unknown as SkillContext
   const dshHome = config?.dshHome ?? process.env.DSH_HOME ?? homedir() + sep + '.dsh'
   const agentsHome = config?.agentsHome ?? process.env.DSH_AGENTS_HOME ?? homedir() + sep + '.agents'
-  const customSkillDirs = Array.isArray(config?.customSkillDirs) ? config.customSkillDirs : []
+  /**
+   * Every custom skill root the panel should scan: this plugin's own config
+   * plus whatever the live `skill-filesystem` rows declare. The official
+   * documented placement is the provider row (a profile patch), not this
+   * plugin, so reading only `config.customSkillDirs` left those skills
+   * listed with no editable path — the "Custom directories" group rendered
+   * without controls and every write route answered 404.
+   */
+  const customSkillDirs = (): string[] => {
+    const own = Array.isArray(config?.customSkillDirs) ? config.customSkillDirs : []
+    let fromRows: string[] = []
+    try {
+      // Non-strict read: the loader is present in every real composition but
+      // is not a declared dependency of this plugin, so a shell without one
+      // must degrade to the plugin's own config instead of failing the mount.
+      const loader = (ctx as unknown as { get(name: string, strict?: boolean): unknown }).get('loader', false) as LoaderSurface | undefined
+      if (typeof loader?.entries === 'function') fromRows = customSkillDirsFromLoader(loader.entries())
+    } catch {
+      fromRows = []
+    }
+    return normalizeSkillRoots([...own, ...fromRows])
+  }
 
   /** Active session workspace cwds (degraded to [] when the registry is unavailable). */
   const activeSessionCwds = (): string[] => {

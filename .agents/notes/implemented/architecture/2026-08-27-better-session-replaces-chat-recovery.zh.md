@@ -2,7 +2,7 @@
 
 Status: implemented
 
-Supersession check：没有活跃 Note 拥有会话编辑能力策略。[task-handoff-issue-316-edit-retry](../../../docs/archive/task-handoff-issue-316-edit-retry-2026-08-17.md)（archive）是 chat-recovery 的诞生记录、属冻结历史。2026-08-24 dock-chrome 与 2026-08-25 workshop-fixes 两篇 bug-fix Note 对 chat-recovery 的提及只是无关主题里的过去时修复记录，原样保留。
+Supersession check：没有活跃 Note 拥有会话编辑能力策略。[task-handoff-issue-316-edit-retry](../../../../docs/archive/task-handoff-issue-316-edit-retry-2026-08-17.md)（archive）是 chat-recovery 的诞生记录、属冻结历史。2026-08-24 dock-chrome 与 2026-08-25 workshop-fixes 两篇 bug-fix Note 对 chat-recovery 的提及只是无关主题里的过去时修复记录，原样保留。
 
 ## Problem
 

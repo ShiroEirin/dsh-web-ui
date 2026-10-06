@@ -1,18 +1,25 @@
-# dsh-update
+# dsh-update · Plugin Ecosystem Version Check & Update Notifier for DeepSeek Harness (DSH)
 
 English | [中文](README.zh.md)
-> Family self-update for the dsh web GUI: a sidebar trigger beside the settings
-> seat that probes npm for newer `@linxin666/dsh-web-*` releases and runs the
-> owning profile's `pnpm update --latest` in place.
 
-This repository is an external plugin package for DeepSeek Harness (DSH). It is a
-dual-face package: the host half mounts the `/api/update` route family, and the
-browser half renders the sidebar trigger plus the update panel.
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-update?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
 
-The capability is deliberately **its own plugin row** (row id `update`, aggregate
-row `web-ui-update`) rather than a seat of `dsh-remote-web-ui`: turning remote
-access off — or disabling the remote-access plugin entirely — must never take the
-update trigger away.
+<p align="center">
+  <strong>Plugin Ecosystem Version Check & Update Notifier for DeepSeek Harness (DSH)</strong><br>
+  <em>Sidebar Footer Trigger · npm Auto-Detection · Release Notes Integration · Verified Update Pipeline</em>
+</p>
+
+> In-GUI auto-update extension for the DeepSeek Harness (DSH) family: a download trigger alongside the settings button in the sidebar footer that checks npm for newer `@linxin666/dsh-web-*` versions and runs a verified `pnpm update --latest` inside the active profile.
+
+This package is an external plugin for DeepSeek Harness (DSH), structured as a cordis bundle: the host half mounts the `/api/update` route family while the browser half renders the sidebar trigger and update modal.
+
+The feature is deliberately structured as an **independent plugin row** (row id `update`, aggregate row `web-ui-update`) rather than sharing a seat with `dsh-remote-web-ui`: disabling remote access must never remove the update path.
 
 ## What it does
 
@@ -36,7 +43,7 @@ update trigger away.
 
 ## Requirements
 
-- DSH `>= 0.1.7-rc.2`.
+- DSH `>= 0.2.0-rc.2`.
 - The profile must own the family packages through npm: the aggregate
   `@linxin666/dsh-web-all`, or the family packages installed directly. A profile
   whose family is installed with local `link:` specs is reported as **local

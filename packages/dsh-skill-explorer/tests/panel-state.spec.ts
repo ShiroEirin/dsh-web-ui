@@ -74,6 +74,24 @@ describe('skill center panel state', () => {
     expect(selections).toEqual([SKILL_EXPLORER_PANEL_ID, null])
   })
 
+  it('operator on the skill center has no plugin-driven close, only the shell reconciliation (#1785)', () => {
+    // Given a controller whose only production driver is the layout's panelInfo
+    // reconciliation: the sidebar row selects a panel (it never asks the plugin
+    // to close one) and session navigation goes through the shell
+    const { controller, selections } = withPanelFace()
+
+    // When the shell reports the panel selected, then unselected — the way a
+    // session row leaving the center column arrives
+    controller.syncPanelSelection(SKILL_EXPLORER_PANEL_ID)
+    controller.syncPanelSelection(null)
+
+    // Then the controller follows the layout both ways, and neither direction
+    // asks the layout for anything: the reconciliation must not loop back into
+    // a selection, which is what removed the panel's own close path (#1785)
+    expect(selections).toEqual([])
+    expect(controller.getSnapshot().panelOpen).toBe(false)
+  })
+
   it('operator selecting another panel row sees the controller follow the layout', () => {
     // Given an open panel
     const { controller } = withPanelFace()

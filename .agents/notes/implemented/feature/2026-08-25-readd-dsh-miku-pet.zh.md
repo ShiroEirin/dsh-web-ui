@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-PR #1031 在仓库移除该包后重新引入了 dsh-miku-pet（见 [Remove dsh-miku-pet](../../../simplification/2026-08-24-remove-dsh-miku-pet.md)）。移除时清理了独立包、聚合行、社区索引条目与 Workshop 元数据；本次重新提交为仓库内包并注册进 dsh-web-all 聚合（19 rows, 18 deps）。维护者评审要求三项通过条件：/miku-pet/config 写接口的同源守卫与路由级测试、初音ミク角色权利边界文档、真实 DSH GUI 证据。
+PR #1031 在仓库移除该包后重新引入了 dsh-miku-pet（见 [Remove dsh-miku-pet](../simplification/2026-08-24-remove-dsh-miku-pet.md)）。移除时清理了独立包、聚合行、社区索引条目与 Workshop 元数据；本次重新提交为仓库内包并注册进 dsh-web-all 聚合（19 rows, 18 deps）。维护者评审要求三项通过条件：/miku-pet/config 写接口的同源守卫与路由级测试、初音ミク角色权利边界文档、真实 DSH GUI 证据。
 
 ## Decision
 

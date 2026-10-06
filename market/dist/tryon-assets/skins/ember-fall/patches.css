@@ -49,7 +49,7 @@ html[data-dsh-skin="ember-fall"] body::after {
   background-size: 100% 100%;
 }
 
-html[data-dsh-skin="ember-fall"] body[data-dsh-wallpaper-active]::after,
+html[data-dsh-skin="ember-fall"] body[data-we-wallpaper]::after,
 html[data-dsh-skin="ember-fall"] body[data-dsh-backdrop-active]::after {
   background-color: transparent;
   background-image: none;

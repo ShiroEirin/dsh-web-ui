@@ -113,7 +113,7 @@ describe('controller claim initiator (issue #6)', () => {
     const initiators: Array<string | undefined> = []
     const running: TaskRecord = { ...initial, status: 'running', executions: [{ id: 'e1', sessionId: undefined, startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }] }
     const snapshot = (revision: number, tasks: readonly TaskRecord[]): TaskBoardSnapshot => ({
-      schemaVersion: 3, revision, tasks: [...tasks],
+      schemaVersion: 5, revision, tasks: [...tasks],
       scheduler: { timeZone: 'UTC', ledgerId: 'ledger-a' },
       power: { platform: 'linux', phase: 'unsupported', enabled: false, runningSessions: 0, armedSchedules: 0, sessionStateKnown: true },
     })

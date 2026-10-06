@@ -12,14 +12,21 @@
  * children are transitively resolved, and repair links left over from older
  * manual setups.
  *
- * The three satellite repositories under satellites/ are linked the same way.
+ * The four satellite repositories under satellites/ are linked the same way.
  * The aggregate mounts them as external rows. The profile-layer link wins for
  * profile-level rows, but the aggregate's own dependency links (pnpm store
  * tarballs) would still win for the rows the aggregate's patch contributes, so
- * those links are repointed at the local checkouts too when a built satellite
- * satisfies the declared range (see decideAggregateRelink). Their lib/ has to
- * exist: `pnpm install` inside a satellite builds it through its prepare
- * script.
+ * those links are repointed at the local checkouts too when the checkout is
+ * runnable and satisfies the declared range (see decideAggregateRelink).
+ *
+ * A satellite checkout is linked only when it can actually be loaded: its
+ * built entry must exist AND every runtime dependency must resolve from the
+ * checkout, which holds only after `pnpm install` inside the satellite. The
+ * committed lib/ is not evidence — a checkout that was never installed still
+ * has it, and linking that checkout fails the host boot with
+ * ERR_MODULE_NOT_FOUND (jpeg-js for dsh-skins, clsx for dsh-pet). Such a
+ * checkout falls back to the installed registry copy the aggregate resolves,
+ * so the profile keeps a working provider either way.
  *
  * Idempotent and safe to rerun: stale links pointing elsewhere are replaced,
  * new packages are added, unrelated entries are left untouched. Real files or
@@ -120,15 +127,68 @@ export function satellitePackages(root = REPO_ROOT) {
  * touched, and the satellite must satisfy the declared semver range so the
  * link stays version-consistent.
  */
-export function decideAggregateRelink(existing, currentTarget, satelliteDir, declaredRange) {
+export function decideAggregateRelink(existing, currentTarget, satelliteDir, declaredRange, localLoadable) {
   if (existing !== 'symlink') return 'skip-report'
   if (!/node_modules\/\.pnpm\//.test(currentTarget ?? '')) return 'keep'
+  if (localLoadable !== true) return 'skip-report'
   const pkgPath = join(satelliteDir, 'package.json')
   if (!existsSync(pkgPath) || !existsSync(join(satelliteDir, 'lib', 'index.js'))) return 'skip-report'
   let version
   try { version = JSON.parse(readFileSync(pkgPath, 'utf8')).version } catch { return 'skip-report' }
   if (typeof version !== 'string' || !satifies(version, declaredRange)) return 'skip-report'
   return 'replace'
+}
+
+/**
+ * Whether a satellite checkout can be loaded at all: its built entry exists
+ * and every runtime dependency resolves from the checkout itself. Purely
+ * observational — the caller decides what to do with the verdict.
+ *
+ * @param {string} dir satellite checkout directory
+ * @returns {{ loadable: boolean, missing: string[] }} missing names the entry
+ *   file or the unresolved dependencies, for the report line.
+ */
+export function satelliteLoadability(dir) {
+  const pkgPath = join(dir, 'package.json')
+  if (!existsSync(pkgPath)) return { loadable: false, missing: ['package.json'] }
+  let manifest
+  try { manifest = JSON.parse(readFileSync(pkgPath, 'utf8')) } catch { return { loadable: false, missing: ['package.json'] } }
+  const entry = typeof manifest.main === 'string' ? manifest.main : 'index.js'
+  if (!existsSync(join(dir, entry))) return { loadable: false, missing: [entry] }
+  const satelliteRequire = createRequire(pkgPath)
+  const missing = []
+  for (const name of Object.keys(manifest.dependencies ?? {})) {
+    try { satelliteRequire.resolve(name) } catch { missing.push(name) }
+  }
+  return { loadable: missing.length === 0, missing }
+}
+
+/**
+ * Which directory a satellite link should point at. A runnable local checkout
+ * wins, because satellite edits then reach the running GUI without a release.
+ * An uninstalled checkout must never be linked — a link to it is a boot
+ * failure, not a degraded feature — so the installed registry copy stands in.
+ * Neither means there is nothing to link.
+ *
+ * @param {boolean} localLoadable satelliteLoadability(local checkout).loadable
+ * @param {boolean} hasInstalled whether the aggregate resolves an installed copy
+ * @returns {'local'|'installed'|'skip'}
+ */
+export function decideSatelliteSource(localLoadable, hasInstalled) {
+  if (localLoadable === true) return 'local'
+  if (hasInstalled === true) return 'installed'
+  return 'skip'
+}
+
+/** The installed satellite the aggregate resolves, or null when nothing is installed. */
+function installedSatelliteDir(name) {
+  const aggregateDir = join(REPO_ROOT, 'packages', 'dsh-web-all')
+  try {
+    const pkgPath = createRequire(join(aggregateDir, 'package.json')).resolve(`${FAMILY_SCOPE}${name}/package.json`)
+    return realpathSync(dirname(pkgPath))
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -194,7 +254,8 @@ function relinkAggregateSatellites(DRY) {
         try { current = readlinkSync(linkPath) } catch {}
       }
     } catch {}
-    const action = decideAggregateRelink(existing, current, dir, deps['@linxin666/' + name])
+    const { loadable } = satelliteLoadability(dir)
+    const action = decideAggregateRelink(existing, current, dir, deps['@linxin666/' + name], loadable)
     if (action !== 'replace') continue
     if (DRY) {
       report(`would relink aggregate ${name} -> ${relative(aggregateNm, dir)}`)
@@ -274,7 +335,20 @@ function main() {
   const satellites = satellitePackages()
   report(`found ${packages.length} family package(s) under packages/`)
   if (satellites.length) report(`found ${satellites.length} satellite package(s) under satellites/`)
-  packages.push(...satellites)
+  for (const satellite of satellites) {
+    const { loadable, missing } = satelliteLoadability(satellite.dir)
+    const installed = loadable ? null : installedSatelliteDir(satellite.name)
+    const source = decideSatelliteSource(loadable, installed !== null)
+    if (source === 'skip') {
+      report(`satellite ${satellite.name}: NOT linked — the checkout is not runnable (missing ${missing.join(', ') || 'entry'}) and no installed copy resolves`)
+      continue
+    }
+    if (source === 'installed') {
+      report(`satellite ${satellite.name}: checkout is not runnable (missing ${missing.join(', ') || 'entry'}); linking the installed copy (run pnpm install in ${relative(REPO_ROOT, satellite.dir)} to link the local build again)`)
+      satellite.dir = installed
+    }
+    packages.push(satellite)
+  }
   if (DRY) report('--dry-run: no changes will be made')
 
   if (!existsSync(LINK_DIR)) {
@@ -322,7 +396,7 @@ function main() {
       symlinkSync(target, linkPath, WIN32 ? 'junction' : undefined)
       report(`linked ${name} -> ${target}`)
     } else {
-      if (DRY) { report(`would replace ${name} -> ${current ?? '(broken)'}`); changed++; continue }
+      if (DRY) { report(`would replace ${name} -> ${target} (was ${current ?? '(broken)'})`); changed++; continue }
       // Windows junctions are directory reparse points; unlink EPERMs, so rmdir.
       if (linkIsJunctionDir) rmdirSync(linkPath)
       else unlinkSync(linkPath)

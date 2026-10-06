@@ -1,9 +1,23 @@
-# DSH Remote Web UI
+# dsh-remote-web-ui · Mobile & Cross-Device Remote Web Control for DeepSeek Harness (DSH)
 
 English | [中文](README.zh.md)
-> Remote access for the dsh web GUI that shares **one interface**: pair a phone or another computer from a QR beside the settings button, and both run the same official Web GUI this machine runs — phones get an injected portrait-touch adaptation, PCs get the full desktop — through time-limited pairing tokens and revocable device sessions. A settings toggle binds the server to the LAN, an optional Cloudflare quick tunnel reaches the internet — fronted by a never-changing stable hostname so the phone's bookmark and pairing survive restarts with zero setup.
 
-This repository is an external plugin package for DeepSeek Harness (DSH). It is a single dual-face package: the host half owns pairing tokens, device sessions, the `/api/pair` route family, the gated `/remote` channel, the LAN bind toggle; the browser half renders the sidebar-foot remote-access entry beside the settings button, the pairing panel with a QR code, live device status, the authorized-device roster, the settings card, and the portrait-touch adaptation layer over the official UI.
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-client-ui-remote-web-ui?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>Mobile & Cross-Device Remote Web Control for DeepSeek Harness (DSH)</strong><br>
+  <em>Instant QR Pairing · Cross-Device PC Access · Mobile Touch Gestures · Cloudflare Tunnels · Secure Device Session</em>
+</p>
+
+> Seamless remote access for DeepSeek Harness (DSH) Web GUI and desktop client sharing the **exact same interface**: pair an iPhone, Android smartphone, tablet, or another computer from the QR code next to settings. Both ends run the authentic official Web GUI — phones receive an injected portrait touch layer while remote computers enjoy the complete desktop workbench. Access is guarded by expiring pairing tokens and revocable sessions. Built-in LAN binding and optional Cloudflare quick tunnels enable effortless external access with persistent hostnames.
+
+This package is an official external plugin for DeepSeek Harness (DSH), structured as a cordis bundle: the host half manages pairing tokens, device sessions, `/api/pair` routes, the gated `/remote` channel, and LAN binding; the browser half renders the remote access trigger, QR pairing modal, live device roster, settings card, and mobile portrait touch adaptation.
 
 ## What it does
 
@@ -58,7 +72,7 @@ Restart the profile (`dsh web`), then open the phone icon in the sidebar foot. T
 
 ## Use
 
-1. Open the settings card (设置 → Web 插件 → 远程访问设置) and flip **局域网访问** on if the server binds loopback; the card shows the live bind, the firewall state, and the reachable LAN URLs. The bind change takes effect from the next `dsh web` start.
+1. Open the settings card (设置 → Web 插件 → 远程访问) and flip **局域网访问** on if the server binds loopback; the card shows the live bind, the firewall state, and the reachable LAN URLs. The bind change takes effect from the next `dsh web` start.
 2. Start `dsh web`, click the phone icon, and the panel mints a fresh time-limited QR.
 3. Scan with the phone (or open the copied link): the device pairs and boots the **official Web GUI** served cookieless by the plugin (`/pair-accept` → `/pair-app`), which reloads into `/`. On a phone, the portrait adaptation layer is already active — same layout as the desktop, same live state. Later reopens from history or a bookmark go straight back into the app (https origins; see Security model).
 4. **To pair a PC instead**: copy the same link and open it in a browser on the other computer. After the same round trip the full Web GUI runs there over the gated `/remote` channel; unpaired PCs see the guided blocking page and no data. One active token pairs one device; mint a fresh QR for the next device.
@@ -122,7 +136,7 @@ pnpm --filter @linxin666/dsh-remote-web-ui test
 pnpm --filter @linxin666/dsh-remote-web-ui run typecheck
 ```
 
-The peer APIs come from the official NPM SDK: every `@deepseek-ai/*` package used here is declared in devDependencies (0.1.2-alpha.2 cohort), and TypeScript/Vitest resolve types straight from node_modules — no DSH source checkout is required. The consumer-side `prepare` build (`tsdown.prepare.config.ts`) transpiles without type checking, so git installs work without any harness checkout either.
+The peer APIs come from the official NPM SDK: every `@deepseek-ai/*` package used here is declared in devDependencies (0.2.0-rc.2 cohort), and TypeScript/Vitest resolve types straight from node_modules — no DSH source checkout is required. The consumer-side `prepare` build (`tsdown.prepare.config.ts`) transpiles without type checking, so git installs work without any harness checkout either.
 
 ## Checks
 
@@ -134,9 +148,9 @@ pnpm run build
 
 ## Harness contract dependencies
 
-Pinned to the 0.1.2-alpha.2 line; the seams this build relies on:
+Pinned to the 0.2.0-rc.2 line; the seams this build relies on:
 
-- **`sidebar.footer.action` foot seat** (the 0.1.2 shell composition): the sidebar declares and renders the seat the remote entry occupies.
+- **`sidebar.footer.action` foot seat** (the 0.1.7 shell composition): the sidebar declares and renders the seat the remote entry occupies.
 - **`ctx.layout.toggleSidebar()`** (packages/client/ui-layout): the whale button expands the collapsed sidebar through the official panel-action face.
 - **`ctx.connection.authenticatedUrl()`** (packages/client/connection): the sanctioned launch-token seam the proxy redeems once for its inner credential (`src/inner-auth.ts`), so re-issued `/api` calls satisfy the harness browser-auth check.
 - **`__DSH_FILE_UPLOAD__`** (file-upload client hooks): the optional pre-Cordis transport the upload service reads once at construction. The remote boot patch publishes it so background uploads stay on the rewritten main-thread fetch instead of a Web Worker that escapes the channel (issue #1580).
@@ -161,7 +175,7 @@ The public path is the same round trip through a tunnel (see "Remote access over
 
 - **Pairing is the access control for the `/remote` channel, unconditionally**: every request must carry a live paired-device cookie, enforced before any bytes are forwarded. A missing or revoked session receives HTTP 403 with a JSON rejection carrying `error.code: "unpaired"`; the browser's `EventSource` API exposes only the stream failure, not that response body. This gate does **not** follow `requirePairingForLan`: the channel re-issues every call with the process's own browser-auth credential, so admitting an unpaired caller would hand out that authority. The LAN policy governs the plain `/api` surface only and can never widen the channel (issue #1665).
 - **The channel carries the process's own inner credential.** The harness browser-auth cookie is authority-bound (minted for the exact `host:port` a browser visited) and has no loopback exemption, so a proxied re-issue to `127.0.0.1` cannot reuse a device's cookie. The plugin therefore redeems its own launch token once — the same exchange a first browser visit performs — and attaches that cookie to re-issued requests. The credential is only ever exercised behind the pairing gate above; 停止/取消配对 immediately stop exercising it.
-- **Cohort reality: pairing does not gate direct `/api`.** On the pinned 0.1.2-alpha.2 line nothing emits the `api/gate` seam, so a direct `/api` call from a LAN origin is governed solely by the harness fence (which auto-trusts LAN literals under a `0.0.0.0` bind) plus the harness browser-auth cookie. A browser credential a device has already redeemed therefore survives 停止/取消配对 until its natural expiry (30 days) — revocation binds the `/remote` channel and the pairing cookie, not that credential. The plugin probes the `/api` posture and warns loudly; treat a LAN-exposed bind as a deliberate decision, and prefer loopback plus tunnels when the machine is shared.
+- **Runtime reality: pairing does not gate direct `/api`.** Nothing in the official runtime emits the `api/gate` seam (verified against the 0.2.0-rc.2 packages installed by this repository), so a direct `/api` call from a LAN origin is governed solely by the harness fence (which auto-trusts LAN literals under a `0.0.0.0` bind) plus the harness browser-auth cookie. A browser credential a device has already redeemed therefore survives 停止/取消配对 until its natural expiry (30 days) — revocation binds the `/remote` channel and the pairing cookie, not that credential. The plugin probes the `/api` posture and warns loudly; treat a LAN-exposed bind as a deliberate decision, and prefer loopback plus tunnels when the machine is shared.
 - **A paired device is a full-control credential.** With host mode active it reaches the complete host API — chat, sessions, settings, credentials, agent presets, deliverables — mirroring the SDK's own stance that a loopback desktop is trusted. Only the three control planes (pairing, self-update, plugin install/remove) stay physically local. Only pair devices you control; 停止 or per-device 取消配对 revokes immediately.
 - **Control endpoints stay loopback-only**: mint/stop/revoke, the device roster, and the lan-bind status answer only to loopback, and the gated channel keeps the self-update and plugin-install paths physically local. A LAN-origin browser sees the "配对面板仅限本机使用" banner.
 - **Background file uploads ride the channel too.** The official upload service prefers a Web Worker carrier whose own globals no main-thread patch reaches, so the boot patch (and the browser patch as a fallback) publishes the official pre-Cordis hook `__DSH_FILE_UPLOAD__` and hands it the patched `fetch`: the raw `/api/session/uploadFileBinary` POST is rewritten onto `/remote` and carries the device credential exactly like every other gated call. Without the hook a paired browser's uploads bypass the channel and the harness browser-auth fence answers 401 (issue #1580). The hook is only published on non-loopback origins, only while the channel is installed, and never overwrites a hook the page already owns.
@@ -182,6 +196,7 @@ The public path is the same round trip through a tunnel (see "Remote access over
 - **Plain-HTTP LAN reopens need a re-scan**: the reopen service worker registers only on secure contexts (https tunnels, localhost); a phone paired over a plain-HTTP LAN URL that navigates back to `/` hits the harness 401 and must scan a fresh QR. Pairing again is cheap in-network and restores everything.
 - **The adaptation selectors track the official build**: the semantic-suffix strategy survives hash churn but not semantic renames; each official GUI update needs a visual QA pass (per the dsh-LAN reference, these suffixes have been stable across many official releases).
 - **Dev HMR**: `dsh web --dev` polls every roster bundle by path, so rebuilding this package (its own `tsdown --watch`) hot-reloads the client bundle; the host half needs a restart.
+- **A mounted `@deepseek-ai/dsh-hmr` row blocks every settings save**: the official config editor serializes its writes through `hmr.runExclusive` whenever the `hmr` service is mounted, and on this cohort such a write is rejected as a nested transaction - the Host answers `HMR transactions cannot be nested` and each family settings card (and the official settings pages) reports a failed save. The row is user-added (no bundle ships it); a Desktop profile carries it to hot-reload a local plugin's host half. Remove the `- id: hmr` row from the profile patch to restore saves, and re-add it only while iterating on that plugin. Observed on the Desktop client 0.2.0-rc.2 (2026-09-30).
 
 ## Dependency rationale
 

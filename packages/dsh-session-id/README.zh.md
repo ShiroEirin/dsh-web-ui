@@ -1,10 +1,21 @@
-# @linxin666/dsh-client-ui-session-id
+# dsh-session-id · DeepSeek Harness (DSH) 会话 ID 快速复制与定位辅助插件
 
 [English](README.md) | 中文
 
-纯浏览器端的 DSH Web GUI 插件：在侧边栏底部加入口，打开面板列出全部会话的
-会话 ID，一键复制。挂载到官方侧边栏底部席位（`sidebar.footer.action`），不改
-任何 DSH 源码，host 侧零行为。
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-client-ui-session-id?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>DeepSeek Harness（DSH）官方 Web GUI 与桌面客户端会话 ID 复制与检索工具</strong><br>
+  <em>侧边栏底栏入口 · 实时全量会话 ID · 一键复制到剪贴板 · 本地极速过滤 · 零 Host 开销</em>
+</p>
+
+纯浏览器端的 DSH Web GUI 插件：在侧边栏底部加入口，打开面板列出全部会话的会话 ID，一键复制。挂载到官方侧边栏底部席位（`sidebar.footer.action`），不改任何 DSH 源码，host 侧零行为。
 
 ## 是什么
 

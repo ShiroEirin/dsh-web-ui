@@ -1,15 +1,33 @@
 import type { TaskUpdatePatch } from './core/use-cases/task-update.ts'
-import { isTaskPermission, isTaskStatus, isTaskTagList, type NewTaskInput, type TaskPermission, type TaskRecord, type TaskStatus } from './core/tasks.ts'
+import { TAG_NAME_MAX_LENGTH, isTaskPermission, isTaskStatus, isTaskTagList, type NewTaskInput, type TaskPermission, type TaskRecord, type TaskStatus } from './core/tasks.ts'
 import { parseLedger } from './core/store.ts'
+import { isValidTimeZone } from './core/schedule.ts'
 import { sanitizeFreezeSnapshot, type FreezeSnapshot } from './core/freeze-snapshot.ts'
 import { sanitizeHandover, type TaskHandoverInput } from './core/handover.ts'
+import { isTaskBoardExtensionPayload, normalizeTaskIntegrations, type TaskBoardExtensionPayload } from './core/extension.ts'
+import { normalizeVerification, type ModelCatalogView, type VerificationContract, type VerificationSettings } from './core/verification.ts'
 
 /** Freeze payload carried by create/update actions after the gate (redacted in place). */
 type FreezePayload = FreezeSnapshot & { redacted?: boolean; frozenBy?: string }
 
-export const TASK_BOARD_SCHEMA_VERSION = 3 as const
-/** Ledger documents written before v3; loaded once and migrated on startup. */
-export const TASK_BOARD_LEGACY_SCHEMA_VERSION = 2 as const
+export const TASK_BOARD_SCHEMA_VERSION = 5 as const
+/** Ledger documents written before v5; loaded once and migrated on startup. */
+export const TASK_BOARD_LEGACY_SCHEMA_VERSION = 4 as const
+/** Ledger documents written before v4; migrated through the v4 normalization too. */
+export const TASK_BOARD_OLDER_SCHEMA_VERSION = 3 as const
+/** Ledger documents written before v3; migrated through every later normalization too. */
+export const TASK_BOARD_OLDEST_SCHEMA_VERSION = 2 as const
+/**
+ * Every older generation the loader migrates in place. v5 only ADDS the
+ * per-execution acceptance block, so the migration is the normalization pass
+ * that re-validates each row; a document from any listed generation upgrades
+ * losslessly.
+ */
+export const TASK_BOARD_MIGRATABLE_SCHEMA_VERSIONS: readonly number[] = [
+  TASK_BOARD_LEGACY_SCHEMA_VERSION,
+  TASK_BOARD_OLDER_SCHEMA_VERSION,
+  TASK_BOARD_OLDEST_SCHEMA_VERSION,
+]
 export const TASK_BOARD_API_PREFIX = '/api/task-board'
 
 export type PowerPhase = 'disabled' | 'idle' | 'acquiring' | 'active' | 'error' | 'unsupported'
@@ -50,6 +68,25 @@ export interface TaskBoardSnapshot {
    * into team execution (Team Lead session plus one teammate per subtask).
    */
   teamRunAvailable?: boolean
+  /**
+   * Read-only summaries published by running extensions, keyed by extension id.
+   * The board forwards them verbatim; it never interprets their shape.
+   */
+  extensions?: Record<string, unknown>
+}
+
+/**
+ * Body of `GET {TASK_BOARD_API_PREFIX}/verification`: the acceptance settings the
+ * card edits, the contract they resolve to right now, and the host model catalog
+ * the model and reasoning choices come from. Served through the same loopback /
+ * authenticated-proxy guard as the rest of the board API, and it carries no
+ * credential material — model routes and level ids only.
+ */
+export interface TaskBoardVerificationOptions {
+  settings: VerificationSettings
+  /** The RESOLVED contract, so the card can show what the next execution freezes. */
+  contract: VerificationContract
+  catalog: ModelCatalogView
 }
 
 /** SSE event frame: revision/scheduler/power only, never the task list. */
@@ -101,11 +138,16 @@ export type TaskBoardAction =
   | { kind: 'move'; taskId: string; status: TaskStatus }
   | { kind: 'archive'; taskId: string }
   | { kind: 'restore'; taskId: string }
-  | { kind: 'set-schedule'; taskId: string; patch: { enabled?: boolean; cron?: string } }
+  | { kind: 'settle'; taskId: string }
+  | { kind: 'set-schedule'; taskId: string; patch: { enabled?: boolean; cron?: string; timeZone?: string | null } }
   | { kind: 'run'; taskId: string }
   | { kind: 'rerun'; taskId: string }
   | { kind: 'confirm-permission'; taskId: string }
   | { kind: 'set-parent'; taskId: string; parentId: string | null }
+  /** Ledger-wide label management; see core/use-cases/task-tag.ts. */
+  | { kind: 'rename-tag'; from: string; to: string }
+  | { kind: 'delete-tag'; name: string }
+  | { kind: 'extension-action'; extensionId: string; action: string; taskId?: string; payload?: TaskBoardExtensionPayload }
 
 export interface TaskBoardActionEnvelope {
   requestId: string
@@ -150,10 +192,13 @@ function validImportedKnownFields(value: Record<string, unknown>): boolean {
   // must carry a well-formed list or none at all, so a hand-edited export
   // cannot smuggle a malformed tag past the gate.
   if (value.tags !== undefined && !isTaskTagList(value.tags)) return false
+  if (value.integrations !== undefined && normalizeTaskIntegrations(value.integrations) === undefined) return false
   if (value.schedule !== undefined) {
     const schedule = record(value.schedule)
     if (schedule === undefined || typeof schedule.enabled !== 'boolean' || typeof schedule.cron !== 'string') return false
     if (!optionalFiniteNumber(schedule.nextRunAt) || !optionalFiniteNumber(schedule.lastTriggeredAt)) return false
+    if (schedule.timeZone !== undefined
+      && (typeof schedule.timeZone !== 'string' || !isValidTimeZone(schedule.timeZone))) return false
   }
   if (value.executions !== undefined) {
     if (!Array.isArray(value.executions)) return false
@@ -166,6 +211,10 @@ function validImportedKnownFields(value: Record<string, unknown>): boolean {
       if (execution.initiatedBy !== undefined && typeof execution.initiatedBy !== 'string') return false
       if (execution.frozenBy !== undefined && typeof execution.frozenBy !== 'string') return false
       if (execution.frozenAt !== undefined && typeof execution.frozenAt !== 'number') return false
+      // A well-formed acceptance block may be imported for inspection, but the
+      // import path DROPS it (see importedTask): a fabricated pass record must
+      // never let an imported execution settle as verified.
+      if (execution.verification !== undefined && normalizeVerification(execution.verification) === undefined) return false
     }
   }
   return true
@@ -194,11 +243,14 @@ function importedTask(value: unknown): TaskRecord | undefined {
       ...(execution.initiatedBy === undefined ? {} : { initiatedBy: execution.initiatedBy }),
       ...(execution.frozenAt === undefined ? {} : { frozenAt: execution.frozenAt }),
       ...(execution.frozenBy === undefined ? {} : { frozenBy: execution.frozenBy }),
+      // 安全门（对抗场景 d）：验收报告是 Host 的判定，不接受 import 携带——
+      // 一条伪造的通过记录会让导入的执行被当成已验收。
     })),
     ...(task.schedule === undefined ? {} : {
       schedule: {
         enabled: task.schedule.enabled,
         cron: task.schedule.cron,
+        ...(task.schedule.timeZone === undefined ? {} : { timeZone: task.schedule.timeZone }),
         nextRunAt: task.schedule.nextRunAt,
         lastTriggeredAt: task.schedule.lastTriggeredAt,
       },
@@ -210,10 +262,17 @@ function importedTask(value: unknown): TaskRecord | undefined {
     ...(task.mode === undefined ? {} : { mode: task.mode }),
     ...(task.permission === undefined ? {} : { permission: task.permission }),
     ...(task.reuseSession === undefined ? {} : { reuseSession: task.reuseSession }),
+    ...(task.goalRun === undefined ? {} : { goalRun: task.goalRun }),
+    // The per-card acceptance opt-out rides the import like the /goal opt-in:
+    // it is a user-chosen execution preference on their own board, not a
+    // verdict. The per-execution `verification` block is still stripped below, so
+    // no imported card can arrive already accepted.
+    ...(task.skipVerification === undefined ? {} : { skipVerification: task.skipVerification }),
     ...(task.archivedAt === undefined ? {} : { archivedAt: task.archivedAt }),
     ...(task.freeze === undefined ? {} : { freeze: task.freeze }),
     ...(task.handover === undefined ? {} : { handover: task.handover }),
     ...(task.tags === undefined ? {} : { tags: task.tags }),
+    ...(task.integrations === undefined ? {} : { integrations: task.integrations }),
     // 安全门（对抗场景 b）：import 不是人工确认动作，确认戳一律剥除——
     // 高于会话默认权限的绑定经 import 进入后必须重新武装 confirm-permission 门。
   }
@@ -247,30 +306,41 @@ function handoverPayload(value: unknown): TaskHandoverInput | undefined {
 
 function createInput(value: unknown): value is NewTaskInput {
   const input = record(value)
-  if (input === undefined || !exactKeys(input, ['title', 'description', 'prompt', 'parentId', 'workspaceId', 'mode', 'permission', 'schedule', 'freeze', 'handover', 'model', 'reuseSession', 'teamRun', 'tags'])) return false
+  if (input === undefined || !exactKeys(input, ['title', 'description', 'prompt', 'parentId', 'workspaceId', 'mode', 'permission', 'schedule', 'freeze', 'handover', 'model', 'reuseSession', 'teamRun', 'goalRun', 'skipVerification', 'tags', 'integrations'])) return false
   if (input.parentId !== undefined && (typeof input.parentId !== 'string' || input.parentId.trim() === '')) return false
   if (typeof input.title !== 'string' || typeof input.description !== 'string' || typeof input.prompt !== 'string') return false
   if (!optionalString(input.workspaceId) || !optionalString(input.mode) || !optionalString(input.model)) return false
   if (input.reuseSession !== undefined && typeof input.reuseSession !== 'boolean') return false
   if (input.teamRun !== undefined && typeof input.teamRun !== 'boolean') return false
+  if (input.goalRun !== undefined && typeof input.goalRun !== 'boolean') return false
+  if (input.skipVerification !== undefined && typeof input.skipVerification !== 'boolean') return false
   if (input.permission !== undefined && !isTaskPermission(input.permission)) return false
   if (input.tags !== undefined && !isTaskTagList(input.tags)) return false
+  if (input.integrations !== undefined && normalizeTaskIntegrations(input.integrations) === undefined) return false
   if (input.freeze !== undefined && freezePayload(input.freeze) === undefined) return false
   if (input.handover !== undefined && handoverPayload(input.handover) === undefined) return false
   if (input.schedule !== undefined) {
     const schedule = record(input.schedule)
-    if (schedule === undefined || !exactKeys(schedule, ['enabled', 'cron'])) return false
+    if (schedule === undefined || !exactKeys(schedule, ['enabled', 'cron', 'timeZone'])) return false
     if (typeof schedule.enabled !== 'boolean' || typeof schedule.cron !== 'string') return false
+    if (schedule.timeZone !== undefined
+      && (typeof schedule.timeZone !== 'string' || !isValidTimeZone(schedule.timeZone))) return false
   }
   return true
 }
 
 function updatePatch(value: unknown): boolean {
   const patch = record(value)
-  if (patch === undefined || !exactKeys(patch, ['title', 'description', 'prompt', 'workspaceId', 'mode', 'permission', 'freeze', 'handover', 'model', 'reuseSession', 'teamRun', 'tags'])) return false
+  if (patch === undefined || !exactKeys(patch, ['title', 'description', 'prompt', 'workspaceId', 'mode', 'permission', 'freeze', 'handover', 'model', 'reuseSession', 'teamRun', 'goalRun', 'skipVerification', 'tags'])) return false
   // null (or false) clears the reuse opt-in; only a real boolean is accepted.
   if (patch.reuseSession !== undefined && patch.reuseSession !== null && typeof patch.reuseSession !== 'boolean') return false
   if (patch.teamRun !== undefined && patch.teamRun !== null && typeof patch.teamRun !== 'boolean') return false
+  // The goal opt-in is tri-state: null/true return the card to its default
+  // (goal run), false pins a single plain turn.
+  if (patch.goalRun !== undefined && patch.goalRun !== null && typeof patch.goalRun !== 'boolean') return false
+  // The acceptance opt-out is the mirror tri-state: null/false return the card
+  // to inheriting the board-wide switch, true pins it out of the gate.
+  if (patch.skipVerification !== undefined && patch.skipVerification !== null && typeof patch.skipVerification !== 'boolean') return false
   for (const key of ['title', 'description', 'prompt', 'workspaceId', 'mode', 'model'] as const) {
     if (!optionalString(patch[key])) return false
   }
@@ -283,12 +353,25 @@ function updatePatch(value: unknown): boolean {
   return patch.handover === undefined || patch.handover === null || handoverPayload(patch.handover) !== undefined
 }
 
+/**
+ * A label name on the wire: a non-empty trimmed string within the tag cap. The
+ * trim/merge/duplicate rules belong to the use case; this gate only keeps a
+ * malformed name off the ledger.
+ */
+function isTagName(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '' && value.trim().length <= TAG_NAME_MAX_LENGTH
+}
+
 function schedulePatch(value: unknown): boolean {
   const patch = record(value)
   return patch !== undefined
-    && exactKeys(patch, ['enabled', 'cron'])
+    && exactKeys(patch, ['enabled', 'cron', 'timeZone'])
     && (patch.enabled === undefined || typeof patch.enabled === 'boolean')
     && (patch.cron === undefined || typeof patch.cron === 'string')
+    // `null` clears the stored zone back to the Host zone; an unknown name is
+    // rejected here so the Host never has to guess at an unusable zone.
+    && (patch.timeZone === undefined || patch.timeZone === null
+      || (typeof patch.timeZone === 'string' && isValidTimeZone(patch.timeZone)))
 }
 
 export function parseActionEnvelope(value: unknown): TaskBoardActionEnvelope | undefined {
@@ -350,6 +433,16 @@ function parseEnvelopeAction(value: unknown): TaskBoardActionEnvelope | undefine
       if (parentId !== null && (typeof parentId !== 'string' || parentId.trim() === '')) return undefined
       return { requestId: envelope.requestId, action: { kind: 'set-parent', taskId, parentId } }
     }
+    case 'rename-tag': {
+      if (!exactKeys(action, ['kind', 'from', 'to'])) return undefined
+      if (!isTagName(action.from) || !isTagName(action.to)) return undefined
+      return { requestId: envelope.requestId, action: { kind: 'rename-tag', from: action.from, to: action.to } }
+    }
+    case 'delete-tag': {
+      if (!exactKeys(action, ['kind', 'name'])) return undefined
+      if (!isTagName(action.name)) return undefined
+      return { requestId: envelope.requestId, action: { kind: 'delete-tag', name: action.name } }
+    }
     case 'set-schedule':
       if (!exactKeys(action, ['kind', 'taskId', 'patch'])) return undefined
       return taskId !== undefined && schedulePatch(action.patch)
@@ -360,10 +453,30 @@ function parseEnvelopeAction(value: unknown): TaskBoardActionEnvelope | undefine
       return taskId !== undefined && isTaskStatus(action.status)
         ? { requestId: envelope.requestId, action: action as unknown as Extract<TaskBoardAction, { kind: 'move' }> }
         : undefined
+    case 'extension-action': {
+      // Structural gate only: whether the id names a registered, enabled
+      // extension is decided by the host registry, which owns that state.
+      if (!exactKeys(action, ['kind', 'extensionId', 'action', 'taskId', 'payload'])) return undefined
+      if (typeof action.extensionId !== 'string' || action.extensionId.trim() === '' || action.extensionId.length > 128) return undefined
+      if (typeof action.action !== 'string' || action.action.trim() === '' || action.action.length > 128) return undefined
+      if (action.taskId !== undefined && (typeof action.taskId !== 'string' || action.taskId === '')) return undefined
+      if (action.payload !== undefined && !isTaskBoardExtensionPayload(action.payload)) return undefined
+      return {
+        requestId: envelope.requestId,
+        action: {
+          kind: 'extension-action',
+          extensionId: action.extensionId,
+          action: action.action,
+          ...(action.taskId === undefined ? {} : { taskId: action.taskId }),
+          ...(action.payload === undefined ? {} : { payload: action.payload }),
+        },
+      }
+    }
     case 'confirm-permission':
     case 'delete':
     case 'archive':
     case 'restore':
+    case 'settle':
     case 'run':
     case 'rerun':
       if (!exactKeys(action, ['kind', 'taskId'])) return undefined

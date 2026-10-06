@@ -177,6 +177,15 @@ export interface UpdatePackageStatus {
   latest?: string
   /** Whether npm carries a strictly newer release. */
   outdated: boolean
+  /**
+   * The DSH host floor the LATEST release declares, when it declares one.
+   *
+   * Shown next to an available update because a floor that is not met does not
+   * report an error at install time: the host's peer gate skips the whole row at
+   * boot, so the plugin silently disappears and the panel is the only place
+   * that could have said so beforehand (#1767).
+   */
+  requiresDsh?: string
 }
 
 /** Structured release-note sections shown in the update panel. */
@@ -217,6 +226,12 @@ export interface UpdateCheckDeps {
   resolve(specifier: string): string | undefined
   /** Probe one package's latest npm version; undefined on failure. */
   fetchLatest(name: string): Promise<string | undefined>
+  /**
+   * Probe the DSH host floor one package's latest release declares.
+   * Optional: a deployment that does not supply it simply reports no floor,
+   * which is how this behaved before the field existed.
+   */
+  fetchLatestRequirement?(name: string): Promise<string | undefined>
   /** Fetch structured release notes for one target version, when available. */
   fetchReleaseNotes?(version: string): Promise<UpdateReleaseNotes | undefined>
 }
@@ -345,11 +360,72 @@ export async function probeLatestVersions(
  * @param timeoutMs - probe timeout.
  * @returns the latest version string, or undefined on any failure.
  */
-export async function fetchLatestVersion(
+/**
+ * Probe the declared DSH host floor for each package, in the same bounded way
+ * the version probe is. An absent seam answers nothing for every package, so
+ * the status carries no floor rather than failing.
+ * @param names - the package names to probe.
+ * @param fetchLatestRequirement - the probe, when the deployment supplies one.
+ * @returns one entry per name, undefined where no floor was read.
+ */
+export async function probeLatestRequirements(
+  names: readonly string[],
+  fetchLatestRequirement: ((name: string) => Promise<string | undefined>) | undefined,
+): Promise<Array<string | undefined>> {
+  if (fetchLatestRequirement === undefined) return names.map(() => undefined)
+  return Promise.all(names.map(name => fetchLatestRequirement(name).catch(() => undefined)))
+}
+
+/**
+ * Probe the DSH host floor one package's latest release declares.
+ *
+ * Read from the same `<registry>/<pkg>/latest` document the version probe
+ * already fetches, through the SAME helper the plugin manager's compatibility
+ * gate uses, so the panel and the gate can never disagree about what a release
+ * requires (#1767).
+ * @param name - the package name (scope slash URL-encoded).
+ * @param fetchImpl - the fetch implementation (global fetch in the host).
+ * @param timeoutMs - probe timeout.
+ * @returns the declared floor, or undefined when none is declared or the probe failed.
+ */
+export async function fetchLatestDshRequirement(
   name: string,
   fetchImpl: (url: string, init?: RequestInit) => Promise<{ ok: boolean; json(): Promise<unknown> }>,
   timeoutMs = 10_000,
 ): Promise<string | undefined> {
+  const manifest = await fetchLatestManifest(name, fetchImpl, timeoutMs)
+  return manifest === undefined ? undefined : declaredDshFloor(manifest)
+}
+
+/**
+ * The DSH host floor a published registry manifest declares.
+ *
+ * Same precedence the plugin manager compatibility gate reads: dsh.engines.dsh,
+ * then engines.dsh, then peerDependencies on the host package, which is where a
+ * package that declares the host only as a peer still gets its row skipped at
+ * boot. A panel reading fewer of these would stay silent about a floor the gate
+ * does enforce (#1767).
+ *
+ * This duplicates the plugin manager reader deliberately: a cross-package value
+ * import is forbidden and the shared/ mirror carries fixed files, not arbitrary
+ * modules. The parity test pins both readers to the same answers so they cannot
+ * drift apart unnoticed.
+ * @param manifest - the decoded registry version manifest.
+ * @returns the declared floor, or undefined when none is declared.
+ */
+export function declaredDshFloor(manifest: { dsh?: unknown; engines?: unknown; peerDependencies?: unknown }): string | undefined {
+  const dshEngines = (manifest.dsh as { engines?: unknown } | undefined)?.engines as { dsh?: unknown } | undefined
+  const engines = (manifest.engines as { dsh?: unknown } | undefined)?.dsh
+  const peers = (manifest.peerDependencies as Record<string, unknown> | undefined)?.['@deepseek-ai/dsh']
+  const value = dshEngines?.dsh ?? engines ?? peers
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+}
+
+export async function fetchLatestManifest(
+  name: string,
+  fetchImpl: (url: string, init?: RequestInit) => Promise<{ ok: boolean; json(): Promise<unknown> }>,
+  timeoutMs = 10_000,
+): Promise<Record<string, unknown> | undefined> {
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => { controller.abort() }, timeoutMs)
@@ -358,14 +434,23 @@ export async function fetchLatestVersion(
       if (!response.ok) return undefined
       const body = await response.json()
       if (typeof body !== 'object' || body === null) return undefined
-      const version = (body as Record<string, unknown>).version
-      return typeof version === 'string' ? version : undefined
+      return body as Record<string, unknown>
     } finally {
       clearTimeout(timer)
     }
   } catch {
     return undefined
   }
+}
+
+export async function fetchLatestVersion(
+  name: string,
+  fetchImpl: (url: string, init?: RequestInit) => Promise<{ ok: boolean; json(): Promise<unknown> }>,
+  timeoutMs = 10_000,
+): Promise<string | undefined> {
+  const manifest = await fetchLatestManifest(name, fetchImpl, timeoutMs)
+  const version = manifest?.version
+  return typeof version === 'string' ? version : undefined
 }
 
 /** Normalize one release-note bullet. */
@@ -522,17 +607,22 @@ export async function checkUpdates(deps: UpdateCheckDeps): Promise<UpdateStatus>
   // failure is shown as a probe failure). Four keeps the status call quick
   // while staying inside the concurrency such a middlebox tolerates (#1677).
   const latestList = await probeLatestVersions(names, deps.fetchLatest)
+  // The floor rides the same registry probe the version came from, so it costs
+  // no extra round trip; a deployment that wires no probe simply reports none.
+  const requirements = await probeLatestRequirements(names, deps.fetchLatestRequirement)
   const packages: UpdatePackageStatus[] = []
   let probeFailures = 0
   names.forEach((name, index) => {
     const latest = latestList[index]
     if (latest === undefined) probeFailures++
     const current = readInstalledVersion(deps.resolve, name, profile.dir)
+    const requiresDsh = requirements[index]
     packages.push({
       name,
       current,
       latest,
       outdated: latest !== undefined && latest !== current && compareVersions(latest, current) > 0,
+      ...requiresDsh === undefined ? {} : { requiresDsh },
     })
   })
   // Registry unreachable: every probe failed — report the outage distinctly

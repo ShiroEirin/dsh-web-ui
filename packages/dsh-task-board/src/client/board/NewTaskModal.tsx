@@ -10,8 +10,12 @@ import { effectiveTaskPermission } from '../../core/subtask.ts'
 import { collectKnownTags, TASK_PERMISSIONS, type TaskPermission, type TaskRecord, type TaskTag } from '../../core/tasks.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import { SCHEDULE_PRESETS } from '../schedule-presets.ts'
-import { ModalShell, TaskContentFields, TaskTagFields, cleanTags } from './TaskForm.tsx'
+import { nextRunLabel, zoneChoices } from '../schedule-zone.ts'
+import { CollapsibleSection, ModalShell, TaskContentFields, TaskTagFields, cleanTags } from './TaskForm.tsx'
+import type { OverlayPhase } from './overlay.tsx'
+import { formatHostTimestamp } from './TaskCard.tsx'
 import { readParseModelPreference, writeParseModelPreference } from './parse-model-pref.ts'
+import { inheritPresetLabel, isBuiltinPreset, presetLabel } from './preset-label.ts'
 import css from '../board.module.css'
 
 export interface NewTaskModalProps {
@@ -32,10 +36,12 @@ export interface NewTaskModalProps {
    * carries the parent link; unset targets inherit again at run time.
    */
   parentTask?: TaskRecord
+  /** Which leg of the enter/exit motion pair the surface is on. */
+  phase?: OverlayPhase
 }
 
 /** New-task form overlay. */
-export function NewTaskModal({ controller, onClose, initialTask, defaultWorkspaceId, onDuplicateSuccess, parentTask }: NewTaskModalProps) {
+export function NewTaskModal({ controller, onClose, initialTask, defaultWorkspaceId, onDuplicateSuccess, parentTask, phase }: NewTaskModalProps) {
   const isDuplicate = initialTask !== undefined
   const [title, setTitle] = useState(initialTask?.title ?? '')
   const [description, setDescription] = useState(initialTask?.description ?? '')
@@ -51,8 +57,15 @@ export function NewTaskModal({ controller, onClose, initialTask, defaultWorkspac
   const [model, setModel] = useState(initialTask?.model ?? parentTask?.model ?? '')
   const inheritedPermission = parentTask === undefined ? undefined : effectiveTaskPermission(parentTask)
   const [reuseSession, setReuseSession] = useState(initialTask?.reuseSession ?? false)
+  // Checked by default: a new task starts its runs with dsh's built-in /goal
+  // unless the user opts out here. A duplicate keeps the original card's choice.
+  const [goalRun, setGoalRun] = useState(initialTask?.goalRun ?? true)
+  const [skipVerification, setSkipVerification] = useState(initialTask?.skipVerification ?? false)
   const [scheduleEnabled, setScheduleEnabled] = useState(initialTask?.schedule?.enabled ?? false)
   const [scheduleCron, setScheduleCron] = useState(initialTask?.schedule?.cron ?? '')
+  // '' means "follow the Host zone" (store no zone), which is the default a
+  // user gets unless they pick one explicitly.
+  const [scheduleZone, setScheduleZone] = useState(initialTask?.schedule?.timeZone ?? '')
   const [scheduleError, setScheduleError] = useState<string | undefined>(undefined)
   const [freezeText, setFreezeText] = useState('')
   const [freezeError, setFreezeError] = useState<string | undefined>(undefined)
@@ -175,8 +188,12 @@ export function NewTaskModal({ controller, onClose, initialTask, defaultWorkspac
       permission: permission === '' ? undefined : permission as TaskPermission,
       model: model === '' ? undefined : model,
       ...(reuseSession ? { reuseSession: true } : {}),
+      ...(goalRun ? {} : { goalRun: false }),
+      ...(skipVerification ? { skipVerification: true } : {}),
       ...(tagList.length > 0 ? { tags: tagList } : {}),
-      schedule: scheduleEnabled ? { enabled: true, cron: scheduleCron.trim() } : undefined,
+      schedule: scheduleEnabled
+        ? { enabled: true, cron: scheduleCron.trim(), ...(scheduleZone === '' ? {} : { timeZone: scheduleZone }) }
+        : undefined,
     })
     if (task === undefined) {
       setPending(false)
@@ -201,14 +218,60 @@ export function NewTaskModal({ controller, onClose, initialTask, defaultWorkspac
     onClose()
   }
 
-  /** Next-run preview for a valid armed cron (creation-time only). */
+  // Next-run preview for a valid armed cron (creation-time only), computed in
+  // the selected zone so it matches what the Host will arm.
+  const hostTimeZone = controller.getSnapshot().host?.scheduler.timeZone
+  const scheduleTimeZone = scheduleZone === '' ? hostTimeZone : scheduleZone
   const scheduleNextRun = scheduleEnabled && scheduleCron.trim() !== '' && isValidCron(scheduleCron)
-    ? nextRunAtMs(scheduleCron, Date.now())
+    ? nextRunAtMs(scheduleCron, Date.now(), scheduleTimeZone)
     : undefined
 
   const modalTitle = parentTask !== undefined
     ? t('new.subtaskTitle')
     : isDuplicate ? t('new.duplicateTitle') : t('board.new')
+
+  // Agent-preset picker rows: the four built-in presets first, then every other
+  // roster row (user presets). The inherit option names the preset a run
+  // actually lands on when the card pins nothing.
+  const builtinPresets = options.presets.filter(preset => isBuiltinPreset(preset.id))
+  const customPresets = options.presets.filter(preset => !isBuiltinPreset(preset.id))
+  const inheritLabel = inheritPresetLabel(options.presets)
+  const selectedPreset = options.presets.find(preset => preset.id === mode)
+  const modeLabel = mode === '' ? inheritLabel : selectedPreset === undefined ? mode : presetLabel(selectedPreset)
+  const workspaceLabel = workspaceId === ''
+    ? t('exec.workspace.recent')
+    : options.workspaces.find(item => item.workspaceId === workspaceId)?.title ?? workspaceId
+  const permissionLabel = permission === ''
+    ? inheritedPermission === undefined
+      ? t('exec.permission.default')
+      : t('exec.permission.inheritParent', { permission: t(`exec.permission.${inheritedPermission}` as TaskBoardKey) })
+    : t(`exec.permission.${permission}` as TaskBoardKey)
+  const modelLabel = model === ''
+    ? t('exec.model.default')
+    : (options.models ?? []).find(item => item.id === model)?.name ?? model
+  // Collapsed-region summaries: what each closed region currently holds, so a
+  // collapse never hides the configuration without a trace.
+  // A host-default model adds only the long parenthetical name to the
+  // collapsed line, so it is summarized only once it is actually pinned.
+  const executionSummary = [
+    workspaceLabel,
+    modeLabel,
+    permissionLabel,
+    ...(model === '' ? [] : [modelLabel]),
+  ].join(' · ')
+  const tagCount = cleanTags(tags).length
+  const labelsSummary = tagCount === 0 ? t('new.summary.none') : t('new.summary.labelCount', { count: String(tagCount) })
+  const runSummary = [
+    goalRun ? t('new.summary.multiRound') : t('new.summary.singleRound'),
+    ...(reuseSession ? [t('exec.reuseSession')] : []),
+  ].join(' · ')
+  const handoverSummary = freezeText.trim() !== '' || handoverText.trim() !== ''
+    ? t('new.summary.filled')
+    : t('new.summary.none')
+  const scheduleSummary = !scheduleEnabled
+    ? t('new.summary.scheduleOff')
+    : scheduleCron.trim() === '' ? t('new.summary.none') : scheduleCron.trim()
+  const parseSummary = parseText.trim() === '' ? t('new.summary.none') : t('new.summary.filled')
 
   return (
     <ModalShell
@@ -219,54 +282,61 @@ export function NewTaskModal({ controller, onClose, initialTask, defaultWorkspac
       submitLabel={t('new.submit')}
       onSubmit={() => { void submit(false) }}
       onClose={onClose}
+      phase={phase}
       secondaryAction={{ label: t('new.createAndRun'), onSubmit: () => { void submit(true) } }}
     >
       {canParse && (
-        <section className={css.aiParse} data-dsh-part="ai-parse">
-          <span className={css.fieldLabel}>{t('new.aiParse')}</span>
-          <p className={css.fieldHint}>{t('new.aiParseHint')}</p>
-          <textarea
-            className={css.input}
-            rows={3}
-            value={parseText}
-            placeholder={t('new.aiParsePlaceholder')}
-            spellCheck={false}
-            onChange={event => { setParseText(event.target.value); setParseError(undefined) }}
-          />
-          <div className={css.aiParseRow}>
-            <select
-              className={css.select}
-              value={parseModel}
-              aria-label={t('new.aiParseModel')}
-              onChange={event => {
-                setParseModel(event.target.value)
-                writeParseModelPreference(event.target.value)
-              }}
-            >
-              <option value="">{t('exec.model.default')}</option>
-              {parseModels.map(option => (
-                <option key={option.id} value={option.id}>{option.name ?? option.id}</option>
-              ))}
-            </select>
-            {parsePending
-              ? (
-                <button type="button" className={css.ghostButton} onClick={() => { parseAbort.current?.abort() }}>
-                  {t('new.aiParseCancel')}
-                </button>
-                )
-              : (
-                <button
-                  type="button"
-                  className={css.primaryButton}
-                  disabled={parseText.trim() === ''}
-                  onClick={() => { void runParse() }}
-                >
-                  {t('new.aiParseRun')}
-                </button>
-                )}
-          </div>
-          {parseError !== undefined && <p className={css.formError}>{parseError}</p>}
-        </section>
+        <CollapsibleSection
+          title={t('new.section.parse')}
+          summary={parseSummary}
+          forceOpen={parseError !== undefined}
+        >
+          <section className={css.aiParse} data-dsh-part="ai-parse">
+            <span className={css.fieldLabel}>{t('new.aiParse')}</span>
+            <p className={css.fieldHint}>{t('new.aiParseHint')}</p>
+            <textarea
+              className={css.input}
+              rows={3}
+              value={parseText}
+              placeholder={t('new.aiParsePlaceholder')}
+              spellCheck={false}
+              onChange={event => { setParseText(event.target.value); setParseError(undefined) }}
+            />
+            <div className={css.aiParseRow}>
+              <select
+                className={css.select}
+                value={parseModel}
+                aria-label={t('new.aiParseModel')}
+                onChange={event => {
+                  setParseModel(event.target.value)
+                  writeParseModelPreference(event.target.value)
+                }}
+              >
+                <option value="">{t('exec.model.default')}</option>
+                {parseModels.map(option => (
+                  <option key={option.id} value={option.id}>{option.name ?? option.id}</option>
+                ))}
+              </select>
+              {parsePending
+                ? (
+                  <button type="button" className={css.ghostButton} onClick={() => { parseAbort.current?.abort() }}>
+                    {t('new.aiParseCancel')}
+                  </button>
+                  )
+                : (
+                  <button
+                    type="button"
+                    className={css.primaryButton}
+                    disabled={parseText.trim() === ''}
+                    onClick={() => { void runParse() }}
+                  >
+                    {t('new.aiParseRun')}
+                  </button>
+                  )}
+            </div>
+            {parseError !== undefined && <p className={css.formError}>{parseError}</p>}
+          </section>
+        </CollapsibleSection>
       )}
 
       {parentTask !== undefined && (
@@ -275,42 +345,32 @@ export function NewTaskModal({ controller, onClose, initialTask, defaultWorkspac
         </p>
       )}
 
-      <TaskContentFields
-        title={title}
-        description={description}
-        prompt={prompt}
-        onTitleChange={value => { setTitle(value); setError(undefined) }}
-        onDescriptionChange={setDescription}
-        onPromptChange={setPrompt}
-      />
+      <CollapsibleSection title={t('new.section.content')} defaultOpen>
+        <TaskContentFields
+          title={title}
+          description={description}
+          prompt={prompt}
+          onTitleChange={value => { setTitle(value); setError(undefined) }}
+          onDescriptionChange={setDescription}
+          onPromptChange={setPrompt}
+        />
+        {isDuplicate && (
+          <label className={css.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={archiveOriginal}
+              onChange={event => { setArchiveOriginal(event.target.checked) }}
+            />
+            <span>{t('new.archiveOriginal')}</span>
+          </label>
+        )}
+      </CollapsibleSection>
 
-      <TaskTagFields tags={tags} knownTags={collectKnownTags(controller.getSnapshot().tasks)} onChange={setTags} />
+      <CollapsibleSection title={t('new.section.labels')} summary={labelsSummary}>
+        <TaskTagFields tags={tags} knownTags={collectKnownTags(controller.getSnapshot().tasks)} onChange={setTags} />
+      </CollapsibleSection>
 
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('new.freeze')}</span>
-          <textarea
-            className={css.input}
-            rows={4}
-            value={freezeText}
-            placeholder={t('new.freezePlaceholder')}
-            spellCheck={false}
-            onChange={event => { setFreezeText(event.target.value); setFreezeError(undefined) }}
-          />
-        </label>
-        {freezeError !== undefined && <p className={css.formError}>{freezeError}</p>}
-
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('new.handover')}</span>
-          <textarea
-            className={css.input}
-            rows={3}
-            value={handoverText}
-            placeholder={t('new.handoverPlaceholder')}
-            spellCheck={false}
-            onChange={event => { setHandoverText(event.target.value) }}
-          />
-        </label>
-
+      <CollapsibleSection title={t('new.section.execution')} summary={executionSummary}>
         <label className={css.field}>
           <span className={css.fieldLabel}>{t('new.workspace')}</span>
           <select
@@ -327,21 +387,36 @@ export function NewTaskModal({ controller, onClose, initialTask, defaultWorkspac
         </label>
 
         <label className={css.field}>
-          <span className={css.fieldLabel}>{t('new.mode')}</span>
+          <span className={css.fieldLabel}>{t('new.agentPreset')}</span>
           <select
             className={css.select}
             value={mode}
             onChange={event => { setMode(event.target.value) }}
           >
-            <option value="">{t('exec.mode.default')}</option>
+            <option value="">{inheritLabel}</option>
             {!modeKnown && <option value={mode}>{mode}{t('exec.mode.removed')}</option>}
-            {options.presets.map(preset => (
-              <option key={preset.id} value={preset.id} disabled={preset.broken !== undefined}>
-                {preset.name ?? preset.id}
-                {preset.isDefault ? t('exec.mode.defaultSuffix') : ''}
-                {preset.broken !== undefined ? t('exec.mode.brokenSuffix') : ''}
-              </option>
-            ))}
+            {builtinPresets.length > 0 && (
+              <optgroup label={t('exec.mode.builtinGroup')}>
+                {builtinPresets.map(preset => (
+                  <option key={preset.id} value={preset.id} disabled={preset.broken !== undefined}>
+                    {presetLabel(preset)}
+                    {preset.isDefault ? t('exec.mode.defaultSuffix') : ''}
+                    {preset.broken !== undefined ? t('exec.mode.brokenSuffix') : ''}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {customPresets.length > 0 && (
+              <optgroup label={t('exec.mode.customGroup')}>
+                {customPresets.map(preset => (
+                  <option key={preset.id} value={preset.id} disabled={preset.broken !== undefined}>
+                    {presetLabel(preset)}
+                    {preset.isDefault ? t('exec.mode.defaultSuffix') : ''}
+                    {preset.broken !== undefined ? t('exec.mode.brokenSuffix') : ''}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </label>
 
@@ -375,7 +450,9 @@ export function NewTaskModal({ controller, onClose, initialTask, defaultWorkspac
             ))}
           </select>
         </label>
+      </CollapsibleSection>
 
+      <CollapsibleSection title={t('new.section.run')} summary={runSummary}>
         <label className={css.scheduleToggle}>
           <input
             type="checkbox"
@@ -386,65 +463,125 @@ export function NewTaskModal({ controller, onClose, initialTask, defaultWorkspac
         </label>
         <p className={css.detailText}>{t('exec.reuseSessionHint')}</p>
 
-        <section className={css.detailSection}>
-          <h4>{t('detail.schedule')}</h4>
-          <label className={css.scheduleToggle}>
-            <input
-              type="checkbox"
-              checked={scheduleEnabled}
-              onChange={event => {
-                setScheduleEnabled(event.target.checked)
-                if (!event.target.checked) setScheduleError(undefined)
-              }}
-            />
-            <span>{t('detail.schedule.enable')}</span>
-          </label>
-          {scheduleEnabled && (
-            <>
-              <div className={css.scheduleRow}>
-                <input
-                  className={`${css.input} ${css.scheduleInput}${scheduleError !== undefined ? ` ${css.scheduleInputInvalid}` : ''}`}
-                  value={scheduleCron}
-                  placeholder="0 9 * * *"
-                  spellCheck={false}
-                  aria-label={t('detail.schedule.cron')}
-                  onChange={event => { setScheduleCron(event.target.value); setScheduleError(undefined) }}
-                />
-                <select
-                  className={css.schedulePreset}
-                  value=""
-                  aria-label={t('detail.schedule.presets')}
-                  onChange={event => {
-                    if (event.target.value === '') return
-                    setScheduleCron(event.target.value)
-                    setScheduleError(undefined)
-                  }}
-                >
-                  <option value="">{t('detail.schedule.presets')}…</option>
-                  {SCHEDULE_PRESETS.map(preset => (
-                    <option key={preset.cron} value={preset.cron}>{t(preset.label)}</option>
-                  ))}
-                </select>
-              </div>
-              {scheduleError !== undefined && <p className={css.formError}>{scheduleError}</p>}
-              {scheduleError === undefined && scheduleNextRun !== undefined && (
-                <p className={css.scheduleMeta}>
-                  {t('detail.schedule.nextRun')} {new Date(scheduleNextRun).toLocaleString()}
-                </p>
-              )}
-            </>
-          )}
-        </section>
-        {isDuplicate && (
-          <label className={css.checkboxLabel} style={{ marginTop: '12px' }}>
-            <input
-              type="checkbox"
-              checked={archiveOriginal}
-              onChange={event => { setArchiveOriginal(event.target.checked) }}
-            />
-            <span>{t('new.archiveOriginal')}</span>
-          </label>
+        <label className={css.scheduleToggle}>
+          <input
+            type="checkbox"
+            checked={goalRun}
+            onChange={event => { setGoalRun(event.target.checked) }}
+          />
+          <span>{t('exec.goalRun')}</span>
+        </label>
+        <p className={css.detailText}>{t('exec.goalRunHint')}</p>
+
+        <label className={css.scheduleToggle}>
+          <input
+            type="checkbox"
+            checked={skipVerification}
+            onChange={event => { setSkipVerification(event.target.checked) }}
+          />
+          <span>{t('exec.skipVerification')}</span>
+        </label>
+        <p className={css.detailText}>{t('exec.skipVerificationHint')}</p>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={t('new.section.handover')}
+        summary={handoverSummary}
+        forceOpen={freezeError !== undefined}
+      >
+        <label className={css.field}>
+          <span className={css.fieldLabel}>{t('new.freeze')}</span>
+          <textarea
+            className={css.input}
+            rows={4}
+            value={freezeText}
+            placeholder={t('new.freezePlaceholder')}
+            spellCheck={false}
+            onChange={event => { setFreezeText(event.target.value); setFreezeError(undefined) }}
+          />
+        </label>
+        {freezeError !== undefined && <p className={css.formError}>{freezeError}</p>}
+
+        <label className={css.field}>
+          <span className={css.fieldLabel}>{t('new.handover')}</span>
+          <textarea
+            className={css.input}
+            rows={3}
+            value={handoverText}
+            placeholder={t('new.handoverPlaceholder')}
+            spellCheck={false}
+            onChange={event => { setHandoverText(event.target.value) }}
+          />
+        </label>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={t('new.section.schedule')}
+        summary={scheduleSummary}
+        forceOpen={scheduleError !== undefined}
+      >
+        <label className={css.scheduleToggle}>
+          <input
+            type="checkbox"
+            checked={scheduleEnabled}
+            onChange={event => {
+              setScheduleEnabled(event.target.checked)
+              if (!event.target.checked) setScheduleError(undefined)
+            }}
+          />
+          <span>{t('detail.schedule.enable')}</span>
+        </label>
+        {scheduleEnabled && (
+          <>
+            <div className={css.scheduleRow}>
+              <input
+                className={`${css.input} ${css.scheduleInput}${scheduleError !== undefined ? ` ${css.scheduleInputInvalid}` : ''}`}
+                value={scheduleCron}
+                placeholder="0 9 * * *"
+                spellCheck={false}
+                aria-label={t('detail.schedule.cron')}
+                onChange={event => { setScheduleCron(event.target.value); setScheduleError(undefined) }}
+              />
+              <select
+                className={css.schedulePreset}
+                value=""
+                aria-label={t('detail.schedule.presets')}
+                onChange={event => {
+                  if (event.target.value === '') return
+                  setScheduleCron(event.target.value)
+                  setScheduleError(undefined)
+                }}
+              >
+                <option value="">{t('detail.schedule.presets')}…</option>
+                {SCHEDULE_PRESETS.map(preset => (
+                  <option key={preset.cron} value={preset.cron}>{t(preset.label)}</option>
+                ))}
+              </select>
+            </div>
+            {scheduleError !== undefined && <p className={css.formError}>{scheduleError}</p>}
+            <label className={css.scheduleZone}>
+              <span>{t('detail.schedule.timeZone')}</span>
+              <select
+                className={css.schedulePreset}
+                value={scheduleZone}
+                aria-label={t('detail.schedule.timeZone')}
+                title={t('detail.schedule.timeZoneHint')}
+                onChange={event => { setScheduleZone(event.target.value); setScheduleError(undefined) }}
+              >
+                {zoneChoices(hostTimeZone, initialTask?.schedule?.timeZone).map(choice => (
+                  <option key={choice.id === '' ? '__host' : choice.id} value={choice.id}>{choice.label}</option>
+                ))}
+              </select>
+            </label>
+            {scheduleError === undefined && scheduleNextRun !== undefined && (
+              <p className={css.scheduleMeta}>
+                {t('detail.schedule.nextRun')}{' '}
+                {nextRunLabel(scheduleNextRun, scheduleTimeZone, formatHostTimestamp, Date.now())}
+              </p>
+            )}
+          </>
         )}
+      </CollapsibleSection>
     </ModalShell>
   )
 }

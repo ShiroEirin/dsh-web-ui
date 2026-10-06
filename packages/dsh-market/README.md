@@ -1,13 +1,21 @@
-# @linxin666/dsh-client-ui-market
+# dsh-market · DSH Workshop In-GUI Marketplace & One-Click Asset Installer
 
 English | [中文](README.zh.md)
 
-Workshop store card for the DSH Web GUI settings page: one first-level Workshop
-section that browses [dsh-market.com](https://dsh-market.com) from inside the GUI and installs skins,
-pets, plugins and community presets locally with one click; installed items are managed by their own
-surfaces (Skin Center, Pet, the plugin manager in the official Plugins section, and the Presets panel
-this card's preset tab renders). The leading 编辑推荐 (Editor's Picks) tab pins a small fixed
-selection of skins, pets and community plugins.
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-client-ui-market?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>In-GUI Workshop Marketplace & One-Click Asset Installer for DeepSeek Harness (DSH)</strong><br>
+  <em>Unified dsh-market.com Browser · One-Click Themes / Pets / Presets / Plugins · Trending Rankings · Zero Restart</em>
+</p>
+
+The in-GUI Workshop marketplace card for DeepSeek Harness (DSH) Web GUI and official desktop client: browse themes, skins, animated desktop pets, ecosystem plugins, and community agent presets from [dsh-market.com](https://dsh-market.com) with one-click local installation and instant activation directly inside Settings.
 
 ## What it does
 
@@ -24,8 +32,15 @@ selection of skins, pets and community plugins.
   inert library `$DSH_HOME/agent-presets/<id>/`, which no discovery root scans; enabling one moves it
   into the roster's user root through the Presets panel. Reinstalling an existing directory asks for
   confirmation and replaces it atomically.
-- One-click plugin install through the optional `pluginManager` service (provided by
-  `@linxin666/dsh-client-ui-plugin-manager`); without it the card degrades to the copy-command index.
+- One-click plugin install reuses the official writer: it goes through the official in-process
+  plugin manager's remote face (`ctx.remote.pluginManager.installBundle`, the very call the official
+  Plugins page makes) whenever the host publishes it — on the packaged Desktop client that manager is
+  the only writer, because the CLI refuses the application-owned profile — and falls back to the
+  family `pluginManager` service (`@linxin666/dsh-client-ui-plugin-manager`) otherwise. Without
+  either the card degrades to the copy-command index.
+- An installed plugin is managed in the official container, not here: the card's manage action calls
+  that page's `pluginNavigation.openBundle(packageName)`, which opens the bundle's page in the
+  official Plugins panel, where enablement, uninstall and the install diagnostics stream already live.
 - Remote browsers see the read-only catalog: install buttons are hidden, the Workshop site link and
   copy-command fallbacks stay available.
 - External links — the Workshop site, a card name, a repository, a skin preview — open in the

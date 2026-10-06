@@ -16,7 +16,7 @@
  *                 [data-composer-placeholder]
  *   · hero        [data-phase="hero"]
  *
- * Deliberately NOT touched: html[data-dsh-wallpaper-active] and
+ * Deliberately NOT touched: html[data-we-wallpaper] and
  * html[data-dsh-backdrop-active]. The loader owns those — it neutralises scene
  * backgrounds behind a wallpaper and re-blurs the composer card itself — so the
  * canvas rule below steps aside instead of fighting it.
@@ -71,7 +71,7 @@ html[data-dsh-skin="whale-fantasy"] body::after {
    wallpaper. The crystal engine was fixed first (see the note further down); the
    material and anime engines still carried the dead form, which is also why
    verify() rejected all eleven of them and no theme could be rebuilt. */
-html[data-dsh-skin="whale-fantasy"] body[data-dsh-wallpaper-active]::after,
+html[data-dsh-skin="whale-fantasy"] body[data-we-wallpaper]::after,
 html[data-dsh-skin="whale-fantasy"] body[data-dsh-backdrop-active]::after {
   background-color: transparent;
   background-image: none;
@@ -296,10 +296,13 @@ html[data-dsh-skin="whale-fantasy"] body [data-dsh-skin-layer='background'] {
    position: relative + z-index: 2 之后会掉进文档流（实测工作区菜单与模式菜单被排到
    y=1338、视口之外，表现就是「主界面上点了工作区和模式没反应」）。门户自带
    position: fixed + z-index: 1100，必须让它们留着。
-   应用主体就是 #root（id 写在 index.html 里，四种壳共用同一份 HTML）；第二条兜底
-   只对「既没有 role 也没有 class 的裸根 div」生效，门户一定带 class 或 role，不会再被误伤。 */
-html[data-dsh-skin="whale-fantasy"] body > #root,
-html[data-dsh-skin="whale-fantasy"] body > div:not([data-dsh-skin-layer]):not([data-dsh-plugin]):not([role]):not([class]) {
+   应用主体就是 #root（id 写在 index.html 里，四种壳共用同一份 HTML），所以只认它。
+   **兜底选择器已删除，不要再加回来**：宿主壳挂到 body 的直系容器未必带 class 或 role ——
+   Windows 桌面端的窗口菜单宿主只带 data-windows-menu（role="menubar" 在它的 shadow 树里），
+   被旧兜底命中后 position: fixed 被改写成 relative、z-index 1100 被改成 2，caption 左上的
+   「应用 / 编辑」随即消失且点不到（#1802）。声明与旧版逐字一致，只是作用对象只剩 #root；
+   tests/body-child-host-shells.spec.ts 用机械断言钉住「body 直系裸 div 不得当规则主体」。 */
+html[data-dsh-skin="whale-fantasy"] body > #root {
   position: relative;
   z-index: 2;
 }
@@ -656,13 +659,16 @@ html[data-dsh-skin="whale-fantasy"] body [data-dsh-surface='session-header'] {
   --dsw-alias-label-tertiary: #9ab1d2;
   --dsw-alias-state-business-primary: #3a7bfffa;
 }
-html[data-dsh-skin="whale-fantasy"] body [data-dsh-surface='session-header']::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-color: var(--ff-glass-card);
+/* **坑（与 rainy-night 是同一个 bug）**：这层玻璃原先挂在
+   [data-dsh-surface='session-header'] 的 ::before 上（position: absolute; inset: 0）。
+   而那个元素在真壳里是 **display: contents** —— 它不生成盒子，于是绝对定位的 ::before 的
+   包含块一路退到最近的定位祖先 [data-phase='active']（实测 280,0,1400x1000），
+   一条本该只填 76px 横带的规则，变成**整列对话区上的一层夜**（58% 的面板色）。
+   修法：玻璃改挂在**真有那条横带盒子**的元素上（[data-slot='conversation.header'] > header，
+   真壳实测 rect = 280,0,1400,76），整列的那条删掉。
+   这条修复的完整实测与量具见 skins/rainy-night/README.md 的同一节。 */
+html[data-dsh-skin="whale-fantasy"] body [data-slot='conversation.header'] > header {
+  background-color: var(--ff-glass-card) !important;
 }
 
 /* ── 8 · 消息 ──────────────────────────────────────────────────────────────

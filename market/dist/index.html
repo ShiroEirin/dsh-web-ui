@@ -53,6 +53,8 @@ img { max-width: 100%; }
   overflow: hidden; background: #030b14;
   contain: paint; isolation: isolate;
 }
+/* 背景动效缺省关闭：canvas 只在开启时才拿到 .ready（见 app.js 的 setEnabled），
+   关闭时 opacity 0，不保留最后一帧当静态背景。 */
 #bgCanvas {
   display: block; width: 100%; height: 100%;
   opacity: 0; transition: opacity .5s ease; pointer-events: none;
@@ -542,7 +544,8 @@ dialog.mk-dialog::backdrop { background: #020712cc; backdrop-filter: blur(12px);
     <a href="https://github.com/zhu1090093659/dsh-web" target="_blank" rel="noopener noreferrer">仓库</a>
     <span>点赞按设备计一票；安装量为工坊成功安装计数</span>
     <span class="mk-api-state" id="apiState"></span>
-    <button type="button" class="motion-button" id="motion" aria-pressed="true">背景动效：开启</button>
+    <button type="button" class="motion-button" id="motion" aria-pressed="false"
+      title="开启背景动效：全屏 WebGL 液态噪波背景会持续占用 GPU">背景动效：关闭</button>
   </footer>
 </main>
 

@@ -17,7 +17,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { SettingsDescribeOptions, SettingsDescriptor, SettingsForms, SettingsPathOp } from '@deepseek-ai/dsh-settings'
 import { SettingsConflictError } from '@deepseek-ai/dsh-settings'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { composeAllowlist, extractWebSettingsNamespaces, resolveNamespaceEntry } from './allowlist.ts'
+import { composeAllowlist, extractWebSettingsNamespaces, resolveNamespaceEntries, resolveNamespaceEntry } from './allowlist.ts'
 import { WEB_UI_SETTINGS_BRIDGE_PREFIX } from './protocol.ts'
 import type { BridgeDescribeResult, BridgeMutateRequest, BridgeMutateResult, BridgeNamespaceView } from './protocol.ts'
 import { readJsonBody, writeJson } from './http.ts'
@@ -190,20 +190,56 @@ function entryIdOf(entry: BridgeProfileEntry): string | undefined {
 }
 
 /**
- * The family settings namespace one profile row serves. A standalone install
+ * The family settings namespaces one profile row serves. A standalone install
  * names the family client package directly; an aggregate install names the
  * `dsh-web-all/<x>` subplugin while its config points at the same client
  * package. Both resolve through the allowlist's package-name table, so the
  * bridge never invents a second identity mapping.
  * @param entry - one profile entry.
- * @returns the family settings namespace, or undefined for a row the bridge does not serve.
+ * @returns every family settings namespace the row serves, in a stable order.
  */
-function entryNamespace(entry: BridgeProfileEntry): string | undefined {
+function entryNamespaces(entry: BridgeProfileEntry): string[] {
+  const found: string[] = []
   for (const identity of entryIdentities(entry)) {
-    const ns = resolveNamespaceEntry(identity)
-    if (ns !== undefined) return ns
+    for (const ns of resolveNamespaceEntries(identity)) {
+      if (!found.includes(ns)) found.push(ns)
+    }
   }
-  return undefined
+  return found
+}
+
+/**
+ * The extra family settings namespaces one entry declares itself, on top of
+ * the one its package identity resolves to.
+ *
+ * A plugin whose Config nests several sub-namespaces under one profile row —
+ * the skin center declares `skin-background`, `skin-custom-theme` and
+ * `skin-wallpaper` — is registered by the Host as a single descriptor keyed by
+ * that row's entry id, with the whole Config object as its `value`. The Host
+ * therefore has one form for the row, but the family cards address one
+ * namespace each. Resolving only the first alias made the other two absent
+ * from the served map, so the allowlist could never intersect them in and
+ * every write to them was refused as `settings-not-exposed` (#1755). Reading
+ * the declared keys back off the descriptor's own value keeps each sub-namespace
+ * bound to the entry id the Host actually writes through.
+ *
+ * @param descriptor - the live descriptor of the entry's row.
+ * @returns the declared sub-namespaces that the allowlist recognizes, in the
+ *   descriptor's own key order.
+ */
+function declaredNamespaces(descriptor: SettingsDescriptor): string[] {
+  const value = descriptor.value
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return []
+  const found: string[] = []
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    // Only a NESTED section counts. The value is the entry's whole Config, so a
+    // plugin that merely carries a field named after some other family's
+    // namespace (a usage entry with a 'pet' key) must not claim that namespace
+    // and shadow the row that actually serves it.
+    if (typeof nested !== 'object' || nested === null || Array.isArray(nested)) continue
+    if (resolveNamespaceEntry(key) !== undefined && !found.includes(key)) found.push(key)
+  }
+  return found
 }
 
 /**
@@ -225,9 +261,13 @@ export function servedNamespaces(deps: NamespaceProjectionDeps, options?: Settin
   for (const descriptor of deps.settings.describe(options ?? { redactSecrets: true })) {
     const ns = String(descriptor.ns)
     const owner = byId.get(ns)
-    const family = owner === undefined ? undefined : entryNamespace(owner)
-    if (family !== undefined) {
-      served.set(family, { descriptor, entryId: ns })
+    // One profile row can serve several family namespaces: the one its package
+    // identity resolves to, plus every sub-namespace the row's own Config
+    // declares (#1755). They all write through the same entry id, so they all
+    // share this descriptor.
+    const families = owner === undefined ? [] : [...entryNamespaces(owner), ...declaredNamespaces(descriptor)]
+    if (families.length > 0) {
+      for (const family of families) served.set(family, { descriptor, entryId: ns })
       continue
     }
     // No profile row to trace: a descriptor already keyed by a family

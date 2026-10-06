@@ -54,12 +54,6 @@
   white-space: nowrap;
 }
 
-.backButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
 /* --- tab bar ------------------------------------------------------------------ */
 
 .tabBar {

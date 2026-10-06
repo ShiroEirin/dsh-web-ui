@@ -4,10 +4,19 @@
  * children on this answer (#1372), so the ledger must track shell applies and
  * disposals exactly, and the route must stay up even when every family row is
  * disabled (the config-less self row holds it).
+ *
+ * The ROWS payload and the DEGRADED ledger answer different questions and must
+ * be read together (issue #1730): a row whose plugin failed during apply is
+ * active — the user must still see its UI entry — while its own API routes are
+ * absent, so the panel that sees a 404 has to ask WHICH row is degraded.
  */
+import { Context } from '@deepseek-ai/cordis'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apply, _resetDegradedRouteForTest } from '../src/shell.ts'
+import { _resetDegradedForTest, listDegraded } from '../src/degraded.ts'
 import { _resetActiveRowsForTest, listActiveRows, recordActiveRow, removeActiveRow } from '../src/rows.ts'
+
+const OWNED_LOCK_REASON = 'task-board ledger is already owned by process 4242'
 
 function fakeRes() {
   const res = {
@@ -61,6 +70,7 @@ function mockHost() {
 function resetAll(): void {
   _resetDegradedRouteForTest()
   _resetActiveRowsForTest()
+  _resetDegradedForTest()
 }
 
 describe('active-row ledger', () => {
@@ -182,11 +192,54 @@ describe('shell row-state surface', () => {
     }
   })
 
-  it('an import-failing row still counts as active (degraded, not disabled)', async () => {
+  it('operator sees an import-failing row still counted as active (degraded, not disabled)', async () => {
+    // Given a family row whose plugin package does not resolve
     const host = mockHost()
-    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {}) // test-standards-allow: console is the shell's own log sink, not a collaborator; this case asserts the row ledger instead
+    // When the row applies
     await apply(host.createCtx() as never, { plugin: '@linxin666/definitely-missing-package' })
+    // Then the row stays in the active ledger so its UI entry survives the failure
     expect(listActiveRows()).toEqual(['@linxin666/definitely-missing-package'])
+    vi.mocked(console.error).mockRestore()
+  })
+})
+
+describe('active rows and the degraded ledger disagree on purpose (#1730)', () => {
+  beforeEach(resetAll)
+  afterEach(resetAll)
+
+  it('operator finds the row under /rows while /degraded explains why its API is absent', async () => {
+    // Given a LIVE cordis root where a family row's plugin throws during apply
+    // (the second-DSH-instance shape: the ledger lock belongs to the other
+    // process, so this row registers none of its own routes)
+    vi.spyOn(console, 'error').mockImplementation(() => {}) // test-standards-allow: console is the shell's own log sink, not a collaborator; this case asserts both route payloads instead
+    const routes = new Map<string, (req: unknown, res: unknown) => Promise<void> | void>()
+    const root = new Context()
+    root.provide('webServer', {
+      register(route: { path: string; handler: (req: unknown, res: unknown) => Promise<void> | void }) {
+        routes.set(route.path, route.handler)
+        return () => { routes.delete(route.path) }
+      },
+    } as never)
+    const throwingRow = new URL('./fixtures/throwing-row.ts', import.meta.url).href
+
+    // When the row applies and fails
+    await root.plugin(apply as never, { plugin: throwingRow } as never)
+
+    // Then the row ledger still lists it...
+    const rowsRes = fakeRes()
+    await routes.get('/api/dsh-web-all/rows')?.({ socket: { remoteAddress: '127.0.0.1' } }, rowsRes)
+    expect(JSON.parse(rowsRes.body ?? '{}')).toEqual({ ok: true, children: [throwingRow] })
+
+    // ...and the degraded ledger is NOT empty: it names the row and its reason,
+    // which is the only honest signal the panel can turn into advice.
+    expect(listDegraded()).toEqual([
+      expect.objectContaining({ plugin: throwingRow, stage: 'start', reason: OWNED_LOCK_REASON }),
+    ])
+    const degradedRes = fakeRes()
+    await routes.get('/api/dsh-web-all/degraded')?.({ socket: { remoteAddress: '127.0.0.1' } }, degradedRes)
+    const payload = JSON.parse(degradedRes.body ?? '{}') as { degraded: Array<{ plugin: string; reason: string }> }
+    expect(payload.degraded.some(entry => entry.plugin === throwingRow && entry.reason === OWNED_LOCK_REASON)).toBe(true)
     vi.mocked(console.error).mockRestore()
   })
 })

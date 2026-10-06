@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schemas.linxin666.org/dsh-pet/pet-manifest-v2.schema.json",
+  "petManifestVersion": 2,
+  "id": "long-niang",
+  "displayName": "龙娘",
+  "author": "ZipZipPipe（角色原作）；DSH 移植：zhangyue311",
+  "version": "1.0.0",
+  "description": "由 B 站 UP 主 ZipZipPipe 创作的 Codex/GPT 形象「龙娘」，经 zhangyue311 生成/整理为 DSH 宠物精灵。白紫配色、白发龙角、蝙蝠翼与鳞尾的 Q 版龙娘，身穿带中式结饰的层叠白裙。",
+  "license": "CC-BY-NC-SA-4.0",
+  "renderer": "sprite2d",
+  "sprite2d": {
+    "spritesheetPath": "spritesheet.webp",
+    "cell": {
+      "width": 192,
+      "height": 208
+    },
+    "columns": 8,
+    "atlasRows": 11,
+    "frames": [
+      6,
+      8,
+      8,
+      4,
+      5,
+      8,
+      6,
+      6,
+      6
+    ]
+  }
+}

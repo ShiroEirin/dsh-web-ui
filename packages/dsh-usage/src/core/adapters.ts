@@ -48,6 +48,24 @@ export interface PlanParse {
 export interface ProviderAdapter {
   /** Provider route keys this adapter serves. */
   ids: readonly string[]
+  /**
+   * Route keys that belong to this family for accounting (token folding, the
+   * spend price book, the whale-yuan bank) but must never be probed with this
+   * adapter's endpoints.
+   *
+   * A route reaches the DeepSeek family without an API key when the user is
+   * signed in to a DeepSeek account: the llm-deepseek-account plugin registers
+   * the route id deepseek-account, which authenticates with the account token
+   * rather than a key. Its tokens bill the same account the official route
+   * bills, so the family must own it, but the balance endpoint reads an
+   * API-key account: probing it would either fail on the account token or,
+   * when the user also configured DEEPSEEK_API_KEY, print the API-key account's
+   * money under the account route's name (issue #1772, the same
+   * mis-attribution class as #1688). adapterFor() deliberately does not
+   * resolve these ids, so no probe, credential fallback, or alias fold can
+   * reach them; family membership is read through isDeepSeekProviderRoute().
+   */
+  familyOnlyIds?: readonly string[]
   /** Fallback display name when the LLM runtime has none. */
   displayName: string
   balance?: {
@@ -134,6 +152,10 @@ export const DEEPSEEK_API_ORIGIN = 'https://api.deepseek.com'
 
 const DEEPSEEK: ProviderAdapter = {
   ids: ['deepseek', 'deepseek-official'],
+  // The signed-in DeepSeek account route bills the same account but holds no
+  // API key, so it joins the family for accounting and stays out of the probe
+  // directory (issue #1772).
+  familyOnlyIds: ['deepseek-account'],
   displayName: 'DeepSeek',
   balance: {
     origin: DEEPSEEK_API_ORIGIN,
@@ -518,11 +540,20 @@ export function balanceAppliesToRoute(adapter: ProviderAdapter, baseURL: string 
 /**
  * Whether a provider route belongs to the official DeepSeek family: the only
  * family with a spend price book and a settings-section-owned env credential
- * (llm-deepseek) rather than a pi-ai profile. Drives the env fallback in
- * credential resolution and the fold-time cost stamping.
+ * (llm-deepseek) rather than a pi-ai profile. Drives the fold-time cost
+ * stamping, the client fold-time spend estimate, and the whale-yuan bank.
+ *
+ * Family membership is wider than the probe directory. The account route
+ * (deepseek-account) bills the same account but authenticates with the account
+ * token, so it prices and mints while `adapterFor()` still returns undefined
+ * for it and no probe or env-credential fallback can reach it. Every caller of
+ * this predicate is an accounting decision; the credential and probing
+ * decisions read `adapterFor()` instead, so the two never widen together
+ * (issue #1772).
  */
 export function isDeepSeekProviderRoute(provider: string): boolean {
-  return adapterFor(provider) === DEEPSEEK
+  if (adapterFor(provider) === DEEPSEEK) return true
+  return DEEPSEEK.familyOnlyIds?.includes(provider) === true
 }
 
 /**

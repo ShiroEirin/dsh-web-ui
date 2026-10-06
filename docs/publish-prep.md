@@ -2,31 +2,33 @@
 
 ## 范围
 
-本版本统一发布 `packages/` 下由 `scripts/lib/family-packages.mjs` 发现的 15 个公开家族包；根 package.json 与 shared 私有包不发布，根的 `version` 与家族包同步 bump（git 安装仓库根别名 bundle 时，插件管理器显示的就是它）。所有家族包采用统一版本号（当前为 0.4.2），皮肤中心只随包分发 `blue-fantasy`，其余皮肤由 Workshop 按需安装。
+本版本统一发布 `packages/` 下由 `scripts/lib/family-packages.mjs` 发现的 16 个公开家族包；根 package.json 与 shared 私有包不发布，根的 `version` 与家族包同步 bump（git 安装仓库根别名 bundle 时，插件管理器显示的就是它）。所有家族包采用统一版本号（当前为 0.4.5），皮肤中心只随包分发 `blue-fantasy`，其余皮肤由 Workshop 按需安装。
 
 皮肤中心、宠物、社区插件索引与预设中心已拆分为独立仓库并各自发版：`@linxin666/dsh-client-ui-skin-center`（[dsh-skins](https://github.com/zhu1090093659/dsh-skins)）、`@linxin666/dsh-pet`（[dsh-pet](https://github.com/zhu1090093659/dsh-pet)）、`@linxin666/dsh-client-ui-community-plugins`（[dsh-community-plugins](https://github.com/zhu1090093659/dsh-community-plugins)）、`@linxin666/dsh-client-ui-preset-center`（[dsh-presets](https://github.com/zhu1090093659/dsh-presets)）。本仓的聚合包按 semver 依赖它们，`satellites/` 下各 submodule 的 gitlink 固定市场站要拉取的内容。四个卫星仓与本仓发布同一个版本号：卫星先发、本仓后发，聚合包的依赖范围、锁定条目与 gitlink 随对齐一起更新，逐步流程见 [dsh-web-release 技能](../.agents/skills/dsh-web-release/SKILL.md)。
 
 | 目录 | npm 包 | 版本 | 发布状态 |
 | --- | --- | --- | --- |
-| packages/dsh-git-graph | @linxin666/dsh-client-ui-git-graph | 0.4.2 | public |
-| packages/dsh-i18n | @linxin666/dsh-i18n | 0.4.2 | public |
-| packages/dsh-liangshen | @linxin666/dsh-liangshen | 0.4.2 | public |
-| packages/dsh-market | @linxin666/dsh-client-ui-market | 0.4.2 | public |
-| packages/dsh-model-capabilities | @linxin666/dsh-client-ui-model-capabilities | 0.4.2 | public |
-| packages/dsh-plugin-manager | @linxin666/dsh-client-ui-plugin-manager | 0.4.2 | public |
-| packages/dsh-remote-web-ui | @linxin666/dsh-remote-web-ui | 0.4.2 | public |
-| packages/dsh-session-archive | @linxin666/dsh-session-archive | 0.4.2 | public |
-| packages/dsh-session-id | @linxin666/dsh-client-ui-session-id | 0.4.2 | public |
-| packages/dsh-skill-explorer | @linxin666/dsh-client-ui-skill-explorer | 0.4.2 | public |
-| packages/dsh-ssh | @linxin666/dsh-ssh | 0.4.2 | public |
-| packages/dsh-task-board | @linxin666/dsh-client-ui-task-board | 0.4.2 | public |
-| packages/dsh-usage | @linxin666/dsh-usage | 0.4.2 | public |
-| packages/dsh-web-all | @linxin666/dsh-web-all | 0.4.2 | public |
-| packages/dsh-web-settings | @linxin666/dsh-client-ui-web-ui-settings | 0.4.2 | public |
+| packages/dsh-git-graph | @linxin666/dsh-client-ui-git-graph | 0.4.5 | public |
+| packages/dsh-i18n | @linxin666/dsh-i18n | 0.4.5 | public |
+| packages/dsh-liangshen | @linxin666/dsh-liangshen | 0.4.5 | public |
+| packages/dsh-market | @linxin666/dsh-client-ui-market | 0.4.5 | public |
+| packages/dsh-model-capabilities | @linxin666/dsh-client-ui-model-capabilities | 0.4.5 | public |
+| packages/dsh-plugin-manager | @linxin666/dsh-client-ui-plugin-manager | 0.4.5 | public |
+| packages/dsh-remote-web-ui | @linxin666/dsh-remote-web-ui | 0.4.5 | public |
+| packages/dsh-session-archive | @linxin666/dsh-session-archive | 0.4.5 | public |
+| packages/dsh-session-id | @linxin666/dsh-client-ui-session-id | 0.4.5 | public |
+| packages/dsh-skill-explorer | @linxin666/dsh-client-ui-skill-explorer | 0.4.5 | public |
+| packages/dsh-ssh | @linxin666/dsh-ssh | 0.4.5 | public |
+| packages/dsh-task-board | @linxin666/dsh-client-ui-task-board | 0.4.5 | public |
+| packages/dsh-task-board-github | @linxin666/dsh-client-ui-task-board-github | 0.4.5 | public |
+| packages/dsh-update | @linxin666/dsh-update | 0.4.5 | public |
+| packages/dsh-usage | @linxin666/dsh-usage | 0.4.5 | public |
+| packages/dsh-web-all | @linxin666/dsh-web-all | 0.4.5 | public |
+| packages/dsh-web-settings | @linxin666/dsh-client-ui-web-ui-settings | 0.4.5 | public |
 
 ## 外部依赖与迁移说明
 
-- alpha 分支的聚合包没有任何外部依赖：`dsh-better-sidebar@0.19.1`（2026-09-11 发布的稳定版本）的 peer 区间 `^0.1.5-rc.1` 不覆盖本分支的 `0.1.7-rc.2` cohort，故 `aggregate.yml` 不再声明该行、`package.json` 不再依赖它、锁定它的 `minimumReleaseAgeExclude` 条目也已删除；右侧面板改为按需安装。稳定线 `dev` 仍内置 0.19.1 并保留对应锁定条目。
+- alpha 分支的聚合包没有任何外部依赖：`dsh-better-sidebar@0.19.1`（2026-09-11 发布的稳定版本）的 peer 区间 `^0.1.5-rc.1` 不覆盖本分支的 `0.2.0-rc.2` cohort，故 `aggregate.yml` 不再声明该行、`package.json` 不再依赖它、锁定它的 `minimumReleaseAgeExclude` 条目也已删除；右侧面板改为按需安装。稳定线 `dev` 仍内置 0.19.1 并保留对应锁定条目。
 - 历史聚合包命名迁移：从 `@linxin666/dsh-web-ui-all` 向 `@linxin666/dsh-web-all` 的迁移已在 0.3.3 完成并弃用旧包名，当前统一发布 `@linxin666/dsh-web-all`。
 
 ## 兼容性边界
@@ -50,7 +52,7 @@ pnpm market:fetch
 pnpm market:check
 pnpm libs:check
 pnpm build
-node scripts/verify-version.mjs 0.4.2
+node scripts/verify-version.mjs 0.4.5
 ```
 
-CI 与发布挂载冒烟测试挂载目标为 `@deepseek-ai/dsh@0.1.7-rc.2`，与家族包通过 `dsh.engines.dsh >=0.1.7-rc.2` 声明的最低宿主版本一致。
+CI 与发布挂载冒烟测试挂载目标为 `@deepseek-ai/dsh@0.2.0-rc.2`，与家族包通过 `dsh.engines.dsh >=0.2.0-rc.2` 声明的最低宿主版本一致。

@@ -568,7 +568,7 @@ export class ArchiveService {
           const built = await buildInventory(this.sources(), AbortSignal.timeout(30_000))
           const protectedSet = new Set(this.protectedReason(currentSessionId, built.rows).keys())
           const candidates = autoArchiveCandidates(built.rows, { days: this.config.autoArchiveDays, now: startedAt, protectedIds: protectedSet })
-          const response = await this.archiveInternal(candidates.map((entry) => entry.id), 'auto', currentSessionId)
+          const response = await this.archiveInternal(candidates.map((entry) => entry.id), 'auto', built.nativeIds)
           const stats = this.statsFrom(response.results, startedAt)
           this.autoState.lastArchiveRun = stats
           await this.flushState()
@@ -597,13 +597,13 @@ export class ArchiveService {
   }
 
   /** Archive without re-acquiring the lock (used inside cycles). */
-  private async archiveInternal(ids: readonly string[], source: 'manual' | 'auto', currentSessionId?: string): Promise<BatchResponse> {
+  private async archiveInternal(ids: readonly string[], source: 'manual' | 'auto', nativeIds: Readonly<Record<string, string>>): Promise<BatchResponse> {
     const results: OpResult[] = []
     const now = Date.now()
     for (const id of ids) {
       this.busy.add(id)
       try {
-        await archiveSession(this.ctx, id)
+        await archiveSession(this.ctx, nativeIds[id] ?? id)
         this.ledger.entries[id] = { archivedAt: now, source }
         results.push({ id, status: 'ok' })
       } catch (error) {

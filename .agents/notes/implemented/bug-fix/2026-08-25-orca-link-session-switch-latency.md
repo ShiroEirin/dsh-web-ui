@@ -30,7 +30,7 @@ The dropped sub-item is recorded honestly: deleting the `--orca-status-column` /
 
 ## Consequences
 
-Foreground behavior is visually identical: scene crossfades, character frames, icon art and the signal chip render as before. Hidden tabs stop burning the frame loop and the weave. Per-mutation cost in session load/switch drops from "12 full-tree scans plus per-svg 90-key matching plus layout reads" to short-circuited, cached lookups. The vendor-facing rules are captured in `packages/skins/skin-center/contracts/performance-guidelines-v1.md` so future skins inherit the same discipline. The sprite transform rebuild remains open; The port decision ([orca-link v2 skin port](../../feature/2026-08-25-orca-link-v2-skin-port.md)) stands unchanged: this fix is equivalence-preserving, not a behavior cut.
+Foreground behavior is visually identical: scene crossfades, character frames, icon art and the signal chip render as before. Hidden tabs stop burning the frame loop and the weave. Per-mutation cost in session load/switch drops from "12 full-tree scans plus per-svg 90-key matching plus layout reads" to short-circuited, cached lookups. The vendor-facing rules are captured in `packages/skins/skin-center/contracts/performance-guidelines-v1.md` so future skins inherit the same discipline. The sprite transform rebuild remains open; The port decision ([orca-link v2 skin port](../feature/2026-08-25-orca-link-v2-skin-port.md)) stands unchanged: this fix is equivalence-preserving, not a behavior cut.
 
 ## Verification
 

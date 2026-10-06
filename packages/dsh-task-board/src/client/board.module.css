@@ -30,7 +30,21 @@
 
 /* --- board frame -------------------------------------------------------------- */
 
+/* Board geometry and motion tokens. Every single-line control on the board —
+   the header's buttons, its pickers, its search box, the form inputs — takes
+   its height, radius and spacing from this one place, so a control never
+   drifts off the header's shared track as its padding is tuned. Declared on
+   the board root, which also contains every overlay the board mounts. */
 .board {
+  --dsh-tb-control-h: 30px;
+  --dsh-tb-control-radius: 8px;
+  --dsh-tb-control-gap: 8px;
+  --dsh-tb-icon-size: 30px;
+  --dsh-tb-hit-size: 44px;
+  --dsh-tb-motion-enter: 160ms;
+  --dsh-tb-motion-close: 140ms;
+  --dsh-tb-ease: cubic-bezier(0.2, 0, 0, 1);
+
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -51,6 +65,20 @@
   flex: none;
 }
 
+/* The right-hand toolbar. Filters, view toggles and the create action ride one
+   row on the shared control height, pushed against the trailing edge by their
+   own container so the identity block (title + host meta) and the toolbar read
+   as two groups instead of one undifferentiated strip. */
+.boardTools {
+  display: flex;
+  align-items: center;
+  gap: var(--dsh-tb-control-gap);
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
 .boardTitle {
   margin: 0;
   font-size: 16px;
@@ -68,12 +96,14 @@
 .search {
   flex: 0 1 260px;
   min-width: 120px;
-  padding: 6px 10px;
+  box-sizing: border-box;
+  height: var(--dsh-tb-control-h);
+  padding: 0 10px;
   font-size: 13px;
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-specific-input-major);
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  border-radius: var(--dsh-tb-control-radius);
   outline: none;
 }
 
@@ -190,11 +220,17 @@
 
 /* --- cards -------------------------------------------------------------------- */
 
+/* The card is an article; the stretched .cardOpen button is its keyboard and
+   accessibility target. Content sits above the button (z-index 1) so the
+   badges keep their own tooltips, and the article's click handler opens the
+   detail for any click that is not a quick action. */
 .card {
+  position: relative;
   display: flex;
+  flex: none;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
+  padding: 10px 12px 10px 14px;
   text-align: left;
   background: var(--dsw-alias-bg-base);
   border: 1px solid var(--dsw-alias-border-l2);
@@ -202,8 +238,31 @@
   cursor: pointer;
   color: var(--dsw-alias-label-primary);
   font-family: inherit;
+  overflow: hidden;
   transition: box-shadow 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
+
+.card > :not(.cardOpen) {
+  position: relative;
+  z-index: 1;
+}
+
+/* State stripe: the latest execution's outcome, readable while scanning a
+   column without reading the run count. No tone (never ran, archived) paints
+   nothing. */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: transparent;
+  pointer-events: none;
+}
+
+.card[data-tone='running']::before { background: var(--dsw-alias-state-warn-primary); }
+.card[data-tone='succeeded']::before { background: var(--dsw-alias-state-success-primary); }
+.card[data-tone='failed']::before { background: var(--dsw-alias-state-error-primary); }
+.card[data-tone='cancelled']::before { background: var(--dsw-alias-label-tertiary); }
 
 .card:hover {
   box-shadow: var(--dsw-shadow-lv2);
@@ -211,11 +270,55 @@
   transform: translateY(-1px);
 }
 
+/* Dense columns scroll fast; a lift per hovered row reads as jitter. */
+.card[data-compact]:hover {
+  box-shadow: none;
+  transform: none;
+}
+
 .card[data-status='running'] {
   border-color: var(--dsw-alias-state-warn-primary);
 }
 
+.cardOpen {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.cardOpen:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -2px;
+}
+
+.cardTitleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cardKind {
+  flex: none;
+  margin-top: 1px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
 .cardTitle {
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
@@ -223,6 +326,31 @@
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.card[data-compact] {
+  gap: 2px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.card[data-compact] .cardTitle {
+  font-size: 12px;
+  font-weight: 500;
+  -webkit-line-clamp: 1;
+}
+
+/* Provider decorations join the meta row as inline chips, never a full-width
+   row of their own; an empty decoration takes no space. */
+.cardDecoration {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.cardDecoration:empty {
+  display: none;
 }
 
 .cardExcerpt {
@@ -235,22 +363,31 @@
   -webkit-box-orient: vertical;
 }
 
+/* The meta line holds values that all have to stay readable — the update
+   stamp, the label/schedule/roll-up chips and the run count — so it wraps
+   instead of squeezing the stamp down to an unreadable stub on a narrow
+   column, and the stamp itself keeps its full width. */
 .cardMeta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   font-size: 11px;
   color: var(--dsw-alias-label-tertiary);
 }
 
 .cardTime {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: max-content;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cardSchedule {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   flex: none;
   min-width: 0;
   font-size: 12px;
@@ -266,6 +403,11 @@
   flex: none;
 }
 
+.cardRun[data-declared] {
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
 .cardRun[data-result='failed'] {
   color: var(--dsw-alias-state-error-primary);
 }
@@ -275,8 +417,86 @@
 }
 
 .cardSession {
+  display: inline-flex;
+  align-items: center;
   flex: none;
   color: var(--dsw-alias-state-business-primary);
+}
+
+/* A quick action on a card: a compact icon button above the open control. */
+.cardAction {
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: -4px -4px -4px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cardAction:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.cardAction:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+/* Recency groups inside a settled column. */
+.cardGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cardGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.cardGroupCount {
+  font-weight: 400;
+}
+
+.cardGroupHeader .linkButton {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+/* Per-column density switch in the column header. */
+.densityToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.densityToggle:hover,
+.densityToggle[data-active='true'] {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.densityToggle:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
 }
 
 .cardRunningLabel {
@@ -300,57 +520,74 @@
 
 /* --- buttons ------------------------------------------------------------------ */
 
-.primaryButton {
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--dsw-alias-label-primary-foreground);
-  background: var(--dsw-alias-button-info-fill);
-  border: none;
-  border-radius: 8px;
+/* One geometry, three roles. Every filled, outlined and icon control on the
+   board takes its height, radius and inner alignment from the board tokens, so
+   the header's buttons, the detail footer's actions and every modal footer sit
+   on one track, and a state change (selected, disabled, pending) can never
+   resize the control. Filled actions use the matched primary-action set
+   (button-primary-fill / button-primary-hover / label-primary-foreground) and
+   never a cross-family pair. */
+.primaryButton,
+.ghostButton,
+.dangerButton,
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: var(--dsh-tb-control-h);
+  border-radius: var(--dsh-tb-control-radius);
   cursor: pointer;
   white-space: nowrap;
+  font-family: inherit;
 }
 
-.primaryButton:hover:not(:disabled) {
-  background: var(--dsw-alias-button-info-hover);
+.primaryButton,
+.dangerButton {
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.primaryButton:disabled {
-  opacity: 0.5;
-  cursor: default;
+.primaryButton {
+  color: var(--dsw-alias-label-primary-foreground);
+  background: var(--dsw-alias-button-primary-fill);
+  border: 1px solid transparent;
+}
+
+.dangerButton {
+  color: var(--dsw-alias-label-primary-foreground);
+  background: var(--dsw-alias-state-error-primary);
+  border: 1px solid transparent;
 }
 
 .ghostButton {
-  padding: 5px 12px;
-  font-size: 12px;
+  padding: 0 12px;
+  font-size: 13px;
   color: var(--dsw-alias-label-primary);
   background: transparent;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
+}
+
+/* Selected view toggle. The outlined control keeps its box and only changes
+   role colour, so pressing a toggle cannot move the toolbar around it. */
+.ghostButton[data-active='true'] {
+  color: var(--dsw-alias-label-primary-foreground);
+  background: var(--dsw-alias-button-primary-fill);
+  border-color: transparent;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
 }
 
 .ghostButton:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.ghostButton:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.dangerButton {
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #fff;
-  background: var(--dsw-alias-state-error-primary);
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
+.ghostButton[data-active='true']:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
 }
 
 .dangerButton:hover:not(:disabled) {
@@ -361,29 +598,46 @@
   filter: brightness(0.94);
 }
 
+.primaryButton:disabled,
 .dangerButton:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-.iconButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--dsw-alias-label-secondary);
-  cursor: pointer;
-  font-size: 13px;
+.ghostButton:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
-.iconButton:hover {
+/* Icon-only control: a 30px box on the control track whose pointer target is
+   expanded to the 44px minimum without changing what the eye sees. */
+.iconButton {
+  position: relative;
+  width: var(--dsh-tb-icon-size);
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.iconButton::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--dsh-tb-hit-size);
+  height: var(--dsh-tb-hit-size);
+  transform: translate(-50%, -50%);
+}
+
+.iconButton:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
+}
+
+.iconButton:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .linkButton {
@@ -402,6 +656,12 @@
 
 /* --- modals ------------------------------------------------------------------- */
 
+/* Enter and exit are one motion pair: the backdrop fades while the surface
+   rises from exactly the origin it returns to (8px down, 98% scale, centred).
+   `usePresence` keeps the node mounted through the exit leg and paints
+   `data-state="closing"`, so the reverse leg always runs instead of the node
+   vanishing; both legs keep the surface's dimensions, so nothing behind the
+   overlay reflows. */
 .modalBackdrop {
   position: fixed;
   inset: 0;
@@ -410,15 +670,50 @@
   align-items: center;
   justify-content: center;
   background: var(--dsw-alias-bg-mask-1);
+  animation: dshTbBackdropIn var(--dsh-tb-motion-enter) var(--dsh-tb-ease) both;
+}
+
+.modalBackdrop[data-state='closing'] {
+  animation: dshTbBackdropOut var(--dsh-tb-motion-close) var(--dsh-tb-ease) both;
+}
+
+.modal,
+.detail {
+  animation: dshTbSurfaceIn var(--dsh-tb-motion-enter) var(--dsh-tb-ease) both;
+}
+
+.modalBackdrop[data-state='closing'] .modal,
+.modalBackdrop[data-state='closing'] .detail {
+  animation: dshTbSurfaceOut var(--dsh-tb-motion-close) var(--dsh-tb-ease) both;
+}
+
+@keyframes dshTbBackdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dshTbBackdropOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes dshTbSurfaceIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes dshTbSurfaceOut {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(8px) scale(0.98); }
 }
 
 .modal {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   width: min(520px, calc(100vw - 48px));
   max-height: calc(100vh - 96px);
-  overflow-y: auto;
+  overflow: hidden;
   padding: 18px;
   background: var(--dsw-alias-bg-base);
   border: 1px solid var(--dsw-alias-border-l2);
@@ -449,6 +744,154 @@
   margin-top: 4px;
 }
 
+/* Label manager (label cleanup): a titled overlay with one row per label in
+   use, each carrying its usage count and the two ledger-wide transitions. */
+.modalHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modalHeader > .modalTitle {
+  flex: 1;
+  min-width: 0;
+}
+
+.tagManageList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tagManageRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsh-tb-control-radius);
+}
+
+.tagManageName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.tagManageCount {
+  flex: none;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.tagManageInput {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tagManageMerge {
+  flex: 1 0 100%;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* --- form sections (create/edit dialog) --------------------------------------
+ * The task form groups its configuration into collapsible regions so the
+ * dialog fits without a scrollbar: only the content region starts open, and
+ * every collapsed header carries a one-line summary of what it holds. The
+ * body keeps an overflow fallback for tiny viewports. The chevron is drawn
+ * with borders (no glyph), so no font or emoji can change it.
+ * ----------------------------------------------------------------------------- */
+
+.modalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Every direct child keeps its natural height: a column flex item shrinks by
+   default, and a shrunk region would clip its own fields behind its
+   `overflow: hidden` instead of letting the body scroll. */
+.modalBody > * {
+  flex: none;
+}
+
+.formSection {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--dsw-alias-separator-primary);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.formSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.formSectionHeader:hover {
+  background: var(--dsw-alias-bg-mask-1);
+}
+
+.formSectionChevron {
+  flex: none;
+  width: 0;
+  height: 0;
+  margin-left: 1px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--dsw-alias-label-tertiary);
+  transition: transform 120ms ease;
+}
+
+.formSection[data-open='true'] .formSectionChevron {
+  transform: rotate(90deg);
+}
+
+.formSectionTitle {
+  flex: none;
+}
+
+.formSectionSummary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 400;
+  color: var(--dsw-alias-label-tertiary);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.formSectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--dsw-alias-separator-primary);
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -461,13 +904,18 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+/* Single-line fields (and the multi-line ones, which only grow past the
+   minimum) share the control height, the control radius and the control
+   border, so an input never sits taller than the button beside it. */
 .input {
-  padding: 7px 10px;
+  box-sizing: border-box;
+  min-height: var(--dsh-tb-control-h);
+  padding: 6px 10px;
   font-size: 13px;
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-specific-input-major);
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  border-radius: var(--dsh-tb-control-radius);
   outline: none;
   resize: vertical;
   font-family: inherit;
@@ -478,12 +926,14 @@
 }
 
 .select {
-  padding: 7px 10px;
+  box-sizing: border-box;
+  height: var(--dsh-tb-control-h);
+  padding: 0 10px;
   font-size: 13px;
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-specific-input-major);
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  border-radius: var(--dsh-tb-control-radius);
   outline: none;
   font-family: inherit;
   max-width: 100%;
@@ -626,13 +1076,30 @@
 
 .schedulePreset {
   flex: none;
-  padding: 7px 8px;
+  box-sizing: border-box;
+  height: var(--dsh-tb-control-h);
+  padding: 0 8px;
   font-size: 12.5px;
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-specific-input-major);
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  border-radius: var(--dsh-tb-control-radius);
   outline: none;
+}
+
+/* Zone row: the label and the picker share the cron row's geometry so the two
+   controls read as one editor. */
+.scheduleZone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.scheduleZone select {
+  flex: 1;
+  min-width: 0;
 }
 
 .scheduleMeta {
@@ -656,6 +1123,38 @@
   overflow-wrap: anywhere;
   max-height: 240px;
   overflow-y: auto;
+}
+
+/* --- clamped long content (detail description / prompt) ---------------------
+ * A long markdown body renders behind a fixed clamp with a fade into the
+ * detail surface; the expand toggle exists only when the content really
+ * overflows the clamp (measured at runtime), so short texts are untouched.
+ * The clamp height is read back by ClampedMarkdown through getComputedStyle —
+ * keep the pixel value here only.
+ * --------------------------------------------------------------------------- */
+
+.clampBody {
+  position: relative;
+}
+
+.clampBody[data-clamped='true'] {
+  max-height: 160px;
+  overflow: hidden;
+}
+
+.clampBody[data-clamped='true']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 44px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--dsw-alias-bg-base));
+}
+
+.clampToggle {
+  align-self: flex-start;
 }
 
 .executionList {
@@ -743,6 +1242,11 @@
     padding: 10px;
   }
 
+  /* The header stacks in source order: identity (back control + title), then the
+     host stamp on its own line, then the toolbar, which wraps inside itself —
+     the search takes a full line, the picker and the actions share the next. No
+     order overrides: the toolbar is one group now, and reordering its children
+     from outside the group is what would break this layout. */
   .boardHeader {
     align-items: center;
     flex-wrap: wrap;
@@ -751,30 +1255,37 @@
 
   .backButton {
     flex: 0 0 auto;
-    order: 1;
   }
 
   .boardTitle {
     flex: 1 1 auto;
-    order: 2;
   }
 
   .boardHeader > .detailMeta {
     flex: 1 0 100%;
     margin-left: 0;
-    order: 3;
   }
 
-  .search {
+  .boardTools {
+    flex: 1 0 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .boardTools > .search {
     flex: 1 0 100%;
     min-width: 0;
-    order: 4;
   }
 
-  .boardHeader > button:not(.backButton) {
+  .boardTools > .projectFilter {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .boardTools > button {
     flex: 1 1 0;
     min-width: 0;
-    order: 5;
   }
 
   .columns {
@@ -932,7 +1443,6 @@
  * --------------------------------------------------------------------------- */
 
 /* --- one themed focus-visible ring (approx 2px, 2px offset) --- */
-.card:focus-visible,
 .primaryButton:focus-visible,
 .ghostButton:focus-visible,
 .dangerButton:focus-visible,
@@ -942,7 +1452,8 @@
 .input:focus-visible,
 .select:focus-visible,
 .schedulePreset:focus-visible,
-.scheduleToggle input:focus-visible {
+.scheduleToggle input:focus-visible,
+.formSectionHeader:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: 2px;
 }
@@ -957,7 +1468,9 @@
 .input,
 .select,
 .schedulePreset,
-.scheduleToggle input {
+.scheduleToggle input,
+.formSectionHeader,
+.formSectionChevron {
   transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, outline-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
@@ -1017,12 +1530,30 @@
   .input,
   .select,
   .schedulePreset,
-  .scheduleToggle input {
+  .scheduleToggle input,
+  .formSectionHeader,
+  .formSectionChevron {
     transition: none;
   }
 
   .cardSpinner {
     animation: none;
+  }
+
+  /* Overlay lifecycle without spatial travel: the backdrop and the surface keep
+     a short reversible fade, so entering and leaving stay perceptible and the
+     surface still spends the same time on screen before `usePresence`
+     unmounts it. */
+  .modalBackdrop,
+  .modal,
+  .detail {
+    animation: dshTbBackdropIn var(--dsh-tb-motion-close) linear both;
+  }
+
+  .modalBackdrop[data-state='closing'],
+  .modalBackdrop[data-state='closing'] .modal,
+  .modalBackdrop[data-state='closing'] .detail {
+    animation: dshTbBackdropOut var(--dsh-tb-motion-close) linear both;
   }
 }
 
@@ -1059,7 +1590,10 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin: 0 0 10px;
+  /* The board's own row rhythm spaces this row from the header and the
+     columns; a local margin would double it. */
+  margin: 0;
+  flex: none;
 }
 
 .tagFilterLabel {

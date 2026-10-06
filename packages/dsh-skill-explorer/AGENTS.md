@@ -13,6 +13,12 @@ DSH Web GUI 的**技能中心**插件：侧边栏「技能中心」入口打开�
   路由族（list / set-enabled / create / delete / health），默认 loopback
   围栏，已配对设备 cookie 为额外放行路径（不硬依赖 remote-web-ui）；数据来自
   文件系统扫描（官方根约定）+ `ctx.skills` 注册表合并。
+- **自定义根有两个来源**：本插件 config 的 `customSkillDirs`，以及在用
+  `skill-filesystem` loader 行上的同名配置（官方文档推荐的配法）。只读前者会让
+  注册表报告的 custom 来源技能全部无 path，控件与写路由一起失效（#1801）。
+  派生逻辑是 `collect.ts` 的 `customSkillDirsFromLoader` + `normalizeSkillRoots`，
+  由 `index.ts` 合成一个解析函数传给路由；写路由与 list 路由必须用同一个
+  `panelCwd` 解析工作区，否则跨工作区会 409。改这里时保持两半一致。
 - client 半区（`src/client/`）经官方槽位注册**原生中栏面板**：`native-panel.tsx`
   往 shell 自己的面板列表（`sidebar.panellist`）贡献一行、往布局的 keyed
   `main` 槽贡献页面（`src/client/panel/`，`SkillPanel.tsx` 壳 + 技能/创建

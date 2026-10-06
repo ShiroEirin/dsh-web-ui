@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-旧聚合包迁移是确定性、事务式的替换，分三层落地（更名决策见 [产品更名 note](../../architecture/2026-08-24-product-rename-dsh-web.md)）：
+旧聚合包迁移是确定性、事务式的替换，分三层落地（更名决策见 [产品更名 note](../architecture/2026-08-24-product-rename-dsh-web.md)）：
 
 - 发布管线双发布当前 `@linxin666/dsh-web-all` 与最终 `@linxin666/dsh-web-ui-all`。旧包 tarball 从当前聚合包构建，只改写浏览器 loader id 与 self 行为旧 npm identity，并携带描述目标包和版本的 `dsh.migrate` 元数据。
 - plugin-manager 更新路径识别旧包，返回迁移更新，并通过官方 `dsh plugin` writer 执行 CLI 迁移任务。任务先经官方 CLI 移除旧包，再安装当前聚合包，恢复旧层位置，执行 `--dump-config`，失败时经官方 remove/add 路径回滚。Windows 路径通过受限的 `cmd.exe` 参数调用可信 `dsh.cmd`。

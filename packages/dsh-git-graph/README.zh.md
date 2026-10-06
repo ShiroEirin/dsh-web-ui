@@ -1,32 +1,38 @@
-# dsh-git-graph
+# dsh-git-graph · DeepSeek Harness (DSH) 可视化 Git 提交图谱与多 Agent Worktree 隔离插件
 
 [English](README.md) | 中文
 
-外部 dsh Web GUI 插件：**git 分支选择器**与**Git 图谱**面板。分支选择器只在空白会话显示，挂在官方输入选择器行的 context 洞（`conversation.input.selector.context`，session-maybe list 槽位）中，与官方工作区选择胶囊并排。若运行 shell 未声明该槽位（npm SDK rc.6 删除了它），等待 `CONTEXT_FALLBACK_MS` 后回退到 `conversation.input.dock`；在其空白会话 hero 相位，chip 会提升进官方 hero 行，紧贴 agent-preset 座位右侧，采用与官方工作区/预设胶囊一致的透明 28px 胶囊配方和 `--dsw-*` 主题 token。active 会话不提供分支选择控件。git 能力在 host 进程执行（磁盘工作树 `git switch`），UI 在浏览器 React；工作区选择保留官方入口。
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-git-graph?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>DeepSeek Harness（DSH）官方 Web GUI 与桌面客户端专属 Git 可视化与多任务工作区隔离系统</strong><br>
+  <em>交互式 Git 提交图谱 · 空白会话分支快速切换 · Git Worktree 隔离防冲突 · 零侵入代码隔离 · 安全冲突守卫</em>
+</p>
+
+外部 DeepSeek Harness（DSH）Web GUI 与官方桌面客户端插件：**Git 分支选择器**与**交互式 Git 提交历史图谱**面板。分支选择器只在空白会话显示，挂在官方输入选择器行的 context 洞（`conversation.input.selector.context`，session-maybe list 槽位）中，与官方工作区选择胶囊并排。若运行 shell 未声明该槽位（npm SDK rc.6 删除了它），等待 `CONTEXT_FALLBACK_MS` 后回退到 `conversation.input.dock`；在其空白会话 hero 相位，chip 会提升进官方 hero 行，紧贴 agent-preset 座位右侧，采用与官方工作区/预设胶囊一致的透明 28px 胶囊配方和 `--dsw-*` 主题 token。active 会话不提供分支选择控件。Git 能力在 host 进程执行（磁盘工作树 `git switch`），UI 在浏览器 React；工作区选择保留官方入口。
 
 行为对齐 ZCode 的 `GitBranchSwitcher`：可搜索弹层、当前项打勾、「创建并检出新分支… / Git 图谱」底部操作、切换守卫（未解决冲突 / 进行中操作 / 目标分支被其他 worktree 检出）与可读报错。
 
 ## 仓库布局与构建
 
-与 DeepSeek Harness 主仓保持同级（sibling checkout，turtle-ui 同款布局；路径任意，以下仅为示例）：
-
-```text
-~/code/deepseek-harness   # deepseek-harness checkout（sibling）
-~/code/dsh-git-graph      # 本仓库
-```
-
-peer APIs 全部来自 sibling checkout 的源码（tsconfig 通过 `../deepseek-harness/tsconfig.base.json` 的 paths 解析；sibling 目录名不同时把 tsconfig 各文件里的 `../deepseek-harness` 相对路径换成实际目录即可），类型门是 `pnpm run typecheck`（`tsc -b`，会连带构建 references 指向的 sibling 包，向 sibling 的 `lib/` 写声明产物——与 turtle-ui 相同的设计）。
+本包是 dsh-web 全家桶仓库内的自包含 cordis 插件包（见下文「通用安装」），不涉及 DeepSeek Harness 源码 checkout。所有 peer API 来自 devDependencies 声明的官方 `@deepseek-ai/*` NPM SDK、由 node_modules 解析，类型门是 `pnpm run typecheck`（`tsc -b`，只构建本包自己的 host 与 client program）。
 
 ```sh
 pnpm install
-pnpm run typecheck   # tsc -b（含 sibling 引用项目）
+pnpm run typecheck   # tsc -b（host + client program）
 pnpm test            # vitest（core 纯函数 / 真实 git 服务 / jsdom 组件）
 pnpm run build       # tsc -b && tsdown（lib/index.js + lib/invariant.js + lib/client.js）
 ```
 
-`lib/client.js` 是浏览器 bundle（闭包工厂产物，`window.__ModuleLoader__.load`），由 host 的 client-modules 按 `/plugins/<id>/client.js` 伺服；构建预设 `build/tsdown.client.ts` + `build/web/src/platform.ts` 是从主仓 `packages/client/tsdown.client.ts` / `packages/client/web/src/platform.ts` 复制的副本，主仓版本变更时需同步。
+`lib/client.js` 是浏览器 bundle（闭包工厂产物，`window.__ModuleLoader__.load`），由 host 的 client-modules 按 `/plugins/<id>/client.js` 伺服；`tsdown.config.ts` 与 `tsdown.prepare.config.ts` 都 import 唯一的共享客户端预设 `shared/tsdown.client.ts`（及其读取的浏览器平台种子表），包内不保留副本。
 
-git 安装（无 sibling checkout 的消费者机器）走 `prepare` 脚本：`tsdown --config tsdown.prepare.config.ts` 从 src 直接 transpile，不做类型检查（`tsconfig.prepare.json` 自包含）。
+git 安装走 `prepare` 脚本：`tsdown --config tsdown.prepare.config.ts` 从 src 直接 transpile，不做类型检查（`tsconfig.prepare.json` 自包含）。
 
 ## 激活
 

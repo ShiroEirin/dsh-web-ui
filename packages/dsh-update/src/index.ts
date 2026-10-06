@@ -19,6 +19,7 @@ import { mountOnce } from './mount-once.ts'
 import {
   checkUpdates,
   fetchGitHubReleaseNotes,
+  fetchLatestDshRequirement,
   fetchLatestVersion,
   RELEASE_NOTES_CACHE_TTL_MS,
   resolveAnchorManifest,
@@ -86,6 +87,7 @@ export const apply = mountOnce('@linxin666/dsh-update', (ctx: Context): void => 
       anchorManifestPath: resolveAnchorPath(),
       resolve: hostResolve,
       fetchLatest: name => fetchLatestVersion(name, fetch),
+      fetchLatestRequirement: name => fetchLatestDshRequirement(name, fetch),
       fetchReleaseNotes: fetchReleaseNotesCached,
     }).then((value) => {
       updateStatusCache = { at: Date.now(), value }
@@ -120,6 +122,7 @@ export const apply = mountOnce('@linxin666/dsh-update', (ctx: Context): void => 
           anchorManifestPath: resolveAnchorPath(),
           resolve: hostResolve,
           fetchLatest: name => fetchLatestVersion(name, fetch),
+      fetchLatestRequirement: name => fetchLatestDshRequirement(name, fetch),
           fetchReleaseNotes: fetchReleaseNotesCached,
         },
       })

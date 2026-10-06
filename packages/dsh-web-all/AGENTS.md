@@ -33,6 +33,11 @@
   `lib/shells/shell.js`），避免老 profile 残留旧行名时 Node 抛
   ERR_PACKAGE_PATH_NOT_EXPORTED。迁出为独立仓库的 `pet` / `skin-center` /
   `community-plugins` 三个子路径必须留在本清单里。
+- `familyIds:` 段（`<子包行 id>: <聚合行 id>` 映射行）解耦两处 id：子包的独立安装行 id
+  住在 loader 全局 id 空间，被官方 bundle 占用时必须换（#1794），而派生规则会把新的独立
+  行 id 一并改名，连带移动已发布的聚合行 id 与家族子路径导出。覆盖后独立行改名、聚合行
+  逐字不变，老 profile 无需迁移；值必须在本聚合 `web-ui-*` id 空间内且指向本聚合真实
+  挂载的行，生成器对死键、越界值与撞名一律报错（`node scripts/aggregate.mjs --check`）。
 - `patches:` 段（单行 JSON flow mapping）对本聚合自插入行做整对象 config 覆写：
   用于播种行级默认（如 enabled:false），渲染在全部 insert 之后；
   id 必须是本聚合已存在的行，settings 一经用户改动即优先于播种值。

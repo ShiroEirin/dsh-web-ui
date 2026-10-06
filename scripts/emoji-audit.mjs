@@ -11,12 +11,15 @@
  * suffixes, and local-only test artifacts. Anything that is not valid UTF-8 is
  * not text and is skipped, so an untracked media render or package tarball in a
  * working tree cannot fail the gate; it therefore behaves the same locally and
- * in a clean CI checkout.
+ * in a clean CI checkout. Paths git ignores are dropped for the same reason: a
+ * local marketing workspace or scratch render is not repository content and is
+ * absent from a clean CI checkout.
  *
  * Usage:
  *   node scripts/emoji-audit.mjs         # gate: exit 1 on any pictograph
  *   node scripts/emoji-audit.mjs --list  # print the scanned total as well
  */
+import { execFileSync } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
 import { TextDecoder } from 'node:util'
 import { dirname, join, relative, resolve, sep } from 'node:path'
@@ -126,9 +129,28 @@ function walk(dir, out) {
   return out
 }
 
+/**
+ * Drop the paths git ignores: they are local workspaces, not repository
+ * content, so a clean CI checkout does not have them either. Tracked files are
+ * never reported as ignored, so no source that ships is lost; a missing git or
+ * a failure other than "nothing ignored" audits everything instead of silently
+ * narrowing the gate.
+ */
+export function dropIgnoredPaths(files) {
+  if (files.length === 0) return files
+  let ignored
+  try {
+    ignored = execFileSync('git', ['check-ignore', '--stdin'], { cwd: ROOT, input: files.join('\n'), encoding: 'utf8' })
+  } catch {
+    return files
+  }
+  const drop = new Set(ignored.split('\n').filter(Boolean))
+  return files.filter((file) => !drop.has(file))
+}
+
 /** Every scanned file, repository-relative and sorted. */
 export function collectFiles() {
-  return walk(ROOT, []).sort()
+  return dropIgnoredPaths(walk(ROOT, []).sort())
 }
 
 /** All violations across the tree. */

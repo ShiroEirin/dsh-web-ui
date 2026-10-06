@@ -17,7 +17,7 @@ DeepSeek Harness 现在有官方桌面客户端。桌面体验归它所有：它
 - 根 README 双语把 DSH Desktop 下载章节换成官方桌面客户端：客户端与 `dsh web` 共用 `~/.dsh`，用同样的 `dsh plugin` 命令把家族包装进它自己的 `desktop` profile。
 - `packages/AGENTS.md` 在「桌面启动器已移除」例外中把桌面面归给官方桌面客户端。
 
-没有任何随包发布的插件代码发生变化：`packages/` 下没有一处 import 该应用，而[远程访问的页面本机判定](2026-09-21-remote-one-time-landing-grant.zh.md)对桌面交付协议的处理，正是家族在官方客户端内正确工作的原因。
+没有任何随包发布的插件代码发生变化：`packages/` 下没有一处 import 该应用，而[远程访问的页面本机判定](../architecture/2026-09-21-remote-one-time-landing-grant.zh.md)对桌面交付协议的处理，正是家族在官方客户端内正确工作的原因。
 
 ## Alternatives considered
 

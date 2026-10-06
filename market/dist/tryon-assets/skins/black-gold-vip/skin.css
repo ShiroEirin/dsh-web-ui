@@ -1,0 +1,6 @@
+/* 黑金 VIP：不改任何设计 token，本文件故意留空。
+   全部改动在 patches.css（纯 CSS，无 JS）。 */
+
+html[data-dsh-skin="black-gold-vip"] [id="root"] { background: transparent; }
+
+html[data-dsh-skin="black-gold-vip"] body { --shiki-background: var(--dsw-alias-markdown-code-block); }

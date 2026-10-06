@@ -205,6 +205,33 @@
 }
 .market .actionRowPrimary > .installPrimary:disabled { opacity: 0.55; cursor: default; }
 .error { margin: 0; font-size: 12px; line-height: 1.4; color: var(--dsw-alias-label-error, #c53030); }
+/* Bulk install row: the button sits above the search box, and the armed state
+   reuses the same danger token the destructive confirmations use. */
+.market .bulkRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 0; }
+.market .bulkButton, .market .bulkArmed, .market .bulkCancel {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+.market .bulkButton:hover:not(:disabled), .market .bulkCancel:hover:not(:disabled) {
+  border-color: var(--dsw-alias-border-l3);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.market .bulkButton:disabled, .market .bulkArmed:disabled { opacity: 0.55; cursor: default; }
+.market .bulkArmed {
+  border-color: var(--dsw-alias-state-danger-primary, #d93025);
+  background: var(--dsw-alias-state-danger-primary, #d93025);
+  color: #fff;
+}
+.market .bulkNote, .market .bulkNoteWarn { margin: 4px 0 0; font-size: 12px; line-height: 1.4; }
+.market .bulkNote { color: var(--dsw-alias-state-success-primary); }
+.market .bulkNoteWarn { color: var(--dsw-alias-label-warning, #b06000); }
 .callout { margin: 0; font-size: 12px; line-height: 1.4; color: var(--dsw-alias-state-success-primary); }
 /* Two-level plugin filter: a category pill row plus a subcategory pill row
  * (dashed border, one size smaller) shown once a category is selected. Scoped

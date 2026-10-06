@@ -1,12 +1,25 @@
-# dsh-model-capabilities
+# dsh-model-capabilities · Custom Model Capabilities & Vision Multimodal Declarations for DeepSeek Harness (DSH)
 
 English | [中文](README.zh.md)
 
-Per-model reasoning-effort declarations for custom DSH providers: declare which thinking levels a model offers and the exact wire value each one sends, for every model in a custom provider's catalog, edited in place on the Models settings page. The official pi-ai settings namespace has carried the field all along, and 0.1.7-alpha.1's Models page edits the model input types itself, so this plugin owns the reasoning-effort editor the settings page ships without.
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-model-capabilities?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>Custom Model Capabilities & Vision Multimodal Declarations for DeepSeek Harness (DSH)</strong><br>
+  <em>Per-Model Reasoning Tiers · Multimodal Vision Declarations · Provider Archive & Restore · Models Settings Extension</em>
+</p>
+
+A custom model capability extension for DeepSeek Harness (DSH) Web GUI and official desktop client: visually declare reasoning effort profiles per model, customize payload values, configure multimodal vision inputs, and toggle provider activation states directly inside the official Models settings view without restarting the host.
 
 ## What it does
 
-- **Seats the official extension area**: registers the Models page's `settings.models.provider-card` slot for the `llm-pi-ai` adapter family, so every custom-provider card (hand-declared gateways, OpenAI-compatible endpoints, and named vendors alike) gains a collapsible "Model capabilities" area.
+- **Seats the official extension area**: registers the Models page's `settings.models.provider-card` slot for the `llm-pi-ai` adapter family, so every custom-provider card (hand-declared gateways, OpenAI-compatible endpoints, and named vendors alike) gains a collapsible "Model capabilities" area. That slot renders one extension area per provider card, so when another plugin claims the same adapter family first this panel reports the collision (browser console, plus a Models-page notice naming the plugin that holds the seat) and takes the cards back by itself as soon as that plugin is unloaded.
 - **Provider disable/enable**: one click archives a provider's profile in the plugin's own settings namespace and takes the route down through the official Remove-provider seam (`unset` on `llm-pi-ai.providers.<route>`); the provider leaves the model catalog that both the composer model picker and the subagent selection read — immediately, in every open surface, without a restart. Enabling restores the archived profile verbatim (API keys live in the credentials service and are never touched). Disabled providers are listed in a footer area on the Models page, where they come back.
 - **Reasoning efforts per model**: a tri-state editor per model — undeclared (inherit), declared non-reasoning (`reasoningEfforts: false`, which stops the model picker from offering thinking levels), or an explicit level dict. Levels run from `off` through `max`; each enabled level carries a wire-spelling field (what the request actually sends, defaulting to the level name), plus a one-tap common low/medium/high preset. `off` may keep an empty wire value, meaning "supported, send nothing".
 - **Writes through the official wire**: saves are a single path operation replacing the provider's whole `models` array in the `llm-pi-ai` settings namespace — the same whole-array override the official card performs. Fields this plugin does not edit (ids, display names, input modality claims, context windows, compat switches) survive every save, and the write applies live without a restart.
@@ -47,4 +60,5 @@ The plugin's own settings entry holds nothing but the disabled-provider archive 
 - Input types are out of scope: the Models page's own model editor writes the `input` modality claim (alpha.2), so this plugin preserves that field rather than editing it — declaring image input happens in the catalog editor above.
 - The DeepSeek direct adapter (`llm-deepseek`) is not covered: its catalog is fixed and its reasoning-effort control already exists on the Models page.
 - A provider card whose route is still an unsaved draft dispatches no extension area; save the provider first.
+- Only one plugin can extend the `llm-pi-ai` provider cards at a time. A colliding plugin never disappears silently: the Models page footer states that another plugin holds the extension seat and names it, and the panel returns by itself once that plugin stops loading.
 - Disable works on profiles the user settings layer owns — exactly the hand-declared providers the Models page writes. A provider profile declared in the composition (base) layer cannot be taken down from the client: the settings merger guarantees user writes cannot remove it, so the toggle is not offered there.

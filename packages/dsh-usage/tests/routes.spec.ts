@@ -3,9 +3,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { emptyTotals, type UsageOverviewView } from '../src/core/types.ts'
+import { emptyTotals, type UsageDayView, type UsageOverviewView } from '../src/core/types.ts'
 import type { UsageService } from '../src/host/usage-service.ts'
-import { makeUsageOverviewRoute, makeUsageRefreshRoute, USAGE_API_PREFIX } from '../src/host/routes.ts'
+import { makeUsageDayRoute, makeUsageOverviewRoute, makeUsageRefreshRoute, USAGE_API_PREFIX } from '../src/host/routes.ts'
 
 /** Host context double: no remote-web-ui pairing service, so the fence is loopback-only. */
 const HOST_CTX = { get: () => undefined } as never
@@ -23,8 +23,14 @@ const OVERVIEW: UsageOverviewView = {
   usage: { today: { date: '2026-08-29', totals: emptyTotals(), providers: [] }, days: [] },
 }
 
-function stubService(overrides: Partial<Pick<UsageService, 'overview' | 'refresh'>> = {}): UsageService {
-  return { overview: () => OVERVIEW, refresh: async () => {}, ...overrides } as unknown as UsageService
+const DAY: UsageDayView = {
+  date: '2026-08-28',
+  totals: { ...emptyTotals(), inputTokens: 120, outputTokens: 30, calls: 2 },
+  providers: [{ provider: 'deepseek', totals: { ...emptyTotals(), inputTokens: 120, outputTokens: 30, calls: 2 }, models: [] }],
+}
+
+function stubService(overrides: Partial<Pick<UsageService, 'overview' | 'day' | 'refresh'>> = {}): UsageService {
+  return { overview: () => OVERVIEW, day: () => DAY, refresh: async () => {}, ...overrides } as unknown as UsageService
 }
 
 let server: Server
@@ -35,6 +41,7 @@ beforeAll(async () => {
   refreshes = 0
   const routes: WebRoute[] = [
     makeUsageOverviewRoute(HOST_CTX, stubService()),
+    makeUsageDayRoute(HOST_CTX, stubService()),
     makeUsageRefreshRoute(HOST_CTX, stubService({ refresh: async () => { refreshes += 1 } })),
   ]
   server = createServer((req, res) => {
@@ -65,6 +72,25 @@ describe('usage routes', () => {
     expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8')
     expect(res.headers.get('cache-control')).toBe('no-store')
     expect(await res.json()).toEqual(OVERVIEW)
+  })
+
+  it('user gets one retained day served for a date query', async () => {
+    // Given a loopback request for a day the ledger recorded
+    const res = await fetch(url(USAGE_API_PREFIX + '/day?date=2026-08-28'))
+    // When the day route answers
+    // Then the day's per-provider totals come back under the day envelope, uncached
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    expect(await res.json()).toEqual({ ok: true, day: DAY })
+  })
+
+  it('operator gets 400 for a date query that is not a real local day', async () => {
+    // Given date queries that are a rollover, free text, and missing
+    const queries = ['?date=2026-02-30', '?date=yesterday', '']
+    // When the day route answers each
+    const statuses = await Promise.all(queries.map(async (query) => (await fetch(url(USAGE_API_PREFIX + '/day' + query))).status))
+    // Then all three are refused instead of folding into a bogus day bucket
+    expect(statuses).toEqual([400, 400, 400])
   })
 
   it('answers 405 when the refresh endpoint is not POSTed', async () => {
@@ -113,6 +139,11 @@ describe('usage routes', () => {
     const refresh = probe()
     void makeUsageRefreshRoute(HOST_CTX, stubService()).handler({ ...lanRequest, method: 'POST' } as never, refresh.res as never)
     expect(refresh.state.status).toBe(403)
+
+    const day = probe()
+    void makeUsageDayRoute(HOST_CTX, stubService()).handler({ ...lanRequest, url: '/api/dsh-usage/day?date=2026-08-28' } as never, day.res as never)
+    expect(day.state.status).toBe(403)
+    expect(day.state.body).toContain('loopback-only')
   })
 
   it('admits a paired LAN device through the family pairing fence (issue #1592)', () => {

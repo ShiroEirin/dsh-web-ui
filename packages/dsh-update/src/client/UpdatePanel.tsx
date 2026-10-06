@@ -112,6 +112,18 @@ function subtitleOf(t: TranslateNS<"update">, view: UpdateView): string | undefi
 }
 
 /** The checked result body: mode banner + version list. */
+/**
+ * The DSH floor the available release declares, when any package in the
+ * update declares one. The anchor's own floor is preferred because that is the
+ * package whose row disappears when the host is too old.
+ * @param status - the update status the panel renders.
+ * @returns the declared floor, or undefined when none is declared.
+ */
+function requiredDshOf(status: UpdateStatus): string | undefined {
+  const anchor = status.packages.find(pkg => pkg.name === status.anchor)
+  return anchor?.requiresDsh ?? status.packages.find(pkg => pkg.requiresDsh !== undefined)?.requiresDsh
+}
+
 function ResultBody({ t, status }: { t: TranslateNS<"update">; status: UpdateStatus }) {
   const anchor = anchorName(status)
   const latest = anchorLatest(status)
@@ -142,6 +154,11 @@ function ResultBody({ t, status }: { t: TranslateNS<"update">; status: UpdateSta
   if (status.outdated) {
     return (
       <div>
+        {requiredDshOf(status) !== undefined && (
+          <p className={css.updateRequiresDsh} data-update-requires-dsh={requiredDshOf(status)}>
+            {t("update.requiresDsh", { version: requiredDshOf(status) ?? "" })}
+          </p>
+        )}
         <p className={css.updateStatus}>{t("update.found")}</p>
         <p className={css.updateDetail}>
           {anchor !== undefined ? t("update.foundDetail", { name: anchor, version: latest ?? "" }) : ""}

@@ -210,31 +210,40 @@ html[data-dsh-skin="orca-link"] body[data-ds-dark-theme] [role="dialog"] {
   --orca-dialog-bg: #0f151f;
 }
 
-html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] {
+/* The skin-center stamps data-dsh-surface="settings" on the PANEL element
+   itself -- the [role="dialog"] that holds the nav (semantic-adapter.ts:
+   '[role="dialog"]:has([data-slot="settings.section"])') -- not on the
+   overlay that centers it. The rules that used to live here treated that
+   element as the overlay wrapper: they set position:fixed/inset:0/padding on
+   the panel and then sized the same element again, so full-viewport
+   placement and panel sizing landed on one box and the dialog lost its
+   centered frame. The mask rule was dead for the same reason -- the mask is a
+   sibling of the panel inside .overlay, never a child of the dialog.
+   The panel keeps the shell's own centered-overlay layout; the skin only
+   restyles its surface (box, border, shadow, sizing). Overlay-level concerns
+   (centering offsets, the mask) are now written against the overlay. */
+html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] {
+  box-sizing: border-box;
   z-index: var(--orca-settings-overlay-z);
   isolation: isolate;
-  box-sizing: border-box;
   pointer-events: auto;
-  padding: 24px;
-  position: fixed;
-  inset: 0;
-}
-
-html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > :first-child {
-  z-index: 0;
-  animation: .17s ease-out both orca-ch-orcaSettingsMaskIn;
-}
-
-html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] {
-  z-index: 1;
   border: 1px solid var(--orca-line);
-  width: min(800px, 100vw - 48px);
+  background: var(--orca-dialog-bg);
   max-width: none;
-  height: min(760px, 100vh - 48px);
+  width: min(800px, calc(100vw - 48px));
+  height: min(760px, calc(100vh - 48px));
   box-shadow: var(--orca-shadow);
   transform-origin: 0 100%;
   animation: .2s ease-out both orca-ch-orcaSettingsPanelIn;
   position: relative;
+}
+
+/* The mask is a sibling of the panel inside the shell's overlay, so it is
+   reached from that overlay rather than from the dialog. :has(> [role=dialog])
+   keeps the rule tied to the settings surface instead of every overlay. */
+html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [class*="_overlay"]:has(> [data-dsh-surface="settings"]) > [class*="_mask"] {
+  z-index: 0;
+  animation: .17s ease-out both orca-ch-orcaSettingsMaskIn;
 }
 
 html[data-dsh-skin="orca-link"] body[data-orca-cordis-panel-open] :is([data-pane="sidebar"], [data-dsh-surface="sidebar"] > :first-child) {
@@ -251,31 +260,54 @@ html[data-dsh-skin="orca-link"] body[data-orca-cordis-panel-open] [data-cordis-p
   z-index: var(--orca-z-cordis);
 }
 
-html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] *, html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] :before, html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] :after {
+html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] *, html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] :before, html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] :after {
   border-radius: 0 !important;
 }
 
+/* The reset above squares the dialog chrome, but a panel hosted inside the
+   dialog owns its own card grammar and must keep it. The skin-center rows
+   are the case in hand: the status badge lost its pill and read as a
+   clipped block against the card, and the action buttons lost the rounded
+   shape that separates them from the card surface. Each element is given
+   the radius its own component module declares; the dialog around them
+   stays square. A `revert` cannot express this -- it would discard the
+   panel's own declaration along with the blanket reset. */
+html[data-dsh-skin="orca-link"] body[data-dsh-skin-center] [class*="_card"] {
+  border-radius: 8px;
+}
+
+html[data-dsh-skin="orca-link"] body[data-dsh-skin-center] [class*="_badge"] {
+  border-radius: 999px;
+}
+
+html[data-dsh-skin="orca-link"] body[data-dsh-skin-center] [class*="_button"] {
+  border-radius: 6px;
+}
+
+/* The panel is the dialog element; placement (offsetting the dialog clear of the
+   wide sidebar rail) belongs on the overlay that centers it, not on the panel.
+   Sizing belongs on the panel. */
 @media (width >= 1100px) and (height >= 681px) {
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] {
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [class*="_overlay"]:has(> [data-dsh-surface="settings"]) {
     justify-content: flex-start;
     align-items: flex-end;
     padding: 18px 18px 18px 72px;
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-slot="sidebar.settings"] > [role="presentation"] {
+  html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [class*="_overlay"]:has(> [data-dsh-surface="settings"]) {
     padding-left: calc(var(--orca-sidebar-width) + 16px);
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] {
-    width: min(760px, 100vw - 108px);
-    height: min(680px, 100vh - 36px);
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] {
+    width: min(760px, calc(100vw - 108px));
+    height: min(680px, calc(100vh - 36px));
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] {
+  html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="settings"] {
     width: min(760px, calc(100vw - var(--orca-sidebar-width) - 34px));
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav {
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] > nav {
     border-right: 1px solid var(--orca-line);
     justify-content: flex-start;
     padding-bottom: 24px;
@@ -288,22 +320,51 @@ html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] *
   }
 }
 
-html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] > nav button[aria-current="true"] {
-  background: color-mix(in srgb, var(--orca-blue) 18%, transparent);
-  color: var(--orca-ink);
+/* The dock above seats a FIXED-SIZE panel in a fixed corner, so where the
+   dialog lands has no relationship to the viewport it lands in: at 4K a
+   760x680 box in the lower left is a fifth of the screen and reads as
+   dislocated (zhu1090093659/dsh-web#1792). The dock exists for exactly one
+   reason -- a centered dialog would land on the sidebar rail -- so it is kept
+   for exactly as long as that is true, and dropped the moment there is room:
+
+     (100vw - 760px) / 2  >=  rail + gap   =>   100vw >= 1444px
+
+   The rail is --orca-sidebar-width, which the skin's own hook re-measures onto
+   <body>; 326px is the clamp ceiling in skin.css, so 326 + 16 is the widest the
+   rail can ever get and the threshold holds for every measurement, not only a
+   typical one. The bound is deliberately that ceiling: centring late keeps the
+   dock a little longer than strictly necessary, never a moment too early.
+
+   The threshold is expressed in the same CSS pixels as the panel it places,
+   so it holds at any display scaling: a 4K panel at 150% (2560x1440 CSS) and
+   at 200% (1920x1080 CSS) both reach it, while a narrow desktop keeps the
+   dock rather than having its dialog sit on the rail. */
+@media (width >= 1444px) and (height >= 681px) {
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [class*="_overlay"]:has(> [data-dsh-surface="settings"]),
+  html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [class*="_overlay"]:has(> [data-dsh-surface="settings"]) {
+    justify-content: center;
+    align-items: center;
+    padding: 18px;
+  }
 }
 
-html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] > nav button + button {
-  border-top: 2px solid color-mix(in srgb, var(--orca-blue) 28%, transparent);
-  border-radius: 0;
+/* Nav cells live in nav > div.navList (SettingsRoot.tsx). The selected cell is
+   anchored on the list so the rule cannot drift onto a cell the list does not
+   own, and the skin's square-chrome grammar wins over the shell's rounded
+   .navCell.active fill: the cell carries a left accent rule so the active
+   section is unmistakable against the skin's borderless rows. */
+html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] > nav [class*="_navList"] > button[aria-current="true"] {
+  background: color-mix(in srgb, var(--orca-blue) 18%, transparent);
+  color: var(--orca-ink);
+  box-shadow: inset 2px 0 0 var(--orca-blue);
 }
 
 @media (width <= 1099px), (height <= 680px) {
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] {
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [class*="_overlay"]:has(> [data-dsh-surface="settings"]) {
     padding: 0;
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] {
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] {
     width: 100vw;
     max-width: none;
     height: 100dvh;
@@ -314,11 +375,11 @@ html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] >
 }
 
 @media (width <= 640px) {
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] {
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] {
     flex-direction: column;
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav {
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] > nav {
     box-sizing: border-box;
     border-bottom: 1px solid var(--orca-line);
     gap: 8px;
@@ -326,61 +387,74 @@ html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] >
     padding: 10px 12px 8px;
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav > :last-child {
+  /* The nav is a title plus a button list (dsh 0.2.0 SettingsRoot). These
+     rules used to address nav's last and first child, which under that
+     structure is the BUTTON LIST and the TITLE -- so the three-column grid
+     meant for the foot cluster was laid over every navigation cell,
+     squeezing the nav into a mis-wrapped column and pushing the whole
+     dialog off its seat. Address the list and the title by their module
+     classes so the grid lands on the intended footer cluster and the nav
+     keeps its own single column. */
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] > nav [class*="_navList"] {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 4px;
     display: grid;
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav > :first-child {
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] > nav [class*="_navTitle"] {
     padding: 0 4px;
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav button {
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] > nav [class*="_navList"] > button {
     min-width: 0;
     height: 36px;
     padding: 7px 8px;
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav + div {
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] > nav + div {
     min-height: 0;
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav + div > :first-child {
+  /* The content column is a header and an options area (dsh 0.2.0). The
+     positional first/last-child pair happened to match under the older
+     tree; naming the two module classes keeps the intent (a compact
+     header band, a padded body) and stops a future child order change from
+     silently re-routing the padding onto the wrong box. */
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] > nav + div > [class*="_header"] {
     height: auto;
     min-height: 46px;
     padding: 8px 10px;
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav + div > :last-child {
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] > nav + div > [class*="_options"] {
     padding: 0 14px 16px;
   }
 }
 
 @media (width <= 420px) {
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav > :last-child {
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] > nav [class*="_navList"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (width <= 520px) {
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav + div > :last-child [class$="_row"]:has( > [class$="_rowText"]) {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] > nav + div > [class*="_options"] [class$="_row"]:has( > [class$="_rowText"]) {
     flex-direction: column;
     align-items: stretch;
   }
 
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav + div > :last-child [class$="_rowText"] {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] > nav + div > [class*="_options"] [class$="_rowText"] {
     width: 100%;
     padding-right: 0;
   }
 
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav + div > :last-child [class$="_row"]:has( > [class$="_rowText"]) > :last-child, html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav + div > :last-child [class$="_row"]:has( > [class$="_rowText"]) [class$="_selector"] {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] > nav + div > [class*="_options"] [class$="_row"]:has( > [class$="_rowText"]) > :last-child, html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"] > nav + div > [class*="_options"] [class$="_row"]:has( > [class$="_rowText"]) [class$="_selector"] {
     box-sizing: border-box;
     width: 100%;
     max-width: none;
   }
 
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"] > nav + div > :last-child [class$="_selector"] {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] > nav + div > [class*="_options"] [class$="_selector"] {
     justify-content: space-between;
   }
 }
@@ -420,7 +494,7 @@ html[data-dsh-skin="orca-link"] [role="menuitem"][data-orca-permission]:hover, h
   background: color-mix(in srgb, currentColor 7%, transparent);
 }
 
-html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] [class$="_cubeRow"] > button[class*="_themeCube"] {
+html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] [class$="_cubeRow"] > button[class*="_themeCube"] {
   flex-direction: row;
   justify-content: center;
   align-items: center;
@@ -431,11 +505,11 @@ html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] [
   position: relative;
 }
 
-html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] [class$="_cubeRow"] > button[class*="_themeCube"] > svg {
+html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] [class$="_cubeRow"] > button[class*="_themeCube"] > svg {
   flex: none;
 }
 
-html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] [class$="_cubeRow"] > button[class*="_themeCube"][aria-pressed="true"]:after {
+html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] [class$="_cubeRow"] > button[class*="_themeCube"][aria-pressed="true"]:after {
   content: "";
   border: 1px solid var(--orca-blue);
   background: var(--orca-blue);
@@ -448,7 +522,7 @@ html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] [
 }
 
 @supports (appearance: base-select) {
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] select {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] select {
     appearance: base-select;
     border: 1px solid var(--orca-line);
     background: color-mix(in srgb, var(--orca-surface-strong) 94%, transparent);
@@ -462,7 +536,7 @@ html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] [
     overflow: hidden;
   }
 
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] select[class$="_selectInput"] {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] select[class$="_selectInput"] {
     box-sizing: border-box;
     text-align: left;
     align-items: center;
@@ -473,12 +547,12 @@ html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] [
     display: flex;
   }
 
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] select:hover {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] select:hover {
     border-color: color-mix(in srgb, var(--orca-blue) 42%, var(--orca-line));
     box-shadow: inset 3px 0 0 color-mix(in srgb, var(--orca-blue) 58%, transparent);
   }
 
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] select::picker-icon {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] select::picker-icon {
     content: "";
     clip-path: polygon(0 0, 100% 0, 50% 100%);
     background: currentColor;
@@ -489,16 +563,16 @@ html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] [
     transition: transform .14s;
   }
 
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] select[class$="_selectInput"]::picker-icon {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] select[class$="_selectInput"]::picker-icon {
     flex: none;
     margin-left: auto;
   }
 
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] select:open::picker-icon {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] select:open::picker-icon {
     transform: rotate(180deg);
   }
 
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] select::picker(select) {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] select::picker(select) {
     appearance: base-select;
     border: 1px solid color-mix(in srgb, var(--orca-graphite) 34%, transparent);
     background: linear-gradient(90deg, color-mix(in srgb, var(--orca-blue) 7%, transparent), transparent 42%), color-mix(in srgb, var(--orca-surface-strong) 98%, transparent);
@@ -510,7 +584,7 @@ html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] [
     box-shadow: 8px 10px #1b273a14, 0 18px 42px #1b273a29;
   }
 
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] select option {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] select option {
     min-height: 30px;
     color: var(--orca-graphite);
     letter-spacing: .01em;
@@ -524,20 +598,20 @@ html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] [
     overflow: hidden;
   }
 
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] select option:hover, html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] select option:focus-visible {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] select option:hover, html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] select option:focus-visible {
     border-left-color: color-mix(in srgb, var(--orca-blue) 48%, transparent);
     background: color-mix(in srgb, var(--orca-blue) 7%, transparent);
     color: var(--orca-ink);
   }
 
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] select option:checked {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] select option:checked {
     border-left-color: var(--orca-blue);
     background: linear-gradient(90deg, color-mix(in srgb, var(--orca-blue) 16%, transparent), transparent 74%);
     color: var(--orca-blue);
     font-weight: 700;
   }
 
-  html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [role="dialog"] select option::checkmark {
+  html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] select option::checkmark {
     content: "";
     clip-path: polygon(0 0, 100% 0, 100% 100%, 58% 100%, 58% 42%, 0 42%);
     background: currentColor;
@@ -654,6 +728,22 @@ html[data-dsh-skin="orca-link"] [data-orca-link-brand] {
   height: 30px;
 }
 
+/* The skin replaces this button's whole surface with the DSH wordmark, so the
+   mark IS the control's image and every highlight on the control belongs on
+   the mark. The host button, however, is the full-width `wide` row control
+   (216px at the 280px sidebar) and runs under the LINK ACTIVE chip, which the
+   row owns and the click does not: a selection frame painted on the host box
+   -- the global `:focus-visible` outline -- therefore wrapped empty row space
+   and a chip that is not part of the button, a highlight nearly twice the
+   width of the image it belongs to. The mark's box is declared once here and
+   read by both the wordmark and its frame, so the two cannot drift apart. */
+html[data-dsh-skin="orca-link"] [data-orca-logo-row] {
+  --orca-mark-x: 4px;
+  --orca-mark-y: 15px;
+  --orca-mark-w: 118px;
+  --orca-mark-h: 30px;
+}
+
 html[data-dsh-skin="orca-link"] .orca-ch-dshWordmark {
   z-index: 1;
   color: #11151b;
@@ -661,14 +751,50 @@ html[data-dsh-skin="orca-link"] .orca-ch-dshWordmark {
   pointer-events: none;
   transform-origin: 0 0;
   filter: blur(.18px);
-  width: 118px;
-  height: 30px;
+  width: var(--orca-mark-w, 118px);
+  height: var(--orca-mark-h, 30px);
   transition: opacity .13s ease-in, transform .16s cubic-bezier(.4, 0, 1, 1), filter .13s ease-in;
   display: block;
   position: absolute;
-  top: 15px;
-  left: 4px;
+  top: var(--orca-mark-y, 15px);
+  left: var(--orca-mark-x, 4px);
   transform: scale(.28);
+}
+
+/* The mark's own selection frame, anchored to the row exactly where the
+   wordmark is anchored, so the highlight is the image's box and nothing
+   else. Corner brackets carry the skin's stage-frame language; the faint
+   inset rule closes the box without a second line competing with the mark.
+
+   The frame is an absolutely positioned box, so it paints in the positioned
+   layer ABOVE the in-flow brand button and would swallow the click; it opts
+   out of the pointer, and the brand button keeps every pixel of its own hit
+   area. It is the row's first button -- the shell's New Session control, the
+   same element the collapsed-rail rules above already name positionally --
+   rather than the brand attribute, so this rule cannot be mistaken for one
+   that disables the button itself. */
+html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-orca-logo-row]:has(> button:first-of-type:is(:hover, :focus-visible)):before {
+  content: "";
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--orca-blue) 14%, transparent);
+  background: linear-gradient(var(--orca-blue), var(--orca-blue)) left top / 12px 1px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) left top / 1px 12px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) right top / 12px 1px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) right top / 1px 12px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) left bottom / 12px 1px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) left bottom / 1px 12px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) right bottom / 12px 1px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) right bottom / 1px 12px no-repeat;
+  opacity: .5;
+  transition: opacity .16s;
+  position: absolute;
+  top: var(--orca-mark-y);
+  left: var(--orca-mark-x);
+  width: var(--orca-mark-w);
+  height: var(--orca-mark-h);
+}
+
+html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-orca-logo-row]:has(> button:first-of-type:focus-visible):before {
+  opacity: 1;
+}
+
+/* The host outline is the mismatched box: drop it on this control so the only
+   frame around the mark is the one sized to it. */
+html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-orca-link-brand]:focus-visible {
+  outline: none;
 }
 
 html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] .orca-ch-dshWordmark {
@@ -724,12 +850,25 @@ html[data-dsh-skin="orca-link"] :is([data-pane="sidebar"], [data-dsh-surface="si
   position: relative;
 }
 
-html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > nav > button[data-dsh-part="sidebar-entry"] {
+/* The shell's own panel list (nav: the official Plugins row and every
+   registered plugin row alike) is the one row container the sidebar pane
+   exposes, and the semantic adapter stamps data-dsh-part="sidebar-entry" on
+   the plugin rows alone -- the official row carries no third-party glyph, so a
+   row-level stage offset left that row inside the stage while its neighbour
+   was pushed down. Position the whole native list below the stage instead:
+   every row moves together, with or without a glyph, and the list keeps its
+   own taps above the New Session hit plane below (z-index 3 over 2). */
+html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > nav {
   z-index: 3;
   margin-top: calc(var(--orca-stage, 300px) - 116px);
 }
 
-html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child:has( > nav > button[data-dsh-part="sidebar-entry"]) [class*="regionArea"], html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > nav > button[data-dsh-part="sidebar-entry"] ~ button[data-dsh-part="sidebar-entry"] {
+/* The browsing region carries its own stage offset (see the regionArea rule
+   further down); with the list already pushed below the stage that offset
+   would drop the region by a second full stage and open a dead band under the
+   list. Kept on the pane-level list, so it holds for a list whose rows carry
+   no adapter-stamped part. */
+html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child:has( > nav) [class*="regionArea"] {
   margin-top: 0;
 }
 
@@ -747,11 +886,17 @@ html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] :is([data-pane="sid
   transition-duration: .2s;
 }
 
+/* The painted character's box is the one geometry both the art and the frame
+   that bounds it read, so the highlight cannot drift off the picture. */
+html[data-dsh-skin="orca-link"] [data-dsh-surface="sidebar"] > :first-child {
+  --orca-art-h: calc(var(--orca-stage, 300px) - 66px);
+}
+
 html[data-dsh-skin="orca-link"] [data-dsh-surface="sidebar"] > :first-child > .orca-ch-statusCharacter {
   --orca-character-signal: var(--orca-cyan);
   z-index: 1;
   width: calc(var(--orca-sidebar-art-width, 280px) - 30px);
-  height: calc(var(--orca-stage, 300px) - 66px);
+  height: var(--orca-art-h);
   pointer-events: none;
   opacity: 0;
   clip-path: inset(0 100% 0 0);
@@ -889,13 +1034,18 @@ html[data-dsh-skin="orca-link"] .orca-ch-statusCharacter[data-orca-link-status="
   height: 18px;
 }
 
+/* The stock wide New Session control keeps its layout slot and its own click
+   handler; only its containing-block role moves, so the frame and the hit
+   plane below can be placed in the pane's own geometry exactly like the status
+   character, instead of riding the button's 38px flow slot (a host that moves
+   that slot drifted the frame off the art it frames). The pseudo-elements
+   carry the stacking rung the button gave up. */
 html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > button:not([data-dsh-part="sidebar-entry"]) {
-  z-index: 2;
   box-shadow: none;
   color: #0000;
   background: none;
   border-color: #0000;
-  position: relative;
+  position: static;
   overflow: visible;
 }
 
@@ -904,44 +1054,79 @@ html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="
   pointer-events: none;
 }
 
+/* The hit plane and the frame are two different boxes and must not be one.
+   The plane is what a click reaches; the frame is what the user sees around
+   the character. The plane stays clipped to the free band above the panel list
+   (issue #1743), the frame spans the art, so the two no longer have to
+   compromise on a single height. */
 html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > button:not([data-dsh-part="sidebar-entry"]):before {
-  height: calc(var(--orca-stage, 300px) - 60px);
+  z-index: 2;
+  top: 58px;
+  left: 22px;
+  width: calc(var(--orca-sidebar-art-width, 280px) - 30px);
+  /* 58 + (stage - 174) = stage - 116: the plane ends exactly where the panel
+     list is pushed to (the list's own `margin-top`), so no point of any plugin
+     row can reach this button (issue #1743). The painted character and the
+     frame below both run the full stage; only the hit surface is clipped. */
+  height: calc(var(--orca-stage, 300px) - 174px);
   content: "";
-  /* Decoration only: the frame is invisible until hover, but as a real box it
-     would swallow every tap/click in the sidebar stage area (the session list
-     sits inside it) and route them to the New Session button. */
-  pointer-events: none;
+  /* The hit plane starts at the pane top the way the artwork does, and is
+     painted by nothing: the frame is the visible half of this control. */
+  cursor: pointer;
   opacity: 0;
-  background: linear-gradient(var(--orca-blue), var(--orca-blue)) left top / 18px 1px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) left top / 1px 18px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) right top / 18px 1px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) right top / 1px 18px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) left bottom / 18px 1px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) left bottom / 1px 18px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) right bottom / 18px 1px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) right bottom / 1px 18px no-repeat;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--orca-blue) 12%, transparent);
   transition: opacity .16s;
   position: absolute;
-  top: -14px;
-  left: -14px;
-  right: -14px;
 }
 
+/* The stage frame: the character area's own rectangle, read from the same
+   `--orca-art-h` the art is sized with, so the highlight is exactly the box the
+   picture occupies. It used to share the hit plane's clipped height, which left
+   the lower half of the character outside its own frame. Corner brackets carry
+   the stage-frame language and the corner wedge is the last of them, drawn as a
+   background layer so the frame stays a single box. */
 html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > button:not([data-dsh-part="sidebar-entry"]):after {
-  top: calc(var(--orca-stage, 300px) - 86px);
+  z-index: 2;
+  top: 58px;
+  left: 22px;
+  width: calc(var(--orca-sidebar-art-width, 280px) - 30px);
+  height: var(--orca-art-h);
   content: "";
   pointer-events: none;
-  background: var(--orca-blue);
-  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  background: linear-gradient(var(--orca-blue), var(--orca-blue)) left top / 18px 1px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) left top / 1px 18px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) right top / 18px 1px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) right top / 1px 18px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) left bottom / 18px 1px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) left bottom / 1px 18px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) right bottom / 18px 1px no-repeat, linear-gradient(var(--orca-blue), var(--orca-blue)) right bottom / 1px 18px no-repeat;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--orca-blue) 12%, transparent);
+  opacity: 0;
+  transition: opacity .16s;
+  position: absolute;
+}
+
+/* The corner wedge is the one piece of the stage frame that rests on screen
+   rather than appearing with the hover, so it lives on the art itself and
+   takes the art's own bottom-right corner -- not a separately positioned box
+   that drifts off the picture when the frame is resized. Scoped with the rest
+   of the wide stage: the collapsed rail has no art to carry it. */
+html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > .orca-ch-statusCharacter:before {
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(to top left, var(--orca-blue) 0 50%, #0000 50%);
   opacity: .36;
   width: 9px;
   height: 9px;
-  transition: opacity .16s, transform .16s;
+  transition: opacity .16s;
   position: absolute;
-  right: -10px;
+  right: 4px;
+  bottom: 3px;
 }
 
-html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > button:not([data-dsh-part="sidebar-entry"]):hover:before, html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > button:not([data-dsh-part="sidebar-entry"]):focus-visible:before {
-  opacity: .62;
+html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child:has(> button:not([data-dsh-part="sidebar-entry"]):hover) > .orca-ch-statusCharacter:before, html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child:has(> button:not([data-dsh-part="sidebar-entry"]):focus-visible) > .orca-ch-statusCharacter:before {
+  opacity: .92;
 }
 
 html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > button:not([data-dsh-part="sidebar-entry"]):hover:after, html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > button:not([data-dsh-part="sidebar-entry"]):focus-visible:after {
+  opacity: .62;
+}
+
+html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > button:not([data-dsh-part="sidebar-entry"]):focus-visible:after {
   opacity: .92;
-  transform: translate(-2px, -2px);
 }
 
 html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > button:not([data-dsh-part="sidebar-entry"]):focus-visible {
@@ -1652,7 +1837,12 @@ html[data-dsh-skin="orca-link"] .orca-ch-spine {
   }
 }
 
-html[data-dsh-skin="orca-link"] [data-phase="hero"] [class*="headlineText"] {
+/* Same migration as HEADLINE_SELECTOR in hooks.mjs: the shell now renders the
+   headline text as the first span inside .titleGroup and dropped .headlineText,
+   so these rules were matching nothing -- the headline rendered in the shell's
+   own 26px/500 face with no skin styling and no terminal caret. Address the
+   text span itself; :not() keeps the caret off the preview badge. */
+html[data-dsh-skin="orca-link"] [data-phase="hero"] :is([class*="headlineText"], [class*="titleGroup"] > span:first-child) {
   min-width: 8.2em;
   color: var(--orca-ink);
   letter-spacing: .04em;
@@ -1660,10 +1850,11 @@ html[data-dsh-skin="orca-link"] [data-phase="hero"] [class*="headlineText"] {
   white-space: nowrap;
   font-size: 30px;
   font-weight: 700;
+  line-height: 1.2;
   display: inline-block;
 }
 
-html[data-dsh-skin="orca-link"] [data-phase="hero"] [class*="headlineText"]:after {
+html[data-dsh-skin="orca-link"] [data-phase="hero"] :is([class*="headlineText"], [class*="titleGroup"] > span:first-child):after {
   content: "";
   background: var(--orca-blue);
   width: 9px;
@@ -2072,8 +2263,21 @@ html[data-dsh-skin="orca-link"] [data-orca-link-todo-progress-cell="8"] {
     margin-top: 0;
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > nav > button[data-dsh-part="sidebar-entry"] {
+  html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > nav {
     margin-top: 0;
+  }
+
+  /* The wide stage is retired at this width (its pane decoration and the
+     status character are display:none above, and the list keeps no stage
+     offset), but the button's stage-sized hit plane is not part of that
+     display:none group: left live it would keep covering the browsing region
+     the list has just moved back up into -- 88px of it for the default
+     two-row list at the 300px stage. Give the pseudo back the inert
+     decoration role it held before the wide stage took the hit surface.
+     pointer-events over height:0 because the hover frame itself is not this
+     block's business: zeroing the box would silently erase it here. */
+  html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] > :first-child > button:not([data-dsh-part="sidebar-entry"]):before {
+    pointer-events: none;
   }
 
   html[data-dsh-skin="orca-link"] body[data-orca-sidebar-wide] [data-dsh-surface="sidebar"] [class*="regionArea"]:before, html[data-dsh-skin="orca-link"] .orca-ch-spine, html[data-dsh-skin="orca-link"] .orca-ch-signalChip, html[data-dsh-skin="orca-link"] .orca-ch-statusCharacter, html[data-dsh-skin="orca-link"] .orca-ch-pricingLight, html[data-dsh-skin="orca-link"] body[data-orca-scene="hero"] .orca-ch-standby {
@@ -2086,7 +2290,7 @@ html[data-dsh-skin="orca-link"] [data-orca-link-todo-progress-cell="8"] {
     transition: none;
   }
 
-  html[data-dsh-skin="orca-link"] [data-orca-logo-row]:after, html[data-dsh-skin="orca-link"] .orca-ch-signalDot, html[data-dsh-skin="orca-link"] [data-orca-link-icon="spinner"] [data-orca-link-spinner-seq], html[data-dsh-skin="orca-link"] [data-orca-link-icon="todo-progress"] [data-orca-link-todo-progress-cell], html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > :first-child, html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"], html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"]:before, html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"]:after, html[data-dsh-skin="orca-link"] [data-phase="hero"] [class*="headlineText"]:after, html[data-dsh-skin="orca-link"] [data-composer-seat][data-orca-composer-entering], html[data-dsh-skin="orca-link"] [data-orca-composer-ghost], html[data-dsh-skin="orca-link"] [data-composer-seat][data-orca-composer-restoring], html[data-dsh-skin="orca-link"] [data-orca-composer-restore] {
+  html[data-dsh-skin="orca-link"] [data-orca-logo-row]:after, html[data-dsh-skin="orca-link"] .orca-ch-signalDot, html[data-dsh-skin="orca-link"] [data-orca-link-icon="spinner"] [data-orca-link-spinner-seq], html[data-dsh-skin="orca-link"] [data-orca-link-icon="todo-progress"] [data-orca-link-todo-progress-cell], html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"]:before, html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"], html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"]:before, html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"]:after, html[data-dsh-skin="orca-link"] [data-phase="hero"] :is([class*="headlineText"], [class*="titleGroup"] > span:first-child):after, html[data-dsh-skin="orca-link"] [data-composer-seat][data-orca-composer-entering], html[data-dsh-skin="orca-link"] [data-orca-composer-ghost], html[data-dsh-skin="orca-link"] [data-composer-seat][data-orca-composer-restoring], html[data-dsh-skin="orca-link"] [data-orca-composer-restore] {
     animation: none;
   }
 
@@ -2102,7 +2306,7 @@ html[data-dsh-skin="orca-link"] [data-orca-link-todo-progress-cell="8"] {
     transition: none;
   }
 
-  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"]:before, html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-slot="sidebar.settings"] > [role="presentation"] > [role="dialog"]:after {
+  html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"]:before, html[data-dsh-skin="orca-link"] body[data-orca-settings-open] [data-dsh-surface="settings"]:after {
     display: none;
   }
 
@@ -2132,11 +2336,11 @@ html[data-dsh-skin="orca-link"] body[data-ds-dark-theme][data-orca-lamp="flicker
   animation: 1s cubic-bezier(.4, 0, .2, 1) both orca-ch-orcaLampFlicker;
 }
 
-html[data-dsh-skin="orca-link"] [data-slot="sidebar.settings"] [class$="_cardId"] {
+html[data-dsh-skin="orca-link"] [data-dsh-surface="settings"] [class$="_cardId"] {
   color: var(--orca-graphite);
 }
 
-html[data-dsh-skin="orca-link"] body[data-ds-dark-theme] [data-slot="sidebar.settings"] [class$="_cardId"] {
+html[data-dsh-skin="orca-link"] body[data-ds-dark-theme] [data-dsh-surface="settings"] [class$="_cardId"] {
   color: var(--orca-muted);
 }
 

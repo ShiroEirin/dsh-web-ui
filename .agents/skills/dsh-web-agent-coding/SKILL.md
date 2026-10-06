@@ -29,7 +29,7 @@ user-invocable: true
 - README, docs, or instructions: [dsh-web-documentation](../dsh-web-documentation/SKILL.md).
 - Push, PR, or repository-check claim: [dsh-web-pre-push-checks](../dsh-web-pre-push-checks/SKILL.md); reading it does not authorize synchronization or pushing.
 - User-visible client behavior: [dsh-web-web-qa](../dsh-web-web-qa/SKILL.md); visual changes require screenshots and multimodal validation.
-- New skin or community-plugin registration: load the dedicated skill if available; otherwise inspect the owning generator and instructions instead of inventing a skill or process.
+- Skin or pet content work: the owning satellite repository carries the developer skill (dsh-skins: `dsh-skin-developer`; dsh-pet: `dsh-pet-developer`) - load it from that checkout, or follow the satellite's CONTRIBUTING.md. Community-plugin registration: load [dsh-web-community-plugin-developer](../dsh-web-community-plugin-developer/SKILL.md) if available; otherwise inspect the owning generator and instructions instead of inventing a skill or process.
 - Explicit release or release-specific audit/repair: [dsh-web-release](../dsh-web-release/SKILL.md), starting with its authorization boundary. CI/configuration repair alone is not a release.
 
 Code navigation prefers CodeGraph (`query`, `explore`, `node`, `impact`, `affected`) when useful and available; use source search when unavailable or unsuitable. After code changes in an indexed project, sync and check status before final validation; initialize/index a missing index when needed, but do not block a small fix on index maintenance. Documentation-only work needs no code index or GUI ceremony.

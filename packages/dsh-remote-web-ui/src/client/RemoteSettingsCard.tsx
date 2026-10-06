@@ -9,6 +9,7 @@ import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-cli
 import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { PluginSettingsCard, ValueField, BooleanField } from './PluginSettingsCard.tsx'
+import { PhoneIcon } from './PhoneIcon.tsx'
 import { CardForm, booleanField, numberField, secretField, textField, type CardActions, type CardShell, type FieldState as CardFieldState } from './settings-form.ts'
 import { LanBindStatusError, readLanBindStatus, shouldStopLanBindPoll, type LanBindFrame } from './pair-api.ts'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -173,6 +174,7 @@ export function RemoteSettingsCard(props: RemoteSettingsCardProps) {
       t={t}
       titleKey="settings.title"
       descriptionKey="settings.description"
+      icon={<PhoneIcon size={18} />}
       defaultOpen={false}
       state={state}
       onSave={props.save}

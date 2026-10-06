@@ -16,8 +16,13 @@ An audit summary also claimed three identical `vitest.config.ts` files; direct m
 
 ## Consequences
 
-Loader fixes propagate through one edit plus `node scripts/sync-shared.mjs`; divergence fails CI. The sync table grew to 103 copies. No test behavior changed — all four suites run the same setup code as before.
+Loader fixes propagate through one edit plus `node scripts/sync-shared.mjs`; divergence fails CI. The sync table holds 110 copies today. No test behavior changed — all four suites run the same setup code as before.
+
+The drift suite keeps two guards, and both must derive their facts from the manifest rather than restate it:
+
+- the copy-count case pins the table size and its two buckets, so an unexpected manifest change is visible instead of silently accepted;
+- the `checkSync`/`applySync` case builds its fake tree by walking `copyEntries()` and writing every source it names. A hand-written source list drifted the moment `shared/host/detached-work.ts` was added: `checkSync` then died on ENOENT instead of reporting drift, which is the one failure mode this gate exists to catch.
 
 ## Testing
 
-`pnpm test:scripts` (sync table + drift suites), `pnpm docs:check`, and the full test suites of shared (74), dsh-web-settings (66), dsh-tool-describe-image (374), and dsh-remote-web-ui (397, after its package build provides lib/mobile.js) — all pass.
+`pnpm test:scripts` (sync table + drift suites; 372 tests pass with the manifest-derived fake tree), `pnpm docs:check`, and the full test suites of shared, dsh-web-settings, and dsh-remote-web-ui — all pass.

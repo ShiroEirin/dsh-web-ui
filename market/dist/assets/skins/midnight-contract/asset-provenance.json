@@ -1,0 +1,47 @@
+{
+  "background": {
+    "file": "assets/scene-approved.png",
+    "sha256": "57369a1a218c13edee81748ec1450c4200e2a605dfaeb89629ddfdd94cd6ebed",
+    "source": "Original character-free landscape generated for the Theater-ahyeon project through Codex built-in image_gen on 2026-10-05",
+    "authorization": "Public distribution permitted for personal non-commercial use under NOTICE.md; no third-party rights granted",
+    "processing": "Replacement landscape for version 0.1.2; packaged file identity recorded by SHA-256",
+    "classification": "AI-generated landscape artwork",
+    "creator": "Theater-ahyeon project via Codex image_gen",
+    "service": "Codex built-in image_gen; exact underlying model and request identifier not recorded",
+    "sourceDeclaration": "SOURCE-DECLARATION.md",
+    "usage": "Personal non-commercial use only; no official affiliation or endorsement; remove affected assets on rights-holder objection",
+    "generatedOn": "2026-10-05",
+    "visualReference": {
+      "sourceUrl": "https://steamcommunity.com/sharedfiles/filedetails/?id=3294660190",
+      "usage": "Style and color mood only; new architecture, viewpoint and foreground generated. Referenced wallpaper not redistributed; no ownership claimed."
+    }
+  },
+  "materials": {
+    "service": "OpenAI image_gen",
+    "files": [
+      "action-plaque.png",
+      "dossier-frame.png",
+      "envelope-blank-v4.webp",
+      "field-bed.png",
+      "icon-codex.webp",
+      "icon-ledger.webp",
+      "icon-orbit.webp",
+      "icon-quill.webp",
+      "icon-seal.webp",
+      "ledger-v4.webp",
+      "logo.webp",
+      "nav-invitation.png",
+      "quarter-crest.png",
+      "salon-v4.webp",
+      "sapphire-toggle.png",
+      "waxseal-v4.webp",
+      "workspace-folio.png"
+    ],
+    "description": "Retained AI-generated interface ornaments from the existing Midnight Contract material set; public prompt descriptions edited on 2026-10-05, not new UI generation or verbatim request receipts",
+    "classification": "AI-generated interface materials",
+    "sourceDeclaration": "SOURCE-DECLARATION.md",
+    "usage": "Personal non-commercial artwork use only; code license does not grant commercial rights to artwork",
+    "promptRecordDate": "2026-10-02",
+    "publicDescriptionsEditedOn": "2026-10-05"
+  }
+}

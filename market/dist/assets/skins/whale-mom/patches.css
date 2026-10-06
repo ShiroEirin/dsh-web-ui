@@ -61,7 +61,7 @@ body[data-ds-dark-theme] [class*="previewBadge"] {
   font-weight: 500;
 }
 
-[class*="summary"], [class*="timeEnd"], [class*="turnStatus"], [class*="usage"], [class*="footerItem"], [class*="footerHint"] {
+[class*="summary"], [class*="timeEnd"], [data-chat-running] [data-shimmer], [class*="usage"], [class*="footerItem"], [class*="footerHint"] {
   color: var(--dsh-skin-text-mid);
   font-weight: 500;
 }

@@ -1,0 +1,244 @@
+/**
+ * Fusion Pixel 12px monospaced (zh_hans) - a bitmap-style CJK typeface.
+ *
+ * Why this and not the classic IBM VGA / Px437 DOS bitmap font: those cover
+ * CP437 only (Latin plus box drawing), so every Chinese glyph would fall back to
+ * a modern face and the dot-matrix illusion would break. The DOS-era answer for
+ * Chinese was a 16x16 dot-matrix font (HZK16 and friends), which has no webfont
+ * form; Fusion Pixel is the modern OFL-1.1 equivalent and carries Latin and
+ * Simplified Chinese on one grid. Licence text ships in assets/FUSION-PIXEL-OFL.txt.
+ */
+@font-face {
+  font-family: "Fusion Pixel 12px";
+  src: url("assets/fusion-pixel-12px-monospaced.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  size-adjust: 100%;
+}
+
+/**
+ * Phosphor CRT — L1 token layer.
+ *
+ * Two things live here:
+ *   1. the palette: P1 phosphor green on near-black glass, identical in both
+ *      themes except for depth (the light theme is the brighter tube);
+ *   2. the type stack: every official `--dsw-font-*-font-family` token is pointed
+ *      at one monospace stack, which is what turns the whole shell into a
+ *      terminal. No remote font is fetched - the stack is limited to faces that
+ *      ship with Windows or are widely present.
+ */
+
+:root {
+  /* ---- type: one monospace stack for the entire shell ---- */
+  /* DOS-style dot matrix first; the modern monospace stack stays as fallback
+     so a missing font file degrades to something readable instead of tofu */
+  --dsw-font-family: "Fusion Pixel 12px", "Consolas", "DejaVu Sans Mono", "Lucida Console", monospace;
+  --dsw-font-base-16-font-family: var(--dsw-font-family);
+  --dsw-font-base-strong-16-font-family: var(--dsw-font-family);
+  --dsw-font-l-20-font-family: var(--dsw-font-family);
+  --dsw-font-m-18-font-family: var(--dsw-font-family);
+  --dsw-font-s-14-font-family: var(--dsw-font-family);
+  --dsw-font-s-strong-14-font-family: var(--dsw-font-family);
+  --dsw-font-xl-24-font-family: var(--dsw-font-family);
+  --dsw-font-xs-13-font-family: var(--dsw-font-family);
+  --dsw-font-xs-strong-13-font-family: var(--dsw-font-family);
+  --dsw-font-xxs-12-font-family: var(--dsw-font-family);
+  --dsw-font-xxs-strong-12-font-family: var(--dsw-font-family);
+  --dsw-font-xxxs-11-font-family: var(--dsw-font-family);
+  --dsw-font-xxxs-strong-11-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-base-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-base-italic-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-base-strong-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-base-strong-italic-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-small-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-small-italic-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-small-strong-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-small-strong-italic-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-code-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-code-block-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-code-block-small-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-h1-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-h2-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-h3-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-h4-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-table-font-family: var(--dsw-font-family);
+  --dsw-font-markdown-table-head-font-family: var(--dsw-font-family);
+
+  /* ---- surfaces: near-black glass with a green cast ---- */
+  /* smoked glass over the whole tube: the centre column paints no panel of its own,
+     so a bright scene behind green monospace text would lose contrast */
+  --dsw-alias-bg-base: #02120ac4;
+  --dsw-alias-bg-layer-1: #03150ce0;
+  --dsw-alias-bg-layer-2: #041a10d9;
+  --dsw-alias-bg-layer-3: #072416e0;
+  --dsw-alias-bg-layer-4: #0a2e1ce6;
+  --dsw-alias-bg-overlay: #010c07f2;
+  --dsw-alias-bg-skeleton: #3dff9e1a;
+  --dsw-alias-bg-multi-select: #3dff9e24;
+  --dsw-alias-bg-mask-1: #00090633;
+  --dsw-alias-bg-mask-2: #0009064d;
+  --dsw-alias-bg-mask-3: #00090666;
+  --dsw-alias-bg-mask-drop: #00090640;
+  --dsw-alias-bg-mask-photo: #0009062b;
+
+  /* ---- borders: phosphor hairlines ---- */
+  --dsw-alias-border-l1: #3dff9e2e;
+  --dsw-alias-border-l2: #3dff9e47;
+  --dsw-alias-border-l3: #3dff9e5c;
+  --dsw-alias-border-l4: #3dff9e75;
+  --dsw-alias-border-inverted: #00110866;
+
+  /* ---- labels: the phosphor itself ---- */
+  --dsw-alias-label-primary: #b9ffd8;
+  --dsw-alias-label-primary-bluish: #9dffcb;
+  --dsw-alias-label-primary-dimmed: #8ce9b4;
+  --dsw-alias-label-primary-foreground: #02150c;
+  --dsw-alias-label-primary-inverted: #02150c;
+  --dsw-alias-label-secondary: #78d9a2;
+  --dsw-alias-label-tertiary: #57b381;
+  --dsw-alias-label-caption: #3f8f66;
+  --dsw-alias-label-dimmed: #2f6f4f;
+  --dsw-alias-label-error: #ff8a8a;
+  --dsw-alias-label-document-preview: #78d9a2;
+  --dsw-alias-link: #7dffc0;
+
+  /* ---- brand + interaction ---- */
+  --dsw-alias-brand-primary: #3dff9e;
+  --dsw-alias-brand-primary-invert: #02150c;
+  --dsw-alias-brand-text: #02150c;
+  --dsw-alias-interactive-bg-hover: #3dff9e1f;
+  --dsw-alias-interactive-bg-active: #3dff9e33;
+  --dsw-alias-interactive-bg-hover-solid: #0b2c1c;
+  --dsw-alias-interactive-bg-hover-accent: #3dff9e33;
+  --dsw-alias-interactive-bg-hover-danger: #ff8a8a26;
+
+  /* ---- buttons ---- */
+  --dsw-alias-button-primary-fill: #3dff9e;
+  --dsw-alias-button-primary-hover: #7dffc0;
+  --dsw-alias-button-primary-dimmed: #3dff9e5c;
+  --dsw-alias-button-ghost-active-fill: #3dff9e24;
+  --dsw-alias-button-ghost-active-hover: #3dff9e33;
+  --dsw-alias-button-ghost-active-border: #3dff9e5c;
+  --dsw-alias-button-floating-fill: #041a10f0;
+  --dsw-alias-button-floating-hover: #0a2e1c;
+  --dsw-alias-button-elevated-fill: #072416f0;
+  --dsw-alias-button-contrast-fill: #b9ffd8;
+  --dsw-alias-button-tool-bar-fill: #03150ccc;
+  --dsw-alias-button-tool-bar-fill-invisible: #03150c00;
+  --dsw-alias-button-tool-bar-hover: #3dff9e24;
+  --dsw-alias-button-info-fill: #3dff9e;
+  --dsw-alias-button-info-hover: #7dffc0;
+
+  /* ---- states: phosphor terminal semantics ---- */
+  --dsw-alias-state-success-primary: #3dff9e;
+  --dsw-alias-state-success-secondary: #3dff9e24;
+  --dsw-alias-state-success-tertiary: #3dff9e3d;
+  --dsw-alias-state-warn-primary: #ffd166;
+  --dsw-alias-state-warn-secondary: #ffd16624;
+  --dsw-alias-state-warn-tertiary: #ffd1663d;
+  --dsw-alias-state-warn-label: #ffdf94;
+  --dsw-alias-state-error-primary: #ff7a7a;
+  --dsw-alias-state-error-secondary: #ff7a7a24;
+  --dsw-alias-state-idle-primary: #3f8f66;
+  --dsw-alias-state-business-primary: #3dff9e;
+  --dsw-alias-state-business-tertiary: #3dff9e33;
+
+  /* ---- markdown ---- */
+  --dsw-alias-markdown-inline-code: #0a2e1c;
+  --dsw-alias-markdown-code-block: #010c07f5;
+  --dsw-alias-markdown-code-block-banner: #062015;
+  --dsw-alias-markdown-placeholder: #3f8f66;
+  --dsw-alias-markdown-tag: #3dff9e24;
+  --dsw-alias-markdown-citation: #7dffc0;
+  --dsw-alias-markdown-code-segment-selected: #3dff9e2e;
+  --dsw-alias-markdown-code-segment-unselected: #ffffff12;
+  --dsw-alias-code-diff-added: #3dff9e26;
+  --dsw-alias-code-diff-deleted: #ff7a7a26;
+  --dsw-alias-file-diff-added-bg: #3dff9e1a;
+  --dsw-alias-file-diff-added-gutter: #3dff9e33;
+  --dsw-alias-file-diff-added-marker: #3dff9e;
+  --dsw-alias-file-diff-deleted-bg: #ff7a7a1a;
+  --dsw-alias-file-diff-deleted-gutter: #ff7a7a33;
+  --dsw-alias-file-diff-deleted-marker: #ff7a7a;
+
+  /* ---- specific surfaces ---- */
+  --dsw-specific-sidebar-fill: #02110ae0;
+  --dsw-specific-sidebar-nav-item-hover: #3dff9e1f;
+  --dsw-specific-sidebar-nav-item-active: #3dff9e33;
+  --dsw-specific-sidebar-nav-item-active-accent: #3dff9e;
+  --dsw-specific-bubble: #041a10d9;
+  --dsw-specific-bubble-highlight: #0a2e1c;
+  --dsw-specific-input-major: #03150ce0;
+  --dsw-specific-login-input: #03150ce0;
+  --dsw-specific-menu: #041a10f2;
+  --dsw-specific-selector: #041a10f2;
+  --dsw-specific-tip: #010c07f2;
+  --dsw-alias-tooltip-bg: #041a10f2;
+  --dsw-alias-toast-bg: #041a10f2;
+  --dsw-hovercard-bg: #041a10f2;
+  --dsw-menu-backdrop-filter: blur(2px) saturate(1.1);
+
+  /* ---- scrollbars ---- */
+  --dsw-alias-scrollbar-bg-l1: #3dff9e1f;
+  --dsw-alias-scrollbar-bg-l2: #3dff9e2b;
+  --dsw-alias-scrollbar-hover-l1: #3dff9e40;
+  --dsw-alias-scrollbar-hover-l2: #3dff9e57;
+
+  /* ---- elevation: the tube has no soft shadows, only glow ---- */
+  --dsw-elevation-panel: 0 0 0 1px #3dff9e24, 0 0 34px #3dff9e14;
+  --dsw-elevation-prominent: 0 0 0 1px #3dff9e33, 0 0 52px #3dff9e1f;
+  --dsw-elevation-soft: 0 0 18px #3dff9e12;
+  --dsw-elevation-stroke: 0 0 0 1px #3dff9e33;
+  --dsw-elevation-stroke-color: #3dff9e33;
+  --dsw-shadow-lv1: 0 0 12px #3dff9e14;
+  --dsw-shadow-lv2: 0 0 26px #3dff9e1f;
+  --dsw-shadow-lv3: 0 0 44px #3dff9e29;
+  --dsw-mask-blur: blur(3px);
+  --dsw-linear-gradient-think: linear-gradient(90deg, #3dff9e00 0%, #3dff9e66 50%, #3dff9e00 100%);
+  --dsw-linear-think-select: linear-gradient(90deg, #3dff9e2e, #3dff9e14);
+}
+
+body[data-ds-dark-theme] {
+  /* the dark theme is the same tube after hours: deeper glass, same phosphor */
+  --dsw-alias-bg-base: transparent;
+  --dsw-alias-bg-layer-1: #010b06d9;
+  --dsw-alias-bg-layer-2: #02120ae2;
+  --dsw-alias-bg-layer-3: #04190fe6;
+  --dsw-alias-bg-layer-4: #062115eb;
+  --dsw-alias-bg-overlay: #000603f7;
+  --dsw-alias-label-primary: #a6ffcb;
+  --dsw-alias-label-primary-bluish: #8dffbe;
+  --dsw-alias-label-primary-dimmed: #7fdfa8;
+  --dsw-alias-label-secondary: #6ccc96;
+  --dsw-alias-label-tertiary: #4ea677;
+  --dsw-alias-label-caption: #3a805d;
+  --dsw-alias-label-dimmed: #2a6245;
+  --dsw-alias-label-error: #ff8484;
+  --dsw-alias-link: #6dffb6;
+  --dsw-alias-brand-primary: #3dff9e;
+  --dsw-alias-interactive-bg-hover: #3dff9e1a;
+  --dsw-alias-interactive-bg-active: #3dff9e2b;
+  --dsw-alias-interactive-bg-hover-solid: #08241699;
+  --dsw-specific-sidebar-fill: #010a05e6;
+  --dsw-specific-sidebar-nav-item-hover: #3dff9e1a;
+  --dsw-specific-sidebar-nav-item-active: #3dff9e2b;
+  --dsw-specific-bubble: #02120ad6;
+  --dsw-specific-bubble-highlight: #062115;
+  --dsw-specific-input-major: #010b06de;
+  --dsw-specific-login-input: #010b06de;
+  --dsw-specific-menu: #02120af0;
+  --dsw-specific-selector: #02120af0;
+  --dsw-specific-tip: #000603f5;
+  --dsw-alias-tooltip-bg: #02120af0;
+  --dsw-alias-toast-bg: #02120af0;
+  --dsw-hovercard-bg: #02120af0;
+  --dsw-alias-markdown-inline-code: #062115;
+  --dsw-alias-markdown-code-block: #000603f7;
+  --dsw-alias-markdown-code-block-banner: #03150c;
+  --dsw-alias-markdown-placeholder: #3a805d;
+  --dsw-alias-scrollbar-bg-l1: #3dff9e1a;
+  --dsw-alias-scrollbar-bg-l2: #3dff9e26;
+  --dsw-alias-scrollbar-hover-l1: #3dff9e3d;
+  --dsw-alias-scrollbar-hover-l2: #3dff9e52;
+}

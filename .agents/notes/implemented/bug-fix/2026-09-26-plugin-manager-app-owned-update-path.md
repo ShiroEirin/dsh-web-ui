@@ -72,6 +72,18 @@ Two further facts decide the fix:
    version the route resolved — a green manager call that moved nothing is a
    `更新未生效` error, exactly like the CLI path. Every other runtime keeps the
    CLI as the single writer, unchanged.
+4. **The manager's resolved verdict is read before the profile is.** Its
+   `change()` wrapper catches every failure and folds it into the resolved
+   value (`application: 'failed'` / `'cancelled'`, plus `error.code` and
+   `error.diagnostic`), so a resolved `installBundle` is not proof of success.
+   Reading only whether the call threw reported a run pnpm had refused as
+   `官方插件管理器报告成功，但 … 仍为 …（更新未生效）` and hid the reason
+   (2026-09-29, `dsh-better-sidebar` 0.22.1 → 0.24.1:
+   `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` in the manager's own
+   `~/.dsh/profiles/desktop/.plugin-manager/logs/operation-YG19PC/pnpm.log`).
+   `nativeManagerFailure()` renders that verdict — the pnpm diagnostic, the
+   packages an `incompatible-version` refusal names, or the cancellation — and
+   only a verdict that is not a failure goes on to the profile re-read.
 
 The official manager is a contract observation, not an import: the repository
 builds against the official SDK's published packages, and this package must
@@ -117,6 +129,9 @@ page has when it calls the same service.
   for verification.
 - The change takes effect on the next host start (the host half is a built
   `lib/index.js` loaded at boot).
+- Installs and removals on the same profile later took the same native writer,
+  which is a separate decision with its own evidence: [the install-path
+  note](2026-09-27-plugin-manager-app-owned-install-path.md).
 
 ## Testing
 
@@ -129,10 +144,13 @@ page has when it calls the same service.
   variants into one key, and writes PATH when the environment carries none.
 - `tests/gateway-jobs.spec.ts`: on a `desktop` fact set the update runs
   through a scripted official manager and the CLI spawn seam throws if it is
-  ever used; a manager failure settles the job as an error with the manager's
-  message; a green manager run that left the version in place is
-  `更新未生效`; and on a non-desktop profile the CLI stays the writer with the
-  manager untouched.
+  ever used; a manager rejection settles the job as an error with the manager's
+  message; a folded failure verdict is reported with its own reason
+  (`官方插件管理器更新失败：…`) instead of the `更新未生效` no-op text; a
+  cancellation and an `incompatible-version` verdict are named; a green manager
+  run that left the version in place is `更新未生效`; a positive verdict still
+  goes through the profile re-read; and on a non-desktop profile the CLI stays
+  the writer with the manager untouched.
 - Live reproduction of the spawn defect and of its repair against the real
   installation: exit 127 with `env: node: No such file or directory` for the
   old shape, `0.1.7-rc.2` for `/opt/homebrew/bin/node /opt/homebrew/bin/dsh

@@ -183,6 +183,31 @@ describe('PairingService', () => {
     const accepted = service.accept(token)
     expect(accepted.ok).toBe(true)
     expect(seen).toEqual(['waiting', 'waiting', 'connected'])
+    // Every wire field participates in the comparison. The posture frame is the
+    // one the layer emits with no accompanying phase/roster transition, so a
+    // missing term here silently stranded the desktop panel on a stale verdict.
+    const postures: unknown[] = []
+    const unsubscribe = service.onState(snapshot => { postures.push(snapshot.posture) })
+    service.setPosture({ checkedAt: 1, hosts: [{ host: 'a.example', exposed: true }] })
+    expect(postures).toHaveLength(1)
+    // A repeated identical round is still deduped.
+    service.setPosture({ checkedAt: 1, hosts: [{ host: 'a.example', exposed: true }] })
+    expect(postures).toHaveLength(1)
+    // A changed verdict reaches the stream.
+    service.setPosture({ checkedAt: 2, hosts: [{ host: 'a.example', exposed: false }] })
+    expect(postures).toHaveLength(2)
+    // A frame that is not the expected shape degrades to "changed" instead of
+    // throwing out of the setter: this comparison runs inside the emit path,
+    // outside the listener error containment. A null frame...
+    service.setPosture(null as unknown as undefined)
+    expect(postures).toHaveLength(3)
+    // ...and a null entry inside a real hosts array, which reaches the per-host
+    // comparison with a matching checkedAt.
+    service.setPosture({ checkedAt: 4, hosts: [{ host: 'a.example', exposed: false }] })
+    expect(postures).toHaveLength(4)
+    service.setPosture({ checkedAt: 4, hosts: [null] } as unknown as undefined)
+    expect(postures).toHaveLength(5)
+    unsubscribe()
   })
 
   it('throttles presence broadcasts: touch/heartbeat stay quiet until the sweep', () => {

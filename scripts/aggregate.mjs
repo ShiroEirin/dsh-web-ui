@@ -49,6 +49,14 @@
  *     settings entries stay off the page via the rows-route gating); users
  *     opt in per row in the plugin manager, whose enable writes a user-layer
  *     "disabled: false" override that wins over the bundle default.
+ *   - familyIds entries ("<child row id>: <aggregate row id>" mapping lines) pin
+ *     the aggregate row id one child is mounted under when the derived id would
+ *     move a published identifier. A child that must change its OWN standalone
+ *     row id (a standalone install claims the global loader id space, so an id
+ *     another bundle already takes is a silent row loss) would otherwise drag
+ *     the aggregate row id and its family subpath export along with it. The
+ *     override must name a row this aggregate really mounts and must stay in
+ *     the web-ui-* id space; the derived id remains the default for every row.
  *   - retire entries (plain row-id strings) mark FOREIGN rows this aggregate
  *     supersedes: each renders a trailing bare "disabled: true" override
  *     naming the id verbatim (no namespace), so a row another bundle inserted
@@ -87,6 +95,17 @@ const require = createRequire(join(REPO_ROOT, 'package.json'))
 function namespaceId(id) {
   if (id.startsWith('web-ui-')) return id
   return `web-ui-${id.replace(/^(ui-|web-ui-)+/, '')}`
+}
+
+/**
+ * The aggregate row id one child row is mounted under: the family's declared
+ * override when the manifest pins one, otherwise the derived namespaced id.
+ * @param id - the child package's own insert row id.
+ * @param familyIds - the manifest's familyIds mapping.
+ * @returns the aggregate row id.
+ */
+function familyIdOf(id, familyIds) {
+  return familyIds[id] ?? namespaceId(id)
 }
 
 const PATCH_HEADER = [
@@ -138,13 +157,13 @@ function shellSubpath(id) {
 }
 
 /** Family subpaths of one aggregate, deduped and sorted for exports emission. */
-function collectShellSubpaths(blocks, tombstones = []) {
+function collectShellSubpaths(blocks, tombstones = [], familyIds = {}) {
   const subs = new Set(tombstones)
   for (const block of blocks) {
     if (block.entry === 'self' || SHELL_EXEMPT.has(block.entry)) continue
     for (const row of block.rows) {
       if (row.kind === 'patch') continue
-      subs.add(shellSubpath(row.id))
+      subs.add(shellSubpath(familyIdOf(row.id, familyIds)))
     }
   }
   return [...subs].sort()
@@ -192,7 +211,7 @@ function findAggregates() {
  * while the generator can JSON.parse each entry).
  */
 function parseManifest(ymlPath, errors) {
-  const manifest = { patchFrom: [], deps: [], self: null, rows: [], patches: [], inactive: [], retire: [], tombstones: [] }
+  const manifest = { patchFrom: [], deps: [], self: null, rows: [], patches: [], inactive: [], retire: [], tombstones: [], familyIds: {} }
   let section = null
   for (const raw of readFileSync(ymlPath, 'utf8').split(/\r?\n/)) {
     const line = raw.trim()
@@ -206,6 +225,21 @@ function parseManifest(ymlPath, errors) {
       // Unknown section header (or preamble): drop its entries instead of
       // letting them fall into whichever known section was parsed last.
       // Manifest ordering must not matter.
+      continue
+    }
+    if (section === 'familyIds') {
+      // Mapping section: a child's own row id -> the aggregate row id this
+      // aggregate mounts it under (see the familyIds contract in the header).
+      const mapping = line.replace(/\s+#.*$/, '').match(/^([A-Za-z0-9_.-]+):\s*(\S+)$/)
+      if (!mapping) {
+        errors.push(`${ymlPath}: familyIds entry must be "<child row id>: <aggregate row id>": ${line}`)
+        continue
+      }
+      if (mapping[1] in manifest.familyIds) {
+        errors.push(`${ymlPath}: duplicate familyIds entry for ${mapping[1]}`)
+        continue
+      }
+      manifest.familyIds[mapping[1]] = mapping[2]
       continue
     }
     const entryMatch = line.match(/^-\s+(.+)$/)
@@ -446,7 +480,7 @@ function pushShellConfig(lines, row) {
 }
 
 /** Render the aggregate cordis.patch.yml: header + per-source insert blocks, plus verbatim harness-row patches and own-row config overrides. */
-function renderPatch(blocks, externalRows, ownPatches, inactiveRows, retireRows, errors, rel, aggregateDir) {
+function renderPatch(blocks, externalRows, ownPatches, inactiveRows, retireRows, familyIds, errors, rel, aggregateDir) {
   const lines = [...PATCH_HEADER]
   const seen = new Set()
   const patchedIds = new Set()
@@ -458,7 +492,7 @@ function renderPatch(blocks, externalRows, ownPatches, inactiveRows, retireRows,
     if (insertRows.length > 0) {
       lines.push('', sourceHeader, '- insert:')
       for (const row of insertRows) {
-        const id = namespaceId(row.id)
+        const id = familyIdOf(row.id, familyIds)
         if (seen.has(id)) errors.push(`${rel}: duplicate aggregate row id after namespacing: ${id} (${row.name})`)
         seen.add(id)
         lines.push(`    - id: ${id}`)
@@ -471,7 +505,7 @@ function renderPatch(blocks, externalRows, ownPatches, inactiveRows, retireRows,
           lines.push(`      name: '${row.name}'`)
           pushConfig(lines, row.configLines ?? [], 6)
         } else {
-          lines.push(`      name: '${AGGREGATE_SHELL_PACKAGE}/${shellSubpath(row.id)}'`)
+          lines.push(`      name: '${AGGREGATE_SHELL_PACKAGE}/${shellSubpath(id)}'`)
           pushShellConfig(lines, row)
         }
       }
@@ -497,7 +531,7 @@ function renderPatch(blocks, externalRows, ownPatches, inactiveRows, retireRows,
       errors.push(`${rel}: patches entry "${patch.id}" needs an object "config"`)
       continue
     }
-    const targetId = namespaceId(patch.id)
+    const targetId = familyIdOf(patch.id, familyIds)
     if (!seen.has(targetId)) {
       errors.push(`${rel}: patches entry "${patch.id}" does not match any row of this aggregate`)
       continue
@@ -506,6 +540,21 @@ function renderPatch(blocks, externalRows, ownPatches, inactiveRows, retireRows,
     patchedIds.add(targetId)
     lines.push('', `# config override for ${targetId} (seed default; settings wins once the user edits it)`, `- id: ${targetId}`)
     lines.push(`  config: ${JSON.stringify(patch.config)}`)
+  }
+  // Declared familyIds overrides must name a row this aggregate really mounts
+  // and must stay inside the aggregate's own id space: a key that matches no
+  // row is dead config, and a value outside web-ui-* could collide with the
+  // child package's own standalone row, which is the very collision the
+  // namespacing exists to prevent.
+  for (const [childId, familyId] of Object.entries(familyIds)) {
+    if (!/^web-ui-[a-z0-9-]+$/.test(familyId)) {
+      errors.push(`${rel}: familyIds entry "${childId}" must name a web-ui-* aggregate row id: ${familyId}`)
+      continue
+    }
+    const childRow = blocks.some((block) => block.rows.some((row) => row.kind !== 'patch' && row.id === childId))
+    if (!childRow) {
+      errors.push(`${rel}: familyIds entry "${childId}" does not match any insert row of this aggregate`)
+    }
   }
   // Own rows that ship disabled by default (opt-in rows): trailing bare
   // overrides emitted after every insert, so the row never mounts until the
@@ -518,7 +567,7 @@ function renderPatch(blocks, externalRows, ownPatches, inactiveRows, retireRows,
       errors.push(`${rel}: inactive entry must be a non-empty row id string: ${JSON.stringify(rawId)}`)
       continue
     }
-    const targetId = namespaceId(rawId)
+    const targetId = familyIdOf(rawId, familyIds)
     if (!seen.has(targetId)) {
       errors.push(`${rel}: inactive entry "${rawId}" does not match any row of this aggregate`)
       continue
@@ -942,9 +991,9 @@ for (const { pkgDir, ymlPath } of aggregates) {
   if (manifest.patchFrom.length === 0 && !manifest.self) {
     console.log(`[aggregate] WARN ${rel}: aggregate.yml has no patchFrom entries (patch would be empty)`)
   }
-  const shellSubpaths = collectShellSubpaths(blocks, manifest.tombstones)
+  const shellSubpaths = collectShellSubpaths(blocks, manifest.tombstones, manifest.familyIds)
   if (shellSubpaths.length > 0) validateShellFiles(pkgDir, rel, errors)
-  const patch = renderPatch(blocks, manifest.rows, manifest.patches ?? [], manifest.inactive ?? [], manifest.retire ?? [], errors, rel, pkgDir)
+  const patch = renderPatch(blocks, manifest.rows, manifest.patches ?? [], manifest.inactive ?? [], manifest.retire ?? [], manifest.familyIds, errors, rel, pkgDir)
   const resolvedDeps = resolveEntries(pkgDir, manifest.deps, 'deps', errors)
   const pkgJson = renderPackageJson(join(pkgDir, 'package.json'), resolvedDeps, shellSubpaths)
   // The shell aggregate additionally emits the client-children mount list:

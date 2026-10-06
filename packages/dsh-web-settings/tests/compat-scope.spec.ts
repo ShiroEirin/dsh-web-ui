@@ -151,6 +151,22 @@ describe('createCompatScope transport', () => {
     expect(handler).not.toHaveBeenCalled()
   })
 
+  it('promotes a sub-namespace of a multi-namespace row onto that row entry id (#1755)', async () => {
+    // The skin center binds ONE row whose Config nests several sub-namespaces.
+    // A card addressing a sibling sub-namespace must land on the same entry id,
+    // or its writes are refused as settings-not-exposed.
+    const native = fakeForm<{ enabled: boolean }>(ready({ enabled: true }))
+    const { service, requests } = fakeConfigForms(native.form, [{ ns: 'web-ui-skin-center' }])
+    const { fetchFn } = fakeFetch(async () => describeResult([
+      bridgeView('skin-background', { enabled: true }, 3, 'web-ui-skin-center'),
+      bridgeView('skin-wallpaper', { enabled: true }, 3, 'web-ui-skin-center'),
+    ]))
+    const scope = createCompatScope<{ enabled: boolean }>({ namespace: 'skin-wallpaper', configForms: service, fetchFn })
+    await vi.waitFor(() => { expect(requests).toEqual(['web-ui-skin-center']) })
+    expect(scope.entryId()).toBe('web-ui-skin-center')
+    expect(scope.getSnapshot().status).toBe('ready')
+  })
+
   it('keeps the bridge controller when the bridge serves no entry id', async () => {
     const native = fakeForm<{ enabled: boolean }>(ready({ enabled: false }))
     const { service, requests } = fakeConfigForms(native.form, [])

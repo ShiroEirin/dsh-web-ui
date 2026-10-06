@@ -1,0 +1,5 @@
+# Bilingual-pair consistency record (docs/i18n.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with git hash-object.
+2026-09-04-maintenance-run-audiogen-merge-jyn-changes-bee-eater-landing.md: 13c9c35df1af4c971b9b8e5911cab57311c3d39e
+2026-09-04-maintenance-run-audiogen-merge-jyn-changes-bee-eater-landing.zh.md: 5fe0a8e2f0e1141c5d4000ab90ae983b4547bfe7

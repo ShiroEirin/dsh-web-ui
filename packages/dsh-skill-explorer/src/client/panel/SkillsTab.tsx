@@ -91,6 +91,9 @@ function SkillRow({ skill, api, onChanged, onEdit }: { skill: SkillEntry; api: S
           </span>
         )}
         {skill.linked === true && <span className={css.badge}>{tt('list.linked')}</span>}
+        {skill.path === undefined && (
+          <span className={css.badge} title={tt('list.noFileTooltip')}>{tt('list.noFile')}</span>
+        )}
         {(skill.modelInvocable || skill.userInvocable) && (
           <span className={`${css.badge} ${css.badgeInvokable}`} title={tt('list.invokableTooltip')}>
             {tt('list.invokable', { marks: invokableMarks(skill) })}
@@ -126,6 +129,7 @@ function SkillRow({ skill, api, onChanged, onEdit }: { skill: SkillEntry; api: S
         <p className={css.skillWhen}>{tt('list.when', { when: skill.whenToUse })}</p>
       )}
       {skill.path !== undefined && <div className={css.skillPath}>{skill.path}</div>}
+      {skill.path === undefined && <p className={css.skillWhen}>{tt('list.noFileHint')}</p>}
       {error !== undefined && <p className={css.banner} data-kind="error">{error}</p>}
     </article>
   )

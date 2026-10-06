@@ -2,7 +2,7 @@
 
 Status: implemented
 
-Supersession check: no active note owns the status character frame loop; [performance-guidelines-v1](../../../packages/skins/skin-center/contracts/performance-guidelines-v1.md) rules R3/R5 own the *rules* but no note records this hook's compliance state. The measured-case-study owner for hooks cost remains the contract document itself.
+Supersession check: no active note owns the status character frame loop; [performance-guidelines-v1](https://github.com/zhu1090093659/dsh-skins/blob/main/contracts/performance-guidelines-v1.md) rules R3/R5 own the *rules* but no note records this hook's compliance state. The measured-case-study owner for hooks cost remains the contract document itself.
 
 ## Problem
 

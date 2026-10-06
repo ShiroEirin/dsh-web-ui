@@ -213,7 +213,11 @@ describe('handover bundle: runner override and prompt preamble', () => {
       execute: async (_sessionId, line) => { dispatched.push(line); return { kind: 'success', text: 'ok' } as const },
     })
     await runnerWithPermission.launch(task)
-    expect(dispatched).toEqual(['/permission danger-full-access'])
+    expect(dispatched[0]).toBe('/permission danger-full-access')
+    // The default goal run arms /goal with the same composed prompt (preamble
+    // included), so the objective the agent continues toward is what it read.
+    expect(dispatched[1]?.startsWith('/goal ')).toBe(true)
+    expect(dispatched[1]).toContain('正文')
     expect(calls.create).toMatchObject({ workspaceId: 'ws-1', agentPreset: 'preset-a' })
     const text = (calls.prompt as { content: Array<{ text: string }> }).content[0].text
     expect(text).toContain('docs/handover.md')

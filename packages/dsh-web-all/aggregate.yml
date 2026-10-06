@@ -17,6 +17,10 @@ patchFrom:
   - ../dsh-plugin-manager
   - ../dsh-market
   - ../dsh-task-board
+  # dsh-task-board-github 必须紧跟看板之后：它是看板的外部提供方扩展
+  # （GitHub Issues 同步），聚合展开的行序就是浏览器半区与宿主半区的装载
+  # 顺序，扩展向看板的提供方席位登记之前看板必须先就位。
+  - ../dsh-task-board-github
   - ../dsh-git-graph
   - ../dsh-remote-web-ui
   # dsh-update 紧邻 remote-web-ui：两者共用侧栏 footer action 席位，
@@ -37,6 +41,9 @@ deps:
   - ../dsh-plugin-manager
   - ../dsh-market
   - ../dsh-task-board
+  # 排在 ../dsh-task-board 之后：扩展依赖看板的提供方契约，deps 顺序与
+  # patchFrom 顺序保持一致便于对照。
+  - ../dsh-task-board-github
   - ../dsh-git-graph
   - ../dsh-remote-web-ui
   - ../dsh-update
@@ -58,6 +65,15 @@ deps:
 # （改由卫星自带的 loader entry 挂载）。
 # preset-center 排在 patchFrom 行之后：创意工坊卡片（本仓 dsh-market 行）先声明
 # dsh-workshop.panel 子槽位，预设面板再注册进该槽位（见 dsh-presets 仓）。
+# 家族行 id 覆盖（#1794）：子包独立安装行 id 与聚合家族行 id 解耦。
+# dsh-plugin-manager 的独立行必须避开官方 @deepseek-ai/dsh-web-app 的
+# ui-plugin-manager（loader 同 id 后来者胜且不报错，官方插件页行被静默丢弃，
+# 侧栏「插件」入口随之消失）；派生规则会把新的独立行 id 一并改名，从而移动
+# 已发布的聚合行 id 与家族子路径导出。覆盖把两者拆开：独立行改名，聚合行
+# web-ui-plugin-manager 与子路径 plugin-manager 逐字不变，老 profile 无需迁移。
+# 值必须在本聚合的 web-ui-* id 空间内，且必须指向本聚合真实挂载的行。
+familyIds:
+  ui-plugin-manager-update-check: web-ui-plugin-manager
 rows:
   - {"id": "community-plugins", "name": "@linxin666/dsh-client-ui-community-plugins"}
   - {"id": "pet", "name": "@linxin666/dsh-pet"}
@@ -66,7 +82,7 @@ rows:
 
 # 外部 npm 插件段：alpha 分支（2026-09-17 决策）不内置 dsh-better-sidebar。
 # 该插件 0.19.1 的全部 @deepseek-ai/dsh-* peer 声明为 ^0.1.5-rc.1，按 semver
-# 不覆盖本分支的 0.1.7-rc.2 cohort（预发布版本只匹配同 [major,minor,patch]
+# 不覆盖本分支的 0.2.0-rc.2 cohort（预发布版本只匹配同 [major,minor,patch]
 # 元的区间），因此 alpha 实验环境不再挂载这个右侧面板插件：聚合包不依赖它、
 # profile 里也不出现它的行。需要右侧面板时按需安装
 # （dsh plugin --profile <name> add dsh-better-sidebar@latest）。
@@ -88,7 +104,7 @@ inactive:
   - web-ui-skill-explorer
 # 归档设置入口（2026-09-15 原生优先决策）：dsh-session-archive 注册官方 section id
 # archived-sessions 与 order 25 接管该入口，把「原生恢复列表 + 家族批量归档/删除/
-# 自动策略」放在同一页。>=0.1.7-rc.2 的官方 dsh-web-app 不再挂载
+# 自动策略」放在同一页。>=0.2.0-rc.2 的官方 dsh-web-app 不再挂载
 # ui-settings-unarchive-sessions 行，所以这里没有 retire 目标：对不存在的行写
 # disabled 覆盖只会让 loader 每次启动都报 "patch: entry ... not found"。加回 retire
 # 目标前必须先在当前 cohort 上用 dsh --profile <name> --dump-config 确认该外部行存在。

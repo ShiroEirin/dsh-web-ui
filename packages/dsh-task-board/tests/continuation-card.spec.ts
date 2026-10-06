@@ -87,7 +87,7 @@ describe('continuation card: vertical action -> controller -> ledger -> snapshot
   function makeController(root: string): { controller: BoardController; ledger: HostTaskLedger } {
     const ledger = new HostTaskLedger(root, () => NOW)
     const toSnapshot = (state: { revision: number; tasks: TaskRecord[]; scheduler: TaskBoardSnapshot['scheduler'] }): TaskBoardSnapshot => ({
-      schemaVersion: 3,
+      schemaVersion: 5,
       revision: state.revision,
       tasks: state.tasks,
       scheduler: state.scheduler,
@@ -187,6 +187,28 @@ describe('board filter covers frozen snapshot text', () => {
     const task = createTask({ title: 't', description: 'd', prompt: 'p', freeze: { goal: '重构解析器', progress: '', next: '' } }, NOW, 'id-1')
     expect(matchesFilter(task, '解析器')).toBe(true)
     expect(matchesFilter(task, '不存在词')).toBe(false)
+  })
+})
+
+describe('board filter and provider identifiers', () => {
+  it('user searching a provider identifier finds the card with or without its leading hash', () => {
+    // Given a card whose local text says nothing about the identifier it
+    // carries, which lives only in an opaque provider payload leaf
+    const task = createTask({ title: 'Local title', description: 'Local desc', prompt: 'p' }, NOW, 'gf-1')
+    const withPayload: TaskRecord = {
+      ...task,
+      integrations: { provider: { issueNumber: 1758, repository: 'dsh-web' } },
+    }
+
+    // When the board filter is applied with the identifier written either way
+    const written = matchesFilter(withPayload, '#1758')
+    const bare = matchesFilter(withPayload, '1758')
+
+    // Then both forms reach the same leaf, and an unrelated term still does not
+    expect(written).toBe(true)
+    expect(bare).toBe(true)
+    expect(matchesFilter(withPayload, '#dsh-web')).toBe(true)
+    expect(matchesFilter(withPayload, '#unrelated')).toBe(false)
   })
 })
 

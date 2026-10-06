@@ -16,6 +16,17 @@ import { Server, utils as ssh2Utils, type ClientChannel, type Connection as Serv
 export const TEST_USER = 'tester'
 export const TEST_PASSWORD = 'secret'
 
+/** Observation hook for tests that must act while a command is in flight. */
+let startedHook: CommandStartedHook | undefined
+
+/**
+ * Observe every accepted exec command. Passing `undefined` clears it.
+ * @param hook - called with the command text once its channel is open.
+ */
+export function onCommandStarted(hook: CommandStartedHook | undefined): void {
+  startedHook = hook
+}
+
 /** Paths to the generated client keypair (key auth tests). */
 export interface KeyPairPaths {
   privateKey: string
@@ -27,8 +38,16 @@ function generateKey(target: string): void {
   execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', target, '-N', '', '-q'], { stdio: 'ignore' })
 }
 
+/**
+ * Notified once the shim has accepted a command and the remote channel exists.
+ * Tests that need to act "while a command is running" await this instead of
+ * sleeping, so the ordering is deterministic under load.
+ */
+export type CommandStartedHook = (command: string) => void
+
 /** The exec shim: deterministic responses for known commands. */
 function handleCommand(command: string, stream: ClientChannel): void {
+  startedHook?.(command)
   const respond = (out: string, code: number): void => {
     if (out !== '') stream.write(out)
     stream.exit(code)

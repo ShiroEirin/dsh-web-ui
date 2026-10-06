@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-26",
+  "generated": "2026-10-06",
   "items": [
     {
       "kind": "skin",
@@ -24,6 +24,10 @@
     {
       "kind": "plugin",
       "id": "dsh-llm-verifier"
+    },
+    {
+      "kind": "skin",
+      "id": "xinghai-heart"
     }
   ]
 }

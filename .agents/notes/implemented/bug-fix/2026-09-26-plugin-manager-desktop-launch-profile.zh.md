@@ -28,7 +28,7 @@ Status: implemented
 
 官方运行时在宿主上下文发布的启动 profile —— `profileContext`
 （`{ name, dir, patchPath, installAnchor, … }`）—— 就是网关的解析事实来源，与
-[remote-web-ui 的局域网绑定](../2026-09-25-remote-web-ui-desktop-lan-bind-profile.md)
+[remote-web-ui 的局域网绑定](2026-09-25-remote-web-ui-desktop-lan-bind-profile.md)
 此前的处理完全一致：
 
 - `src/host/profile.ts` 的 `resolveProfile(argv, env, launched?, desktopLauncher?)`
@@ -45,7 +45,7 @@ Status: implemented
   存在时指向同一 profile，而服务携带更精确的事实（确切的目录与 patch 文件）；顺序
   唯一起作用的场景是变量过期或被人为设置、与运行中宿主不一致——照它走会挂上一个
   写不进宿主实际读取文件的网关（即
-  [remote-web-ui 的 note](../2026-09-25-remote-web-ui-desktop-lan-bind-profile.md)
+  [remote-web-ui 的 note](2026-09-25-remote-web-ui-desktop-lan-bind-profile.md)
   记录的失效形态）。已发布的 `dir`
   用作 profile 根目录——它正是运行时交给自身 profile 加载器的同一个目录——因此
   网关读写的就是运行中宿主使用的那批文件，而不是按 `DSH_HOME` 重新拼一条路径。

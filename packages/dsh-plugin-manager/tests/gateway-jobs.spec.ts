@@ -571,7 +571,7 @@ describe('CliGateway update verification', () => {
   })
 })
 
-describe('CliGateway update on an application-owned profile', () => {
+describe('CliGateway operations on an application-owned profile', () => {
   /** A profile fact set the packaged Desktop launcher produces. */
   function desktopFacts(facts: ProfileFacts): ProfileFacts {
     return { ...facts, profileName: 'desktop', desktop: true }
@@ -582,12 +582,46 @@ describe('CliGateway update on an application-owned profile', () => {
     facts: ProfileFacts,
     behavior: () => void,
     calls: string[][],
+    removeBehavior: () => void = () => {},
   ): CliGateway {
     return new CliGateway(facts, {} as NodeJS.ProcessEnv, {
       spawnImpl: (() => { throw new Error('the CLI must not run for an application-owned profile') }) as never,
       findBinary: () => '/fake/dsh',
-      nativeManager: () => ({ installBundle: async (spec) => { calls.push([spec]); behavior() } }),
+      nativeManager: () => ({
+        installBundle: async (spec: string) => { calls.push(['install', spec]); behavior() },
+        removeBundle: async (name: string) => { calls.push(['remove', name]); removeBehavior() },
+      }),
     })
+  }
+
+  /**
+   * A gateway whose official manager resolves with one scripted verdict: the
+   * manager folds a refused run into its resolved value instead of rejecting
+   * (its `change()` wrapper catches every failure), so this is the shape a real
+   * refusal arrives in.
+   */
+  function verdictGatewayFor(facts: ProfileFacts, verdict: unknown, calls: string[][] = []): CliGateway {
+    return new CliGateway(desktopFacts(facts), {} as NodeJS.ProcessEnv, {
+      spawnImpl: (() => { throw new Error('the CLI must not run for an application-owned profile') }) as never,
+      findBinary: () => '/fake/dsh',
+      nativeManager: () => ({
+        installBundle: async (spec: string) => { calls.push(['install', spec]); return verdict },
+        removeBundle: async (name: string) => { calls.push(['remove', name]); return verdict },
+      }),
+    })
+  }
+
+  /** The verdict a real refused pnpm run carries (ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION). */
+  const pnpmRefusal = {
+    stage: 'install',
+    target: 'dsh-better-sidebar@0.24.1',
+    enabled: true,
+    changed: false,
+    application: 'failed',
+    error: {
+      code: 'operation-error',
+      diagnostic: '[ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION] 1 lockfile entries failed verification',
+    },
   }
 
   it('operator: updates through the official in-process manager instead of the refused CLI', async () => {
@@ -605,7 +639,7 @@ describe('CliGateway update on an application-owned profile', () => {
 
     // Then the official manager performed it, the CLI was never spawned, and
     // the resulting row is verified from the profile the host reads
-    expect(calls).toEqual([['dsh-memoir@1.1.0']])
+    expect(calls).toEqual([['install', 'dsh-memoir@1.1.0']])
     expect(job.phase).toBe('done')
     expect(job.plugin).toMatchObject({ id: 'dsh-memoir', version: '1.1.0' })
   })
@@ -617,7 +651,10 @@ describe('CliGateway update on an application-owned profile', () => {
     const gateway = new CliGateway(desktopFacts(facts), {} as NodeJS.ProcessEnv, {
       spawnImpl: (() => { throw new Error('the CLI must not run') }) as never,
       findBinary: () => '/fake/dsh',
-      nativeManager: () => ({ installBundle: async () => { throw new Error('registry unreachable') } }),
+      nativeManager: () => ({
+        installBundle: async () => { throw new Error('registry unreachable') },
+        removeBundle: async () => {},
+      }),
     })
 
     // When the update runs
@@ -645,6 +682,128 @@ describe('CliGateway update on an application-owned profile', () => {
     expect(job.error).toContain('更新未生效')
   })
 
+  it('operator: sees the manager folded refusal with pnpm\'s own reason on an update', async () => {
+    // Given a manager that refused the update and resolved with its verdict
+    const { facts, dir } = makeProfile({ 'dsh-memoir': { version: '1.0.0' } })
+    tempDirs.push(dir)
+    const gateway = verdictGatewayFor(desktopFacts(facts), pnpmRefusal)
+
+    // When the update runs
+    const { jobId } = gateway.update('dsh-memoir', '1.1.0')
+    const job = await settle(gateway, jobId)
+
+    // Then the job reports the manager's refusal and its pnpm diagnostic
+    // instead of claiming the manager succeeded and nothing moved
+    expect(job.phase).toBe('error')
+    expect(job.error).toContain('官方插件管理器更新失败')
+    expect(job.error).toContain('ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION')
+    expect(job.error).not.toContain('报告成功')
+  })
+
+  it('operator: sees the manager folded refusal on an install', async () => {
+    // Given a manager that refused the install and resolved with its verdict
+    const { facts, dir } = makeProfile({})
+    tempDirs.push(dir)
+    const gateway = verdictGatewayFor(desktopFacts(facts), pnpmRefusal)
+
+    // When the install runs
+    const { jobId } = gateway.install('dsh-free-search')
+    const job = await settle(gateway, jobId)
+
+    // Then the manager's own reason is the job error
+    expect(job.phase).toBe('error')
+    expect(job.error).toContain('官方插件管理器安装失败')
+    expect(job.error).toContain('ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION')
+  })
+
+  it('operator: sees the manager folded refusal on a removal', async () => {
+    // Given a manager that refused the removal and resolved with its verdict
+    const { facts, dir } = makeProfile({ 'dsh-free-search': { version: '1.0.0' } })
+    tempDirs.push(dir)
+    const gateway = verdictGatewayFor(desktopFacts(facts), {
+      stage: 'remove',
+      target: 'dsh-free-search',
+      changed: false,
+      application: 'failed',
+      error: { code: 'operation-error', diagnostic: 'ERR_PNPM_ENOENT: no such package in the profile' },
+    })
+
+    // When the removal runs
+    const { jobId } = gateway.remove('dsh-free-search')
+    const job = await settle(gateway, jobId)
+
+    // Then the refusal is reported, not the "still in the profile" no-op
+    expect(job.phase).toBe('error')
+    expect(job.error).toContain('官方插件管理器卸载失败')
+    expect(job.error).toContain('ERR_PNPM_ENOENT')
+    expect(job.error).not.toContain('卸载未生效')
+  })
+
+  it('operator: sees a cancelled manager run as a cancellation, not a no-op', async () => {
+    // Given a manager run the host cancelled before it touched the profile
+    const { facts, dir } = makeProfile({ 'dsh-memoir': { version: '1.0.0' } })
+    tempDirs.push(dir)
+    const gateway = verdictGatewayFor(desktopFacts(facts), { stage: 'install', changed: false, application: 'cancelled' })
+
+    // When the update runs
+    const { jobId } = gateway.update('dsh-memoir', '1.1.0')
+    const job = await settle(gateway, jobId)
+
+    // Then the cancellation is named
+    expect(job.phase).toBe('error')
+    expect(job.error).toContain('已取消')
+  })
+
+  it('operator: sees the packages an incompatible-version refusal names', async () => {
+    // Given the manager refused a version the running dsh rejects
+    const { facts, dir } = makeProfile({ 'dsh-memoir': { version: '1.0.0' } })
+    tempDirs.push(dir)
+    const gateway = verdictGatewayFor(desktopFacts(facts), {
+      stage: 'install',
+      changed: false,
+      application: 'failed',
+      error: {
+        code: 'incompatible-version',
+        incompatible: [{ name: 'dsh-memoir', version: '2.0.0', runtimeVersion: '0.2.0-rc.2' }],
+      },
+    })
+
+    // When the update runs
+    const { jobId } = gateway.update('dsh-memoir', '2.0.0')
+    const job = await settle(gateway, jobId)
+
+    // Then the refusal names the package, its version and the runtime it rejects
+    expect(job.phase).toBe('error')
+    expect(job.error).toContain('dsh-memoir@2.0.0')
+    expect(job.error).toContain('0.2.0-rc.2')
+  })
+
+  it('operator: keeps verifying the profile when the manager reports it applied the run', async () => {
+    // Given a manager whose verdict claims success and whose run really moved the profile
+    const { facts, dir } = makeProfile({ 'dsh-memoir': { version: '1.0.0' } })
+    tempDirs.push(dir)
+    const gateway = new CliGateway(desktopFacts(facts), {} as NodeJS.ProcessEnv, {
+      spawnImpl: (() => { throw new Error('the CLI must not run for an application-owned profile') }) as never,
+      findBinary: () => '/fake/dsh',
+      nativeManager: () => ({
+        installBundle: async () => {
+          installPackage(facts.profileDir, 'dsh-memoir', { version: '1.1.0' })
+          return { stage: 'install', target: 'dsh-memoir@1.1.0', changed: true, application: 'restart-required' }
+        },
+        removeBundle: async () => {},
+      }),
+    })
+
+    // When the update runs
+    const { jobId } = gateway.update('dsh-memoir', '1.1.0')
+    const job = await settle(gateway, jobId)
+
+    // Then the profile re-read still settles it, because a positive verdict is
+    // not trusted on its own either
+    expect(job.phase).toBe('done')
+    expect(job.plugin).toMatchObject({ id: 'dsh-memoir', version: '1.1.0' })
+  })
+
   it('operator: keeps the CLI as the writer on a non-desktop profile', async () => {
     // Given an ordinary CLI-booted profile with an official manager mounted
     const { facts, dir } = makeProfile({ 'dsh-memoir': { version: '1.0.0' } })
@@ -657,7 +816,10 @@ describe('CliGateway update on an application-owned profile', () => {
         return { code: 0 }
       }, cliCalls) as never,
       findBinary: () => '/fake/dsh',
-      nativeManager: () => ({ installBundle: async (spec) => { nativeCalls.push([spec]) } }),
+      nativeManager: () => ({
+        installBundle: async (spec: string) => { nativeCalls.push([spec]) },
+        removeBundle: async (name: string) => { nativeCalls.push([name]) },
+      }),
     })
 
     // When the update runs
@@ -668,6 +830,128 @@ describe('CliGateway update on an application-owned profile', () => {
     expect(job.phase).toBe('done')
     expect(nativeCalls).toEqual([])
     expect(cliCalls[0]).toEqual(['plugin', '--profile', 'web', 'add', 'dsh-memoir@1.1.0'])
+  })
+
+  it('operator: installs through the official in-process manager instead of the refused CLI', async () => {
+    // Given an application-owned desktop profile without the package
+    const { facts, dir } = makeProfile({})
+    tempDirs.push(dir)
+    const calls: string[][] = []
+    const gateway = nativeGatewayFor(desktopFacts(facts), () => {
+      installPackage(facts.profileDir, 'dsh-free-search', { version: '1.0.0' })
+    }, calls)
+
+    // When the install runs
+    const { jobId } = gateway.install('dsh-free-search')
+    const job = await settle(gateway, jobId)
+
+    // Then the official manager performed it, the CLI was never spawned, and
+    // the resulting row is verified from the profile the host reads
+    expect(calls).toEqual([['install', 'dsh-free-search']])
+    expect(job.phase).toBe('done')
+    expect(job.plugin).toMatchObject({ id: 'dsh-free-search', version: '1.0.0' })
+  })
+
+  it('operator: sees a green manager install rejected when the profile gained no dependency', async () => {
+    // Given the manager resolves without installing anything
+    const { facts, dir } = makeProfile({})
+    tempDirs.push(dir)
+    const calls: string[][] = []
+    const gateway = nativeGatewayFor(desktopFacts(facts), () => {}, calls)
+
+    // When the install runs
+    const { jobId } = gateway.install('dsh-free-search')
+    const job = await settle(gateway, jobId)
+
+    // Then a no-op is still a failure, exactly like the CLI path
+    expect(job.phase).toBe('error')
+    expect(job.error).toContain('安装未生效')
+  })
+
+  it('operator: sees a failed manager install reported as an error job', async () => {
+    // Given the official manager refuses the spec
+    const { facts, dir } = makeProfile({})
+    tempDirs.push(dir)
+    const gateway = new CliGateway(desktopFacts(facts), {} as NodeJS.ProcessEnv, {
+      spawnImpl: (() => { throw new Error('the CLI must not run') }) as never,
+      findBinary: () => '/fake/dsh',
+      nativeManager: () => ({
+        installBundle: async () => { throw new Error('registry unreachable') },
+        removeBundle: async () => {},
+      }),
+    })
+
+    // When the install runs
+    const { jobId } = gateway.install('dsh-free-search')
+    const job = await settle(gateway, jobId)
+
+    // Then the failure is reported with the manager's own message
+    expect(job.phase).toBe('error')
+    expect(job.error).toContain('官方插件管理器安装失败')
+    expect(job.error).toContain('registry unreachable')
+  })
+
+  it('operator: removes through the official in-process manager instead of the refused CLI', async () => {
+    // Given an application-owned desktop profile carrying the package
+    const { facts, dir } = makeProfile({ 'dsh-free-search': { version: '1.0.0' } })
+    tempDirs.push(dir)
+    const calls: string[][] = []
+    const gateway = nativeGatewayFor(desktopFacts(facts), () => {}, calls, () => {
+      removePackage(facts.profileDir, 'dsh-free-search')
+    })
+
+    // When the removal runs
+    const { jobId } = gateway.remove('dsh-free-search')
+    const job = await settle(gateway, jobId)
+
+    // Then the official manager performed it and the CLI was never spawned
+    expect(calls).toEqual([['remove', 'dsh-free-search']])
+    expect(job.phase).toBe('done')
+    expect(readManifest(facts.profileDir).dependencies['dsh-free-search']).toBeUndefined()
+  })
+
+  it('operator: sees a green manager removal rejected when the dependency is still there', async () => {
+    // Given the manager resolves without removing anything
+    const { facts, dir } = makeProfile({ 'dsh-free-search': { version: '1.0.0' } })
+    tempDirs.push(dir)
+    const calls: string[][] = []
+    const gateway = nativeGatewayFor(desktopFacts(facts), () => {}, calls)
+
+    // When the removal runs
+    const { jobId } = gateway.remove('dsh-free-search')
+    const job = await settle(gateway, jobId)
+
+    // Then a no-op is still a failure, exactly like the CLI path
+    expect(job.phase).toBe('error')
+    expect(job.error).toContain('卸载未生效')
+  })
+
+  it('operator: keeps the CLI as the install and removal writer on a non-desktop profile', async () => {
+    // Given an ordinary CLI-booted profile with an official manager mounted
+    const { facts, dir } = makeProfile({ 'dsh-free-search': { version: '1.0.0' } })
+    tempDirs.push(dir)
+    const nativeCalls: string[][] = []
+    const cliCalls: string[][] = []
+    const gateway = new CliGateway(facts, {} as NodeJS.ProcessEnv, {
+      spawnImpl: fakeSpawn((args) => {
+        if (args[0] === 'plugin' && args[3] === 'remove') removePackage(facts.profileDir, args[4] ?? '')
+        return { code: 0 }
+      }, cliCalls) as never,
+      findBinary: () => '/fake/dsh',
+      nativeManager: () => ({
+        installBundle: async (spec: string) => { nativeCalls.push([spec]) },
+        removeBundle: async (name: string) => { nativeCalls.push([name]) },
+      }),
+    })
+
+    // When the removal runs
+    const { jobId } = gateway.remove('dsh-free-search')
+    const job = await settle(gateway, jobId)
+
+    // Then the CLI stayed the single writer and the manager was untouched
+    expect(job.phase).toBe('done')
+    expect(nativeCalls).toEqual([])
+    expect(cliCalls[0]).toEqual(['plugin', '--profile', 'web', 'remove', 'dsh-free-search'])
   })
 })
 describe('CliGateway finished-job retention', () => {

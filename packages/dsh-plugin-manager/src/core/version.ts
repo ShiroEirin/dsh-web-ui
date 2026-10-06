@@ -121,15 +121,22 @@ export function displayMinimumVersion(minimum: string): string {
 
 /**
  * Read the declared DSH minimum from a published registry manifest:
- * `dsh.engines.dsh` first, top-level `engines.dsh` as the fallback.
+ * `dsh.engines.dsh` first, top-level `engines.dsh` next, and
+ * `peerDependencies["@deepseek-ai/dsh"]` last, which is where a package that
+ * only declares the host as a peer still gets gated at boot.
  * Defensive against malformed or untrusted metadata: anything that is not a
  * non-empty string reads as absent.
  * @param manifest - the decoded registry version manifest.
  * @returns the declared minimum, or undefined when not declared.
  */
-export function dshRequirementOf(manifest: { dsh?: unknown; engines?: unknown }): string | undefined {
+export function dshRequirementOf(manifest: { dsh?: unknown; engines?: unknown; peerDependencies?: unknown }): string | undefined {
   const dshEngines = (manifest.dsh as { engines?: unknown } | undefined)?.engines as { dsh?: unknown } | undefined
   const engines = (manifest.engines as { dsh?: unknown } | undefined)?.dsh
-  const value = dshEngines?.dsh ?? engines
+  const peers = (manifest.peerDependencies as Record<string, unknown> | undefined)?.['@deepseek-ai/dsh']
+  // The host's own peer gate is the LAST word: a package that declares the
+  // host only under peerDependencies still gets that row skipped at boot when
+  // the floor is not met, so a requirement we display must come from the same
+  // place the gate reads, or the user is told nothing and then loses the row.
+  const value = dshEngines?.dsh ?? engines ?? peers
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 }

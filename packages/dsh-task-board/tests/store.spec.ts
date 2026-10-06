@@ -250,6 +250,41 @@ describe('schedule persistence', () => {
     })
   })
 
+  it('operator saving a rule with its own IANA zone gets it back on reload', () => {
+    // Given a card whose rule carries an explicit zone
+    // When it is saved and reloaded through storage
+    // Then the zone survives alongside the expression
+    const storage = new FakeStorage()
+    const store = new LocalStorageTaskStore('k', storage)
+    const task = withSchedule(
+      createTask({ title: 'A', description: '', prompt: '' }, 1, 't-1'),
+      { enabled: true, cron: '0 9 * * *', timeZone: 'Asia/Shanghai', nextRunAt: 100, lastTriggeredAt: 50 },
+      2,
+    )
+    store.save([task])
+    expect(store.load()[0].schedule).toEqual({
+      enabled: true, cron: '0 9 * * *', timeZone: 'Asia/Shanghai', nextRunAt: 100, lastTriggeredAt: 50,
+    })
+  })
+
+  it('operator reloading an unresolvable stored zone gets it cleared, not kept', () => {
+    // Given stored rules with an unknown zone, a non-string zone and UTC
+    // A zone this runtime cannot resolve would make every later resolve fail,
+    // so the repair clears it and the rule falls back to the Host zone.
+    // When the ledger is parsed
+    // Then only the resolvable zone is kept and every rule still parses
+    const valid = createTask({ title: 'ok', description: '', prompt: '' }, 1, 't-1')
+    const raw = [
+      { ...valid, id: 't-1', schedule: { enabled: true, cron: '0 9 * * *', timeZone: 'Not/AZone' } },
+      { ...valid, id: 't-2', schedule: { enabled: true, cron: '0 9 * * *', timeZone: 42 } },
+      { ...valid, id: 't-3', schedule: { enabled: true, cron: '0 9 * * *', timeZone: 'UTC' } },
+    ]
+    const parsed = parseLedger(JSON.stringify(raw))
+    expect(parsed[0].schedule).toEqual({ enabled: true, cron: '0 9 * * *', nextRunAt: undefined, lastTriggeredAt: undefined })
+    expect(parsed[1].schedule).toEqual({ enabled: true, cron: '0 9 * * *', nextRunAt: undefined, lastTriggeredAt: undefined })
+    expect(parsed[2].schedule).toEqual({ enabled: true, cron: '0 9 * * *', timeZone: 'UTC', nextRunAt: undefined, lastTriggeredAt: undefined })
+  })
+
   it('keeps legacy tasks without a schedule intact', () => {
     const raw = JSON.stringify([createTask({ title: 'A', description: '', prompt: '' }, 1, 't-1')])
     expect(parseLedger(raw)[0].schedule).toBeUndefined()
@@ -284,5 +319,19 @@ describe('schedule persistence', () => {
     expect(parsed[0].schedule).toEqual({ enabled: true, cron: '0 9 * * *', nextRunAt: undefined, lastTriggeredAt: undefined })
     expect(parsed[1].schedule).toBeUndefined() // not five fields
     expect(parsed[2].schedule).toBeUndefined() // values out of range
+  })
+
+  it('user reloading a ledger with the /goal opt-out keeps it and a stray true normalizes back', () => {
+    // Given a stored card that opted out of goal runs
+    const optedOut = createTask({ title: 'goal', description: '', prompt: '', goalRun: false }, 1, 't-goal')
+
+    // When the ledger is parsed back
+    // Then the opt-out survives, and its canonical on-state stays absent
+    expect(parseLedger(JSON.stringify([optedOut]))[0].goalRun).toBe(false)
+    expect(parseLedger(JSON.stringify([{ ...optedOut, goalRun: true }]))[0].goalRun).toBeUndefined()
+
+    // And a non-boolean is an invalid row, like any other field
+    expect(parseLedger(JSON.stringify([{ ...optedOut, goalRun: 'no' }]))).toEqual([])
+    expect(isTaskRecord({ ...optedOut, goalRun: 1 })).toBe(false)
   })
 })

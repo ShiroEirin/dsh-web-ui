@@ -14,6 +14,15 @@
   与独立包安装共存，不再触发 loader 的 duplicate entry id；生成文件勿手改。host 半区经
   `shared/host/mount-once.ts`（sync-shared 同步副本）防重：同一插件双源加载时只注册一次，
   第二个来源为空操作，浏览器半区由官方 client 模块系统按包名去重。
+- **行 id 属于 loader 的全局 id 空间**：同一 id 只挂载一个插件，后来者胜且**不报错**；官方
+  bundle（`@deepseek-ai/dsh-base` / `dsh-web-app` 等）已占用其中一批 id，独立包不得复用，
+  重叠会让官方行被静默丢弃、其宿主 UI 一并消失
+  （[#1794](https://github.com/zhu1090093659/dsh-web/issues/1794)）。行的 `name` 必须恰好等于
+  包名：官方 `dsh-client-modules` 只把浏览器半区挂在说明符等于包名的那一行上（聚合家族行的
+  子路径 `name` 只挂 host 半区）。独立行改名时聚合行 id 与家族子路径不得跟着动，用聚合清单的
+  `familyIds:` 映射解耦（见 [dsh-web-all/AGENTS.md](dsh-web-all/AGENTS.md)）。官方行 id 名册快照
+  与该包现状由 `packages/dsh-plugin-manager/tests/bundle-row-id.spec.ts` 固定，升级 SDK cohort
+  时比对该文件头刷新。
 - **host / client 半区分层**：`src/index.ts` 是 host 半区（运行在 dsh host 进程），
   `src/client/` 是 browser 半区（Web GUI 侧），`src/core/` 是两侧共享的纯逻辑
   （两侧 program 都编译）。新增源码文件必须落在三个区之一。

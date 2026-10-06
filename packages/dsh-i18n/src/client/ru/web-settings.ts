@@ -6,6 +6,5 @@
  */
 
 export const ru: Record<string, string> = {
-  'description': 'Включение и настройка всех плагинов семейства dsh-web в одном месте.',
   'title': 'Веб-плагины',
 }

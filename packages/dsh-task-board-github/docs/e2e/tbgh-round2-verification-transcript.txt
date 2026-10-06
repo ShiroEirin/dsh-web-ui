@@ -1,0 +1,42 @@
+tbgh-round2-verification-transcript.txt
+状态：修复后重拍（当前工作树构建产物，18 条断言全 PASS）。
+基线：git HEAD 33fcc274843158e8f31652177acaf249ee22df58；全仓 pnpm build 后的 workspace 产物（修复了 pnpm pack 打到旧 lib、宿主拒载 schemaVersion 5 ledger 的问题，重拍前实测安装树 TASK_BOARD_SCHEMA_VERSION = 5）；隔离实例：独立 DSH_HOME + dsh web --port 0（OS 分配端口），未触碰用户正在运行的 DSH 服务；Playwright 无头 Chromium（channel: chrome）。
+定位器修正：宿主为中文 UI（双语定位器），设置页为三层嵌套折叠卡（设置 > Web 插件 > 任务看板 > GitHub Issues 同步），onboarding 弹窗需多轮点击关闭。
+说明：PASS/FAIL 行即断言原文（18 条全 PASS）；SHOT 行对应本目录同名 PNG。
+注 1：A1 断言窗口为 "is not served"（服务未挂载标记），PASS；CONSOLE_ALL 中遗留的 ERR_CONNECTION_REFUSED 指向上一隔离实例已释放的 remote.mux 端口，为客户端残留重连噪声，与看板及扩展无关。
+注 2：SAVE_BUTTONS_VISIBLE 2 是本版 UI 的正常态（嵌套卡自带保存行 + 页脚保存），保存回读断言 D1/SAVE_AFTER 均正确。
+
+==================== 原始输出 ====================
+SAVE_SET true before="false"
+SAVE_BUTTONS_VISIBLE 2
+SAVE_AFTER "true"
+PASS A1 console has no "is not served" :: []
+PASS A2 badge count === 1 :: count=1
+PASS A3 badge text === #42 :: text=#42
+PASS A4 active card visible :: 
+PASS A5 plain control visible :: 
+PASS A6 deactivated card hidden :: 
+SHOT tbgh-card-badge.png (card close-up with #42)
+SHOT tbgh-deactivated-hidden.png
+PASS B1 [data-dsh-part=github-integration] present :: count=1
+PASS B2 github-link text contains deepseek-ai/dsh #42 :: text=deepseek-ai/dsh #42
+SHOT tbgh-detail-github-section.png
+PASS C1 [data-dsh-part=github-settings] present while on :: count=1
+SHOT tbgh-settings-seat-on.png
+SAVE_SET false before="true"
+SAVE_BUTTONS_VISIBLE 2
+SAVE_AFTER "false"
+PASS D1 switch read-back false :: 
+PASS D2 github-settings seat gone while off :: count=0
+SHOT tbgh-extension-switch-off.png
+PASS D3 badge count 0 while off :: count=0
+PASS D4 detail section gone while off :: count=0
+PASS D5 ledger keeps integrations.github while off :: ["m4-gh-active","m4-gh-deactivated"]
+SAVE_SET true before="false"
+SAVE_BUTTONS_VISIBLE 2
+SAVE_AFTER "true"
+PASS E1 github-settings seat restored :: count=1
+SHOT tbgh-extension-switch-on.png
+PASS E2 badge count restored to 1 :: count=1
+PASS E3 detail section restored :: count=1
+CONSOLE_ALL ["error: Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING","error: Failed to load resource: net::ERR_CONNECTION_REFUSED","warning: [connection] connection lost, retry #1..3","error: WebSocket connection to 'ws://127.0.0.1:55385/api/remote.mux' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED"]

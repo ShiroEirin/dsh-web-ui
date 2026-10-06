@@ -14,6 +14,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NEW_PROJECT_VALUE, TaskBoard } from '../src/client/board/TaskBoard.tsx'
 import { t } from '../src/client/locales.ts'
+import { openFormSection } from './form-sections.ts'
 import type { BoardController, ControllerSnapshot } from '../src/core/controller.ts'
 import type { TaskRecord } from '../src/core/tasks.ts'
 
@@ -98,7 +99,7 @@ function buttonWith(root: HTMLElement, label: string): HTMLButtonElement {
 }
 
 function cards(container: HTMLElement): Element[] {
-  return [...container.querySelectorAll('button[data-dsh-part="card"]')]
+  return [...container.querySelectorAll('article[data-dsh-part="card"]')]
 }
 
 const projects = [
@@ -142,6 +143,7 @@ describe('TaskBoard project partition (#1536)', () => {
     }))
     choose(container.querySelector<HTMLSelectElement>('[data-dsh-part="project-filter"]')!, 'w1')
     act(() => { buttonWith(container, t('board.new')).click() })
+    openFormSection(container, t('new.section.execution'))
     const workspaceSelect = [...container.querySelectorAll('select')]
       .find(select => [...select.options].some(option => option.textContent === t('exec.workspace.recent')))
     expect(workspaceSelect).toBeDefined()

@@ -1,8 +1,21 @@
-# dsh-ssh — Remote SSH operations plugin for DSH
+# dsh-ssh · Web SSH Terminal, SFTP Transfer & Remote Operations for DeepSeek Harness (DSH)
 
 English | [中文](README.zh.md)
 
-Built on the capability list of [badseal/ssh-skill](https://github.com/badseal/ssh-skill), a remote SSH plugin tailored for DeepSeek Harness (DSH): a persistent connection pool inside the Host process + a Web GUI host-management panel + a Web terminal + Agent tools, all implemented through the official NPM SDK without modifying DSH source.
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-ssh?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>Remote Linux Server Operations & Web SSH Suite for DeepSeek Harness (DSH)</strong><br>
+  <em>xterm.js Web Terminal · Visual SFTP Transfer · Port Forwarding Tunnels · Cluster Execution · 6 Agent Tools</em>
+</p>
+
+A dedicated remote Linux server operations and cluster management plugin for DeepSeek Harness (DSH) Web GUI and official desktop client: in-process persistent connection pool, Web GUI host inventory management, xterm.js terminal, visual SFTP file transfer, port forwarding tunnels, and 6 dedicated agent tools implemented on top of official NPM SDKs without modifying DSH core source code.
 
 ## Capabilities
 

@@ -27,12 +27,12 @@ Status: implemented
 ## 后续加固：三项推迟的缺陷
 
 1. **每 tick 的布局开销。** 600ms 同步 tick 原本每拍都用 `createRange()` + `getBoundingClientRect()` 测量头部文字盒，也就是在 React 写入之后强制一次布局读取（消息流式输出时最明显）。现在由头部子树的 MutationObserver（childList/characterData/class）标记几何脏位，`alignActionsText()` 不脏就直接返回，两个 observer 都随层一起断开（`revert()` / `unseatHeaderActions()`）。手机模拟、空闲 6 秒窗口、开/关对比实测：归属本层的布局读取从 8 次 `getBoundingClientRect` + 20 次 `Range.getBoundingClientRect` 降到 1 + 0；在动作节点内人为制造一次变更后，测量重新执行、transform 重新收敛，说明门控不会导致状态滞留。
-2. **依赖语言的紧凑选择器钻取。** 模型/推理等级按钮原本靠匹配官方单元格文案（`/模型|Model/`、`/推理等级|Reasoning|Effort/i`）钻取；在其它语言下（本仓库还带 ru）面板会打开但钻取永不触发。现在保留文案匹配作为快路径，并新增结构回退：面板里带"标签 + 当前值 + 箭头"的钻取单元格按顺序即"模型在前、推理等级在后"。中文 GUI 实测能钻入模型列表，另有俄语标签的单测覆盖。
+2. **依赖语言的紧凑选择器钻取。** 模型/推理等级按钮原本靠匹配官方单元格文案（`/模型|Model/`、`/推理等级|Reasoning|Effort/i`）钻取；在其它语言下（本仓库还带 ru）面板会打开但钻取永不触发。当时保留文案匹配作为快路径，并新增结构回退：面板里带"标签 + 当前值 + 箭头"的钻取单元格按顺序即"模型在前、推理等级在后"。中文 GUI 实测能钻入模型列表，另有俄语标签的单测覆盖。该按钮与钻取已由[手机紧凑选择器按钮移除](../simplification/2026-10-03-mobile-compact-picker-removed.md)删除；让官方选择器在手机上可用的底部动作板规则保留。
 3. **惰性的 `LayoutController`（宿主侧）。** 本仓库不能改宿主，所以没有在这里修复：实测与绕行契约记录在[待上报的宿主缺陷记录](../../proposed/bug-fix/2026-09-09-inert-layout-toggle-face.md)中——`ctx.layout.toggleSidebar()` 正常返回，而 `data-sidebar-collapsed` 在整个 800ms 观察窗口内都没变化；同一状态下 logo 行折叠按钮能立刻翻转。
 
 ## Verification
 
-- 真实 GUI：竖屏 390x844 触摸模拟、orca-link 激活、重建后的客户端 bundle（`rev=6e720885bfd4`）：入座后的动作 `parent === wSkVaW_titleCluster`（从未被搬移），transform 收敛到 `translate(185.4px, 42px)`，右边缘在 390 px 视口上为 374——与标签行右边缘一致——徽标按钮的命中测试落在它自己的 `SPAN.QsffPG_count`；紧凑模型按钮能打开面板并钻入模型列表；真实触摸点击会话行仍能切换会话、折叠侧边栏，焦点停在 `BODY`。
+- 真实 GUI：竖屏 390x844 触摸模拟、orca-link 激活、重建后的客户端 bundle（`rev=6e720885bfd4`）：入座后的动作 `parent === wSkVaW_titleCluster`（从未被搬移），transform 收敛到 `translate(185.4px, 42px)`，右边缘在 390 px 视口上为 374——与标签行右边缘一致——徽标按钮的命中测试落在它自己的 `SPAN.QsffPG_count`；（该次运行当时）紧凑模型按钮能打开面板并钻入模型列表——该按钮此后已移除，官方文字触发器现在打开同一面板；真实触摸点击会话行仍能切换会话、折叠侧边栏，焦点停在 `BODY`。
 - 真实 GUI：竖屏 390x844 触摸模拟、orca-link 激活、重建后的客户端 bundle（`rev=7ae1d1a245ef`）。强制显示舞台边框后 `getComputedStyle(newSession, '::before').pointerEvents === 'none'`；探测的每一行会话 `elementFromPoint` 都返回 `SPAN.YDXeBa_title`（修复前是 `BUTTON.hHd-Xa_newSession`）；真实触摸点击非当前会话行会切到该会话并折叠侧边栏；切换后 `document.activeElement` 是 `BODY`（修复前是 contenteditable 输入框）；入座的头部动作右端在 390 px 视口上止于 x=382（修复前 432）。
 - 包内测试：`pnpm --filter @linxin666/dsh-remote-web-ui test` 357 个用例通过，其中 6 个新增用例分别覆盖"嵌套 `_frame` 不算应用框架""回车只在输入区改写""带修饰类的行仍被抑制且退出时还原""头部动作脱流绘制且不被搬移""俄语标签下的结构钻取"，另有重写的切换顺序用例。
 - 仓库门禁：`pnpm typecheck`、`pnpm test`、`pnpm i18n:check`、`pnpm docs:check`、`pnpm skin-center:check`、`pnpm aggregate:check`。

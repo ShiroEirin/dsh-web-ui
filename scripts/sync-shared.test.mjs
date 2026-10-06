@@ -22,18 +22,26 @@ test('copies cover the settings trio for all consumers plus host and http helper
   // the copy-count buckets below match on forward slashes.
   const entries = copyEntries().map(entry => ({ ...entry, target: entry.target.replaceAll('\\', '/') }))
   // The total is every generated copy in the manifest; the single-instance
-  // guard alone contributes one mount-once.ts per host half (13 today). The
+  // guard alone contributes one mount-once.ts per host half (14 today). The
   // buckets below split the same set by target location, and what neither
-  // bucket holds is the package-root test setup (5 today) plus the per-package
+  // bucket holds is the package-root test setup (6 today) plus the per-package
   // http.ts and console-output.ts copies. The settings bucket is the card trio
   // plus the entry-bound form fallback, the latter one per package whose card
-  // binds a family namespace (6 today). Every family panel now renders through
+  // binds a family namespace (7 today). Every family panel now renders through
   // the native layout seats, so the panel-mount-core and sidebar-entry-core
-  // copies are gone and body-mutations serves only the aggregate shell and the
-  // usage card.
-  assert.equal(entries.length, 99)
+  // copies are gone and body-mutations serves the aggregate shell, the usage
+  // card and the plugin-manager's list-level update toolbar. run-guarded.ts is
+  // not synced here: no in-repo package imports
+  // it (the satellite repositories that do carry their own copies), so only the
+  // shared source and its spec remain in this repository. The plugin-card seat
+  // copy has three consumers: the GitHub extension renders inside the board's
+  // own settings card now, so it carries no card of its own.
+  // tool-surface.ts adds three copies in host halves (ssh, task-board,
+  // task-board-github); they sit at a package root rather than under
+  // src/host/, so the bucket below does not claim them.
+  assert.equal(entries.length, 110)
   const clientTrio = entries.filter(entry => entry.target.includes('/src/client/'))
-  assert.equal(clientTrio.length, 39)
+  assert.equal(clientTrio.length, 44)
   const hostCopies = entries.filter(entry => entry.target.includes('/src/host/')
     || entry.target.includes('/src/dsh-home.ts')
     || entry.target.includes('/src/mount-once.ts')
@@ -41,37 +49,23 @@ test('copies cover the settings trio for all consumers plus host and http helper
     || entry.target.includes('/src/pair-access.ts')
     || entry.target.includes('/src/agent/')
     || entry.target.endsWith('/packages/dsh-task-board/src/http.ts'))
-  assert.equal(hostCopies.length, 48)
+  assert.equal(hostCopies.length, 49)
 })
 
 test('checkSync detects drift and applySync repairs it', async () => {
   const root = await mkdtemp(join(tmpdir(), 'sync-shared-test-'))
   try {
-    // Fake tree: shared source + one consumer copy with wrong content.
-    const sourceDir = join(root, 'shared', 'client', 'settings')
-    await mkdir(sourceDir, { recursive: true })
-    await writeFile(join(sourceDir, 'settings-form.ts'), 'export const good = 1' + String.fromCharCode(10))
-    await writeFile(join(sourceDir, 'PluginSettingsCard.tsx'), 'export const card = 1' + String.fromCharCode(10))
-    await writeFile(join(sourceDir, 'settings-card.module.css'), '.card { color: red }' + String.fromCharCode(10))
-    await writeFile(join(sourceDir, 'plugin-card-seat.ts'), 'export const seat = 1' + String.fromCharCode(10))
-    await writeFile(join(sourceDir, 'settings-entry-form.ts'), 'export const entry = 1' + String.fromCharCode(10))
-    await writeFile(join(root, 'shared', 'client', 'telemetry.ts'), 'export const beat = 1' + String.fromCharCode(10))
-    await writeFile(join(root, 'shared', 'client', 'sse-leader.ts'), 'export const leader = 1' + String.fromCharCode(10))
-    await writeFile(join(root, 'shared', 'client', 'body-mutations.ts'), 'export const hub = 1' + String.fromCharCode(10))
-    await writeFile(join(root, 'shared', 'client', 'main-session.ts'), 'export const main = 1' + String.fromCharCode(10))
-    const hostDir = join(root, 'shared', 'host')
-    await mkdir(hostDir, { recursive: true })
-    await writeFile(join(hostDir, 'poll-guard.ts'), 'export const guard = 1' + String.fromCharCode(10))
-    await writeFile(join(hostDir, 'dsh-home.ts'), 'export const home = 1' + String.fromCharCode(10))
-    await writeFile(join(hostDir, 'loopback.ts'), 'export const loop = 1' + String.fromCharCode(10))
-    await writeFile(join(hostDir, 'pair-access.ts'), 'export const fence = 1' + String.fromCharCode(10))
-    await writeFile(join(root, 'shared', 'vitest.setup.ts'), 'export {}' + String.fromCharCode(10))
-    await writeFile(join(hostDir, 'git-runner.ts'), 'export const runner = 1' + String.fromCharCode(10))
-    await writeFile(join(hostDir, 'mount-once.ts'), 'export const once = 1' + String.fromCharCode(10))
-    await writeFile(join(hostDir, 'http.ts'), 'export const http = 1' + String.fromCharCode(10))
-    await writeFile(join(hostDir, 'legacy-migration.ts'), 'export const legacy = 1' + String.fromCharCode(10))
-    await writeFile(join(hostDir, 'run-guarded.ts'), 'export const guard2 = 1' + String.fromCharCode(10))
-    await writeFile(join(hostDir, 'console-output.ts'), 'export const capture = 1' + String.fromCharCode(10))
+    // Fake tree: every shared source the manifest names, plus one consumer copy
+    // whose content drifted. The sources are DERIVED from the manifest rather
+    // than hand-listed: a hand-written list silently missed
+    // shared/host/detached-work.ts when that entry was added, and checkSync
+    // then died on ENOENT instead of reporting drift.
+    const sourceText = 'export const shared = 1' + String.fromCharCode(10)
+    const entries = copyEntries(root)
+    for (const entry of entries) {
+      await mkdir(dirname(entry.source), { recursive: true })
+      await writeFile(entry.source, sourceText)
+    }
     const targetDir = join(root, 'packages', 'dsh-task-board', 'src', 'client')
     await mkdir(targetDir, { recursive: true })
     await writeFile(join(targetDir, 'settings-form.ts'), renderCopy('export const bad = 2' + String.fromCharCode(10), 'settings-form.ts', 'shared/client/settings/settings-form.ts'))
@@ -85,7 +79,7 @@ test('checkSync detects drift and applySync repairs it', async () => {
     const after = await checkSync(root)
     assert.deepEqual(after, [])
     const fixed = await readFile(join(targetDir, 'settings-form.ts'), 'utf8')
-    assert.equal(stripHeader(fixed, 'settings-form.ts', 'shared/client/settings/settings-form.ts'), 'export const good = 1' + String.fromCharCode(10))
+    assert.equal(stripHeader(fixed, 'settings-form.ts', 'shared/client/settings/settings-form.ts'), sourceText)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

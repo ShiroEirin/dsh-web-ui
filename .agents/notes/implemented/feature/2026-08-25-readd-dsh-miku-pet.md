@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-PR #1031 re-introduced the dsh-miku-pet plugin package after the repository removed it (see [Remove dsh-miku-pet](../../../simplification/2026-08-24-remove-dsh-miku-pet.md)). The removal cleaned the standalone package, aggregate row, community index entry, and Workshop metadata; the re-added contribution is an in-repo package registered in the dsh-web-all aggregate (19 rows, 18 deps). The maintainer review required three items before acceptance: a same-origin fence on the /miku-pet/config write routes with route-level tests, a documented Hatsune Miku character-rights boundary, and real DSH GUI evidence.
+PR #1031 re-introduced the dsh-miku-pet plugin package after the repository removed it (see [Remove dsh-miku-pet](../simplification/2026-08-24-remove-dsh-miku-pet.md)). The removal cleaned the standalone package, aggregate row, community index entry, and Workshop metadata; the re-added contribution is an in-repo package registered in the dsh-web-all aggregate (19 rows, 18 deps). The maintainer review required three items before acceptance: a same-origin fence on the /miku-pet/config write routes with route-level tests, a documented Hatsune Miku character-rights boundary, and real DSH GUI evidence.
 
 ## Decision
 

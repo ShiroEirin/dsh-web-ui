@@ -2,7 +2,7 @@
 
 Status: implemented
 
-Supersedes [usage sidebar controls seat on the entry row](2026-09-17-usage-sidebar-controls-on-entry-row.md) and the #1592 sidebar surface recorded in [issue batch 1587-1600](2026-09-16-issue-batch-1587-1600-fixes.md): the sidebar usage entry, its collapsible panel, and the entry-core machinery built only for it are gone. Usage stays reachable through its first-level settings section.
+Supersedes the usage sidebar controls seat on the entry row and the #1592 sidebar surface recorded in [issue batch 1587-1600](../bug-fix/2026-09-16-issue-batch-1587-1600-fixes.md): the sidebar usage entry, its collapsible panel, and the entry-core machinery built only for it are gone. Usage stays reachable through its first-level settings section.
 
 Partially superseded by [usage sidebar foot card](../feature/2026-09-23-usage-sidebar-foot-card.md): a compact glance card below the sidebar's Settings row returns at the user's explicit request; the entry row, the collapsible panel, and the entry-core `actions` API stay removed.
 

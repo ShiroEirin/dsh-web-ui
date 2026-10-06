@@ -38,7 +38,7 @@ Status: implemented
 
 - 唯一事实源：[dsh-presets](https://github.com/zhu1090093659/dsh-presets) 仓的 `presets/<id>/`（预设目录本身）加 `presets/catalog.json`（作者、版本、标签、英文展示文案、排序）。预设 id 必须符合官方规则 `^[a-z0-9][a-z0-9-]*$`。
 - `scripts/market-build` 产出 `market/dist/manifest/presets.json` 与 `market/dist/assets/presets/<id>/`，并校验每条 catalog 条目（id 规则、保留的内置 id、组合与元数据文件存在、`preset.yml` 的 name 可读），使坏 preset 无法发布。中文展示文案取自 `preset.yml`，因此 roster 与商店不会互相矛盾；catalog 承载英文文案与市场元数据。
-- `market/worker` 的资产白名单把 `preset` 映射到 `/manifest/presets.json`；Worker 的可接受类别集合与统计桶也需要同样的注册，首个发布批次暴露了这一点（见 [预设的点赞与安装上报被 Worker 拒绝](../../bug-fix/2026-09-10-preset-write-endpoints.zh.md)）。
+- `market/worker` 的资产白名单把 `preset` 映射到 `/manifest/presets.json`；Worker 的可接受类别集合与统计桶也需要同样的注册，首个发布批次暴露了这一点（见 [预设的点赞与安装上报被 Worker 拒绝](../bug-fix/2026-09-10-preset-write-endpoints.zh.md)）。
 
 ### Ownership and UI
 

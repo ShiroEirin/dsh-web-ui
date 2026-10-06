@@ -1,7 +1,21 @@
-# DSH 远程访问（Remote Web UI）
+# dsh-remote-web-ui · DeepSeek Harness (DSH) 手机端与跨设备浏览器远程控制插件
 
 [English](README.md) | 中文
-> 为 dsh web GUI 提供共享**同一份界面**的远程访问：在设置按钮旁的二维码配对手机或另一台电脑，两端运行的都和本机一样是官方 Web GUI——手机获得注入的竖屏触控适配，电脑获得完整桌面；准入基于限时配对令牌与可撤销设备会话。设置卡片可将服务绑定到局域网，可选 Cloudflare 快速隧道触达公网——并由一个永不变化的固定主机名前置，手机的书签与配对零配置跨重启有效。
+
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-client-ui-remote-web-ui?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>DeepSeek Harness（DSH）官方 Web GUI 与桌面客户端手机与跨设备远程控制中心</strong><br>
+  <em>手机扫码即连 · 跨设备 PC 浏览器访问 · 竖屏触控手势优化 · Cloudflare 公网隧道 · 安全设备配对</em>
+</p>
+
+> 为 DeepSeek Harness (DSH) Web GUI 与官方桌面客户端提供共享**同一份界面**的远程访问：在设置按钮旁的二维码配对手机或另一台电脑，两端运行的都和本机一样是官方 Web GUI——手机获得注入的竖屏触控适配，电脑获得完整桌面；准入基于限时配对令牌与可撤销设备会话。设置卡片可将服务绑定到局域网，可选 Cloudflare 快速隧道触达公网——并由一个永不变化的固定主机名前置，手机的书签与配对零配置跨重启有效。
 
 本仓库是 DeepSeek Harness（DSH）的外部插件包，为单一双面包：host 半区持有配对令牌、设备会话、`/api/pair` 路由族、门控 `/remote` 通道、局域网绑定开关；浏览器半区渲染侧栏底部、设置按钮旁的远程访问入口、带二维码的配对面板、实时设备状态、已授权设备列表、设置卡片，以及官方界面之上的竖屏触控适配层。
 
@@ -58,7 +72,7 @@ dsh plugin --profile web add link:$(pwd)/packages/dsh-remote-web-ui
 
 ## 使用
 
-1. 打开设置卡片（设置 → Web 插件 → 远程访问设置），若服务绑定回环则打开**局域网访问**；卡片展示运行中的绑定、防火墙状态与可达局域网地址。绑定变化自下一次 `dsh web` 启动生效。
+1. 打开设置卡片（设置 → Web 插件 → 远程访问），若服务绑定回环则打开**局域网访问**；卡片展示运行中的绑定、防火墙状态与可达局域网地址。绑定变化自下一次 `dsh web` 启动生效。
 2. 启动 `dsh web`，点手机图标，面板铸造一枚全新的限时二维码。
 3. 手机扫码（或打开复制的链接）：设备完成配对，进入由插件不依赖 cookie 交付的**官方 Web GUI**（`/pair-accept` → `/pair-app`），并重载到 `/`。手机上竖屏适配层已生效——与桌面同布局、同实时状态。此后的重开（历史、书签）直接回到应用（https 源；见安全模型）。
 4. **改为配对电脑**：复制同一链接，在另一台电脑的浏览器打开。相同往返后完整 Web GUI 在彼处经门控 `/remote` 通道运行；未配对电脑看到引导式拦截页，其后没有数据。一枚令牌配一台设备；下一台设备请刷新二维码。
@@ -122,7 +136,7 @@ pnpm --filter @linxin666/dsh-remote-web-ui test
 pnpm --filter @linxin666/dsh-remote-web-ui run typecheck
 ```
 
-对端 API 来自官方 NPM SDK：用到的每个 `@deepseek-ai/*` 包都声明在 devDependencies（0.1.2-alpha.2 cohort）中，TypeScript/Vitest 直接从 node_modules 解析类型——不需要 DSH 源码 checkout。消费侧 `prepare` 构建（`tsdown.prepare.config.ts`）不做类型检查地转译，git 安装同样无需 harness checkout。
+对端 API 来自官方 NPM SDK：用到的每个 `@deepseek-ai/*` 包都声明在 devDependencies（0.2.0-rc.2 cohort）中，TypeScript/Vitest 直接从 node_modules 解析类型——不需要 DSH 源码 checkout。消费侧 `prepare` 构建（`tsdown.prepare.config.ts`）不做类型检查地转译，git 安装同样无需 harness checkout。
 
 ## 检查
 
@@ -134,9 +148,9 @@ pnpm run build
 
 ## Harness 契约依赖
 
-锚定 0.1.2-alpha.2 线；本构建依赖的接缝：
+锚定 0.2.0-rc.2 线；本构建依赖的接缝：
 
-- **`sidebar.footer.action` 底部席位**（0.1.2 shell 组合）：侧栏声明并渲染远程入口占据的席位。
+- **`sidebar.footer.action` 底部席位**（0.1.7 shell 组合）：侧栏声明并渲染远程入口占据的席位。
 - **`ctx.layout.toggleSidebar()`**（packages/client/ui-layout）：鲸鱼按钮经官方面板动作面展开折叠侧栏。
 - **`ctx.connection.authenticatedUrl()`**（packages/client/connection）：代理为内部凭据一次性兑换启动令牌的官方接缝（`src/inner-auth.ts`），使再发起的 `/api` 调用满足 harness 浏览器认证校验。
 - **`__DSH_FILE_UPLOAD__`**（file-upload 客户端钩子）：上传服务在构造时读取一次的可选启动前传输。远程引导补丁会发布它，使后台上传留在被改写的主线程 fetch 上，而不是逃出通道的 Web Worker（issue #1580）。
@@ -161,7 +175,7 @@ pnpm run build
 
 - **配对是 `/remote` 通道的访问控制，且无条件生效**：每个请求必须携带有效配对设备 cookie，在任何字节转发之前强制。缺失或被撤销的会话收到 HTTP 403，JSON 拒绝携带 `error.code: "unpaired"`；浏览器 `EventSource` API 只暴露流失败，不暴露响应体。该门**不**跟随 `requirePairingForLan`：通道会用进程自身的浏览器认证凭据重新发起每一次调用，放行未配对调用者等于把该权限交出去。局域网策略只作用于普通 `/api` 面，永远不能放宽本通道（issue #1665）。
 - **通道携带进程自己的内部凭据。** harness 浏览器认证 cookie 与 authority 绑定（为浏览器访问过的确切 `host:port` 签发）且没有回环豁免，因此转发到 `127.0.0.1` 的再发起请求无法复用设备的 cookie。插件因此自行兑换一次自己的启动令牌——与浏览器首次访问执行的是同一次交换——并把所得 cookie 附到再发起请求上。该凭据只在上面的配对门之后被使用；停止/取消配对会立即停止对它的使用。
-- **本 cohort 的现实：配对不门控直连 `/api`。** 在锚定的 0.1.2-alpha.2 线上，没有任何组件发出 `api/gate` seam，因此来自局域网源头的直连 `/api` 仅由 harness 围栏（`0.0.0.0` 绑定下自动信任局域网字面量）加 harness 浏览器认证 cookie 约束。设备已经兑换过的浏览器凭据在停止/取消配对后仍然有效，直到其自然过期（30 天）——撤销约束的是 `/remote` 通道与配对 cookie，而不是那个凭据。插件会对 `/api` 姿态做探测并大声告警；请把局域网绑定当作深思熟虑的决定，在共享机器上优先回环加隧道。
+- **运行时现实：配对不门控直连 `/api`。** 官方运行时没有任何组件发出 `api/gate` seam（对照本仓库安装的 0.2.0-rc.2 包核实），因此来自局域网源头的直连 `/api` 仅由 harness 围栏（`0.0.0.0` 绑定下自动信任局域网字面量）加 harness 浏览器认证 cookie 约束。设备已经兑换过的浏览器凭据在停止/取消配对后仍然有效，直到其自然过期（30 天）——撤销约束的是 `/remote` 通道与配对 cookie，而不是那个凭据。插件会对 `/api` 姿态做探测并大声告警；请把局域网绑定当作深思熟虑的决定，在共享机器上优先回环加隧道。
 - **配对设备是完全控制凭据。** host 模式下它可达完整 host API——聊天、会话、设置、凭据、Agent 预设、产出物——与 SDK 对回环桌面的信任一致。只有三个控制面（配对、自更新、插件安装/卸载）保持物理本地。只配对你控制的设备；停止或逐设备取消配对立即撤销。
 - **控制端点仅限回环**：铸造/停止/撤销、设备列表与 lan-bind 状态只应答回环，门控通道同时让自更新与插件安装路径保持物理本地。局域网源浏览器看到「配对面板仅限本机使用」横幅。
 - **后台文件上传同样走通道。** 官方上传服务优先使用 Web Worker 载体，其独立全局对象不受主线程补丁影响；因此引导补丁（以及作为兜底的浏览器补丁）会发布官方启动前钩子 `__DSH_FILE_UPLOAD__`，并把打过补丁的 `fetch` 交给它：原始 `/api/session/uploadFileBinary` POST 会被改写到 `/remote`，并像其他受门控调用一样携带设备凭据。没有该钩子时，配对浏览器的上传会绕过通道，被 harness 浏览器认证围栏拒为 401（issue #1580）。该钩子仅在非回环源、且通道安装期间发布，且永不覆盖页面已有的钩子。
@@ -182,6 +196,7 @@ pnpm run build
 - **纯 HTTP 局域网的重开需要重扫**：重开 service worker 只在安全上下文（https 隧道、localhost）注册；经纯 HTTP 局域网 URL 配对的手机导航回 `/` 时会撞上 harness 401，需要重新扫码。局域网内重配对成本很低，配对后一切恢复。
 - **适配选择器跟随官方构建**：语义后缀策略可在 hash 变化中存活，但语义改名不行；每次官方 GUI 升级需要一轮视觉 QA（参考 dsh-LAN，这些后缀在多次官方发布中保持稳定）。
 - **开发 HMR**：`dsh web --dev` 按路径轮询每个 roster bundle，重建本包（自身 `tsdown --watch`）即热重载客户端 bundle；host 半区需要重启。
+- **profile 里挂了 `@deepseek-ai/dsh-hmr` 行会让所有设置保存失败**：只要 `hmr` 服务存在，官方配置编辑器就会把写入包进 `hmr.runExclusive`，而在本 cohort 上这种写入会被判为嵌套事务——Host 返回 `HMR transactions cannot be nested`，本插件的各设置卡片（以及官方设置页）都显示保存失败。该行由用户自行添加（没有任何 bundle 自带），桌面版 profile 用它为本地插件的 host 半区做热重载。从 profile 补丁里删掉 `- id: hmr` 这一行即可恢复保存；只在需要热重载该插件时再加回。观察于 2026-09-30，桌面版客户端 0.2.0-rc.2。
 
 ## 依赖说明
 

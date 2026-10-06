@@ -32,7 +32,7 @@ A task row carries an optional `tags: { name, promptPrefix? }[]`. The name is th
 
 - Card badges, a board-header multi-select tag filter over every label in use (archived tasks included), search that also matches label names, and a tag editor in the new/edit forms whose name input offers the labels already on the board and adopts an existing hint.
 - Multi-select is conjunctive: adding a label narrows the result set.
-- New semantic parts `tag-filter`, `tag-chip`, and `tag-badge` are recorded in [semantic-attrs-v1.md](../../../packages/skins/skin-center/contracts/semantic-attrs-v1.md) in the same change.
+- New semantic parts `tag-filter`, `tag-chip`, and `tag-badge` are recorded in [semantic-attrs-v1.md](https://github.com/zhu1090093659/dsh-skins/blob/main/contracts/semantic-attrs-v1.md) in the same change.
 
 ## Alternatives considered
 

@@ -1,0 +1,5 @@
+# Bilingual-pair consistency record (docs/i18n.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with git hash-object.
+2026-10-01-family-settings-cards-identity-marks-and-copy.md: 5ecd72a50f5740146b4b1e558de062bd182cd2f9
+2026-10-01-family-settings-cards-identity-marks-and-copy.zh.md: 346b7755c8577337e9ec79b6f59f939eff74a1e2

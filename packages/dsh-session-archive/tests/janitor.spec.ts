@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -229,6 +229,43 @@ describe('operation lock', () => {
 
 describe('automatic cycles', () => {
   const DAY = 86_400_000
+
+  it('user auto-archives mixed native IDs without touching protected sessions or resetting archive times', async () => {
+    // Given: stale sessions use both harness ID spellings, with protected peers.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-03T04:00:00Z'))
+    const bare = '550e8400-e29b-41d4-a716-446655440000'
+    const canonical = `session-${bare}`
+    const host = createFakeHost({
+      feedItems: [
+        { sessionId: bare, updatedAt: Date.now() - 40 * DAY },
+        { sessionId: 'session-stale', updatedAt: Date.now() - 40 * DAY },
+        { sessionId: 'session-running', updatedAt: Date.now() - 40 * DAY, running: true },
+        { sessionId: 'session-current', updatedAt: Date.now() - 40 * DAY },
+      ],
+      persistedIds: [bare, 'session-stale', 'session-running', 'session-current'],
+    })
+    const service = await settledService(host, { autoArchiveEnabled: true, autoArchiveDays: 7 })
+    try {
+      // When: the user runs automatic archiving twice.
+      const first = await service.runAutoCycle('archive', 'session-current')
+      const archivedAt = service.ledgerSnapshot().entries[canonical]?.archivedAt
+      vi.setSystemTime(new Date('2026-10-04T04:00:00Z'))
+      const second = await service.runAutoCycle('archive', 'session-current')
+
+      // Then: native IDs are archived, canonical ledger keys remain stable, and protected peers survive.
+      expect(first).toMatchObject({ total: 2, ok: 2, skipped: 0, failed: 0 })
+      expect(first.entries).toEqual([])
+      expect(host.registry.archivedSessionIds.sort()).toEqual([bare, 'session-stale'].sort())
+      expect(service.ledgerSnapshot().entries[canonical]).toEqual({ archivedAt, source: 'auto' })
+      expect(archivedAt).toBe(new Date('2026-10-03T04:00:00Z').getTime())
+      expect(service.ledgerSnapshot().entries[bare]).toBeUndefined()
+      expect(second).toMatchObject({ total: 0, ok: 0, failed: 0 })
+    } finally {
+      service.stop()
+      vi.useRealTimers()
+    }
+  })
 
   it('auto-archives by last activity and skips running/current sessions', async () => {
     const host = createFakeHost({

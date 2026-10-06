@@ -16,6 +16,7 @@ Models 设置页上的自定义 DSH 提供方只能填模型 ID、显示名称�
 - 尊重组合层：base 层也声明的路由无法靠用户层 unset 下线，因此这类卡片不提供禁用开关，编排层即使被调用也以 `base-profile` 拒绝。
 - 页脚只列出路由仍下线的存档条目：路由回来（重新添加，或部分启用只恢复了 profile 却没清掉存档）后条目自动隐藏，存档本身仍可恢复。
 - 刷新按命名空间收窄：只有 `llm-pi-ai` 或存档命名空间的 `settings/document-updated` 才驱动界面，并发的 `describe` 合并为一次 wire 调用；未保存草稿在后台刷新后保留，并把写入围栏钉在草稿读取时的 revision，文档已变则冲突重读，既不静默丢弃编辑也不覆盖更新的状态。
+- provider-card 单元格经 `src/client/provider-card-seat.ts` 认领，它独占 keyed 单元格唯一可能的结果：两个插件都扩展 pi-ai 提供方卡片时必然相撞，注册表拒绝后注册者，而落败方绝不能变成一块静默的空白。拒绝时既在 console 点名占用者（registrant），也发布 `conflict` 状态，由 Models 页 footer 渲染成可见提示（卡片单元格被占时，本包在 Models 页唯一还能渲染的席位就是 footer）。认领在该槽每次变化时重试，因此对方插件卸载后面板自动恢复，无需重启 DSH；重试带闩锁，因为注册表在 `register` 内同步发变更通知。面板保留默认 priority，让冲突保持响亮，而不是变成对另一个插件的静默遮蔽。
 - 文案在包内出 zh/en（`model-caps` 命名空间），ru 集中在 `dsh-i18n`；`scripts/i18n-audit.mjs` 已登记本包，聚合 bundle 登记该 child。
 
 ## Alternatives considered
@@ -23,6 +24,8 @@ Models 设置页上的自定义 DSH 提供方只能填模型 ID、显示名称�
 - **能力表存本包命名空间、host 半区改写请求**：被否。会分裂事实源——适配器读的 `input` 与 `reasoningEfforts` 就在 `llm-pi-ai` 里；而且竞态与双写一致性要落到 host 半区。官方命名空间带这些字段，正是为「知道自身路由的部署」准备的。
 - **视频 / PDF 模态复选框**：被否。pi-ai 的模态词表只有 `text | image`，更宽的声明无法端到端生效，UI 等于欺骗。
 - **host 半区枚举内置目录**：v1 不做。路线直接服务内置目录且没有 `models` 数组时显示「先添加模型行」的指引而非编辑器，避免为枚举引入自定义 remote 面。
+- **改用不同 priority 注册以让冲突方也能注册**：被否。同一 keyed 单元格的不同 priority 条目确实共存于账本，但单元格只渲染优先级最低的那一条，于是响亮的拒绝变成对另一个插件的静默遮蔽——正是报告者看到的故障，只是连报错都没有了。当前插槽契约下同一 keyed 单元格渲染不了两个组件，所以本包选择明着认领并报告落败。
+- **卡片单元格被占时把能力编辑器搬到本包自有席位**：被否。面板读的是官方卡片的 owner props（提供方行与其凭据事实），只有该席位会派发它们；在 footer 复现就意味着要在浏览器里重新推导整份提供方目录。
 - **用 enabled 标志隐藏已禁用提供方**：被否。pi-ai 没有该字段；被认可的移除就是官方卡片同款 unset，存档保证 profile 可恢复。
 
 ## Consequences
@@ -30,6 +33,7 @@ Models 设置页上的自定义 DSH 提供方只能填模型 ID、显示名称�
 - 自定义模型可以在 Models 页就地声明图片输入、推理档位与每档发送值；输入框按声明的档位提供思考选项，且只有声明了图片的模型才会被 DSH 提供图片附件。
 - 禁用后提供方立即离开两个模型选择器，host 侧对它的委派以 `NO_ADAPTER` 失败关闭；配置在路由回来之前始终可从页脚恢复。
 - `THINKING_LEVELS` 是适配器档位词表的本地副本，上游变化必须同步；不一致会以 host 侧拒绝并点名该档位的方式暴露。
+- 同一时刻只能有一个插件扩展 pi-ai 提供方卡片：第二个认领者被拒绝时会明确说出来（console + Models 页上点名占用者的提示），而不是凭空消失；占用者卸载后它会自己把单元格接回来。
 - API 密钥留在凭据服务；存档只存配置。
 - 安装本包需要重启 DSH：`dsh plugin --profile web add link:<repo>/packages/dsh-model-capabilities`，或安装聚合包。
 
@@ -38,5 +42,6 @@ Models 设置页上的自定义 DSH 提供方只能填模型 ID、显示名称�
 - `tests/capabilities.spec.ts`（25 项）覆盖视图读取、模式分类、档位归一化、校验、草稿更新与 op 构建。
 - `tests/provider-toggle.spec.ts`（15 项）覆盖存档解析、四个 op 构建器、层判定谓词，以及带 revision 围栏的禁用/启用编排与全部失败分支。
 - `tests/panel.spec.tsx`（7 项）与 `tests/toggle-ui.spec.tsx`（12 项）用假 remote face 挂载真实组件：整数组写入、三态编辑、冲突重载、只读姿态、禁用态、禁用/启用两段写入顺序、存档条目过滤、base 层守卫，以及后台刷新下草稿存活。
+- `tests/provider-card-seat.spec.tsx` 用一个忠实实现真实规则的注册表替身驱动认领（同一 keyed 单元格一条目、第二个条目被拒、同步变更通知）：空闲单元格认领、点名占用者的拒绝、对方插件卸载后的恢复、不干扰本包认领的外来单元格，以及随认领出现与消失的 footer 提示。
 - 仓库门禁：`pnpm typecheck`、`pnpm test`、`pnpm docs:check`、`pnpm i18n:check`、`pnpm aggregate:check`、`pnpm test:scripts`、`pnpm sync-shared:check` 与 `pnpm runtime-deps:check`。
 - 插槽落座与两个模型选择器的实机验证由维护者执行：本插件需要重启 DSH 才挂载。

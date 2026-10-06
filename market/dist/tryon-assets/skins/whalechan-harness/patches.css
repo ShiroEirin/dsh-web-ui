@@ -688,12 +688,12 @@ html[data-dsh-skin="whalechan-harness"] [data-slot="sidebar.brand.mark"] > svg,
  html[data-dsh-skin="whalechan-harness"] [data-tool][data-state] svg[data-state="ongoing"],
  html[data-dsh-skin="whalechan-harness"] [data-tool][data-state] :is(._dot_10orb_3, ._matrix_10orb_4) { display:none !important; }
 
- html[data-dsh-skin="whalechan-harness"] [class*="turnStatus"]::before {
+ html[data-dsh-skin="whalechan-harness"] [data-chat-running] [data-shimmer]::before {
   content: ""; display: inline-block; width: 32px; height: 32px; margin-right: 6px;
   background: url('assets/status/08-rice-before-reasoning.png') center/contain no-repeat;
   vertical-align: middle; animation: whalechan-bob 1.8s ease-in-out infinite;
 }
- html[data-dsh-skin="whalechan-harness"] [class*="turnStatus"] { color: #248bda; }
+ html[data-dsh-skin="whalechan-harness"] [data-chat-running] [data-shimmer] { color: #248bda; }
 
 /* ReasoningRow exposes data-variant="think"; replace its native Think icon in
    both running and settled states, rather than guessing generated class names. */
@@ -742,7 +742,7 @@ html[data-dsh-skin="whalechan-harness"] body[data-ds-dark-theme]  [data-conversa
   }
 }
 @media (prefers-reduced-motion: reduce) {
-   html[data-dsh-skin="whalechan-harness"] [class*="turnStatus"]::before,
+   html[data-dsh-skin="whalechan-harness"] [data-chat-running] [data-shimmer]::before,
    html[data-dsh-skin="whalechan-harness"] [data-tool][data-state] [class*="leading"]::before { animation:none; transition:none; }
 }
 

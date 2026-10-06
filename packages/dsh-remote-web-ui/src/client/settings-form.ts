@@ -215,6 +215,8 @@ export class CardForm<T> {
   private readonly disposeForm: () => void
   private disposed = false
   private saving = false
+  /** A save asked for while one was in flight; it runs once the first settles (#1754). */
+  private saveQueued = false
   private failed = false
   private failedReason: string | undefined
 
@@ -283,7 +285,7 @@ export class CardForm<T> {
       resetField: (field) => {
         this.stage(field, { text: this.specOf(field).format(this.baseValue(field)), clear: true })
       },
-      save: () => { void this.save() },
+      save: () => { void this.requestSave() },
       discard: () => {
         if (this.staged.size === 0 && !this.failed) return
         this.staged.clear()
@@ -310,6 +312,30 @@ export class CardForm<T> {
    * the user can correct them instead of retyping.
    * @returns settlement after the mutation and the read-back.
    */
+  /**
+   * Run one save, and re-run it once if another was asked for while this one
+   * was still in flight.
+   *
+   * A save is a Host round trip that also drives the profile reconcile, and
+   * the Host runs that write inside one exclusive transaction. Answering a
+   * press that arrives mid-flight by returning immediately dropped the edit
+   * with no explanation, which is the "the save button stops working after a
+   * few rounds" report (#1754). Serializing instead means a save pressed while
+   * another is still settling runs against the settled state - which is what
+   * the operator meant by pressing it again.
+   * @returns settlement after the mutation and the read-back.
+   */
+  async requestSave(): Promise<void> {
+    if (this.saving) {
+      this.saveQueued = true
+      return
+    }
+    await this.save()
+    if (!this.saveQueued) return
+    this.saveQueued = false
+    await this.requestSave()
+  }
+
   async save(): Promise<void> {
     const plan = this.plan()
     const valid = plan.filter((item): item is PlannedWrite & { judge: () => boolean } => item.judge !== undefined)

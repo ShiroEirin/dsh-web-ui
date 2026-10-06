@@ -12,7 +12,7 @@ Status: implemented
 
 ## Decision
 
-**`/remote` 的通道门是无条件的，它不是来自设置的授权输入。** `requirePairingForLan` 被从 `RemoteApiDeps` 中彻底移除（而非默认为 true），使未来任何调用点都无法通过传值重新引入该旁路：HTTP 处理器与升级处理器一律要求有效配对凭据（cookie、无 cookie 请求头，或握手上的 `device` 查询参数）。局域网策略只保留两个含义——桌面半区是否安装客户端重写，以及普通 `/api` 面自身的姿态——不再能放宽通道。`stop()` 因此无需改动：它本已清空设备表，下一个请求即 403（由测试钉定）。设置桥仍按 [remote control reuses the official UI](../../architecture/2026-08-29-remote-control-reuses-official-ui.zh.md) 对配对设备开放；改变的是经它写入不再能解除门。
+**`/remote` 的通道门是无条件的，它不是来自设置的授权输入。** `requirePairingForLan` 被从 `RemoteApiDeps` 中彻底移除（而非默认为 true），使未来任何调用点都无法通过传值重新引入该旁路：HTTP 处理器与升级处理器一律要求有效配对凭据（cookie、无 cookie 请求头，或握手上的 `device` 查询参数）。局域网策略只保留两个含义——桌面半区是否安装客户端重写，以及普通 `/api` 面自身的姿态——不再能放宽通道。`stop()` 因此无需改动：它本已清空设备表，下一个请求即 403（由测试钉定）。设置桥仍按 [remote control reuses the official UI](../architecture/2026-08-29-remote-control-reuses-official-ui.zh.md) 对配对设备开放；改变的是经它写入不再能解除门。
 
 **侧栏一族按集合覆盖，并以漂移守卫替代手工清单。** `/sidebar/ws/agent-opens` 同时加入 `wsPaths`（解析期引导补丁与运行时补丁共用）与 `REMOTE_UPGRADE_PATHS`（host 按精确路径注册升级）。由于「在前者而不在后者」等于被重写到死路由——正是 #1646 报告的症状——`tests/remote-contract.spec.ts` 现在从 `wsPaths` 推导期望的升级集合并断言相等，下一条遗漏套接字会在测试套件里失败，而不是发布出去。
 

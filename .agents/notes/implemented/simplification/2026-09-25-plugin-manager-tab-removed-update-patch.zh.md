@@ -16,6 +16,8 @@ Status: implemented
 
 随 Tab 一并移除（因为再无其它消费者）：`src/core/repair.ts` 及其字典键（修复 seed 构造器）、client 侧的 `parsePluginControlSnapshot` / `PluginControlItem` wire 解析、`diffControls` / `classifyChange` / `ControlChangeKind`、`failures()` / `status()` / `setSafeMode()` client face、`/plugin-control` RPC 通道的使用，以及仅 Tab 使用的 CSS。`src/core/conflict.ts` 只保留 `ControlChange` 行形状，即网关宿主记录的内容。
 
+这个单页区块仍是本包唯一的 `plugins.detail.section` 贡献。后续改动在同一页面「已安装」标题旁新增了列表级更新工具条（批量更新第三方插件 + 显式重启），见 [插件管理列表工具条](../feature/2026-09-30-plugin-manager-list-toolbar-bulk-updates.md)；本记录所载的席位、subject 处理与兼容门禁不受其影响。
+
 host 半区不变：每条 `/api/plugin-manager/*` 路由、CLI 网关、`GatewayJob` 上的冲突 / notice 台账、启动预检全部保留。`'pluginManager'` cordis 服务与其冻结的跨插件契约保留（`dsh-market` 消费它），其中 `failures()` 是刻意保留的：它是宿主记账，兄弟插件仍可观察，即便现在没有第一方界面渲染它。`dsh.client.inject` 列表去掉仅 Tab 需要的行（`api-session-controller`、`api-workspace-controller`、`ui-workspace`）与设置面（`ui-settings`，补丁不消费其槽位契约）；`ui-renderer` 保留，因为补丁注册所用的 `ctx.slots` 注册表由它提供。
 
 ## 已考虑的替代方案

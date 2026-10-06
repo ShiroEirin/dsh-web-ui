@@ -1,11 +1,21 @@
-# @linxin666/dsh-client-ui-session-id
+# dsh-session-id · Instant Session ID Copy & Navigation Helper for DeepSeek Harness (DSH)
 
 English | [中文](README.zh.md)
 
-A browser-only DSH web GUI plugin that lists every session with its full
-session id in a sidebar panel and copies the id on one click. It mounts into
-the official sidebar footer seat (`sidebar.footer.action`) — no DSH source
-changes, nothing runs on the host.
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-client-ui-session-id?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>Instant Session ID Copy & Navigation Helper for DeepSeek Harness (DSH)</strong><br>
+  <em>Sidebar Footer Trigger · Real-Time Session ID List · One-Click Clipboard Copy · Instant Local Filter</em>
+</p>
+
+A browser-only extension for DeepSeek Harness (DSH) Web GUI and desktop client: provides a quick trigger at the bottom of the sidebar to view full session IDs and copy them with one click. Mounts into `sidebar.footer.action` without modifying DSH source code and incurs zero host overhead.
 
 ## What it does
 

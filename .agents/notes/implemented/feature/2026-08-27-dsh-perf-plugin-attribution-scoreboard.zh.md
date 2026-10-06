@@ -10,7 +10,7 @@ dsh-perf 能测量浏览器侧整体负载（FPS、长任务数）并治理两�
 
 ## Decision
 
-- `perf-attribution.ts` 新增一个挂在 `document.body` 上的合并 `MutationObserver`（childList+subtree），把每个新增元素/文本节点解析到最近的 `[data-dsh-plugin]` 根——即 [semantic-attrs-v1](../../../../packages/skins/skin-center/contracts/semantic-attrs-v1.md) 语义属性契约——按固定时间网格桶（2s 窗口，保留 8 个 ≈16s 回看）累计节点速率；HUD 渲染一行 `act`：Top 3 插件加合并的 `rest=` 速率。
+- `perf-attribution.ts` 新增一个挂在 `document.body` 上的合并 `MutationObserver`（childList+subtree），把每个新增元素/文本节点解析到最近的 `[data-dsh-plugin]` 根——即 [semantic-attrs-v1](https://github.com/zhu1090093659/dsh-skins/blob/main/contracts/semantic-attrs-v1.md) 语义属性契约——按固定时间网格桶（2s 窗口，保留 8 个 ≈16s 回看）累计节点速率；HUD 渲染一行 `act`：Top 3 插件加合并的 `rest=` 速率。
 - 长任务不再按观察器回调记一条（旧实现对批量送达只计一次），改为逐条进入环形记录，附耗时与规范里的 best-effort 容器名（缺失时 'unknown'）。HUD longtask 行增加最大耗时；`topSources()` 按累计耗时聚合来源。
 - 语义刻意保持谦卑：速率是保留网格上的墙钟口径，空闲时间主动稀释读数（有利于长期持续成本、不利于瞬时尖峰）；超出单次回调 400 节点分类预算的溢出与无语义根的节点共用一个 unattributed 桶，且计入总量——全未归因页面也读得到非零值。不发 `data-dsh-plugin` 的插件因此以「可见性欠债」的形式显形，而不是静默为零。
 - 一切跟随现有 HUD 生命周期：默认关、随 HUD 销毁，`dsh-perf-debug=1` 时暴露与列表门控同款的调试句柄 `window.__dshPerfAttribution`。分类与桶运算为纯函数、时钟可注入；`index.ts` 只负责 DOM 与渲染接线。

@@ -14,7 +14,6 @@
  */
 import { readFile } from 'node:fs/promises'
 import { existsSync, readFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { dirname, isAbsolute, relative, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { UserConfig } from 'tsdown'
@@ -160,42 +159,6 @@ export function clientBundle(
     if (face === 'host') return options.hostPhase === true ? node : [SKIP_WORKSPACE_BUILD]
     if (face === 'client') return options.hostPhase === true ? (client ? [client] : []) : (client ? [...node, client] : node)
     return client ? [...node, client] : node
-  }
-}
-
-/**
- * The standalone mobile page bundle (served by the plugin's own route). It
- * boots WITHOUT the main UI's module loader, so everything — React, zod, the
- * harness wire contracts — is inlined into one self-contained module script.
- * The page talks to the host through plain fetch/WebSocket over /api.
- * @param id - plugin id (package name), used in tsdown diagnostics.
- * @param entry - the mobile page entry (e.g. `src/mobile/index.tsx`).
- * @returns a fully self-contained browser bundle config.
- */
-export function mobileBundle(id: string, entry: string): UserConfig {
-  const mobileRequire = createRequire(import.meta.url)
-  return {
-    name: `${id}/mobile`,
-    entry: { mobile: entry },
-    outDir: 'lib',
-    format: 'esm',
-    platform: 'browser',
-    target: 'es2022',
-    dts: false,
-    sourcemap: true,
-    clean: false,
-    // Fully self-contained: no externals, no module table.
-    external: [],
-    noExternal: [/.*/],
-    define: {
-      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
-      'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
-      'import.meta.env': JSON.stringify({ MODE: process.env.NODE_ENV ?? 'production' }),
-    },
-    plugins: [],
-    outputOptions: {
-      entryFileNames: 'mobile.js',
-    },
   }
 }
 

@@ -1,15 +1,29 @@
-# @linxin666/dsh-client-ui-market
+# dsh-market · DeepSeek Harness (DSH) 创意工坊商厦与一键资产安装插件
 
 [English](README.md) | 中文
 
-DSH Web GUI 设置页的创意工坊商店卡片：唯一的「创意工坊」一级分区在 GUI 内浏览 [dsh-market.com](https://dsh-market.com) 的皮肤、宠物、插件与社区预设，并一键安装到本机；已安装内容由各自界面管理（皮肤中心、宠物、官方插件分区内的插件管理，以及本卡片预设标签页渲染的预设面板）；最前的「编辑推荐」标签固定展示一小份皮肤、宠物与社区插件清单。
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-client-ui-market?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>DeepSeek Harness（DSH）官方 Web GUI 与桌面客户端内置创意工坊商店与资产管理中心</strong><br>
+  <em>一站式浏览 dsh-market.com · 主题皮肤/桌宠/预设/插件一键安装 · 在线热度榜 · 零重启热加载</em>
+</p>
+
+DSH Web GUI 与官方桌面客户端设置页的创意工坊商店卡片：唯一的「创意工坊」一级分区在 GUI 内浏览 [dsh-market.com](https://dsh-market.com) 的皮肤、宠物、插件与社区预设，并一键安装到本机；已安装内容由各自界面管理（皮肤中心、宠物、官方插件分区内的插件管理，以及本卡片预设标签页渲染的预设面板）；最前的「编辑推荐」标签固定展示一小份皮肤、宠物与社区插件清单。
 
 ## 功能
 
 - 五个标签页：最前的「编辑推荐」固定类别 + 四类目录。「编辑推荐」按发布顺序钉住一份手工维护的皮肤 / 宠物 / 社区插件清单（不含预设），没有搜索框与分类筛选；每个条目保留其所属类别自身的安装、点赞与预览能力，本部署解析不到的引用会被丢弃。
 - 四类目录（皮肤 / 宠物 / 插件 / 预设），排序与创意工坊站一致：设备点赞优先（同票回落清单顺序）、搜索框、每卡预览链接（皮肤打开实时试穿模拟器）。
 - 一键安装资产（回环浏览器）：皮肤下载到 `$DSH_HOME/skins/<id>/`，宠物下载到 `$DSH_HOME/pets/<id>/` —— 这两个正是皮肤中心与宠物注册表已扫描的 DSH home 目录，无需重启（重新打开卡片即生效）。预设下载到惰性库 `$DSH_HOME/agent-presets/<id>/`，没有任何发现根扫描它；启用由预设面板把它移入 roster 的用户根。覆盖已有目录前弹确认并原子替换。
-- 一键安装插件：通过可选的 `pluginManager` 服务（由 `@linxin666/dsh-client-ui-plugin-manager` 提供）；未安装时降级为复制命令索引。
+- 一键安装插件复用官方写入器：只要宿主发布了官方进程内插件管理器的 remote 面（`ctx.remote.pluginManager.installBundle`，即官方插件页所用的同一个调用）就走它——在打包桌面客户端上该管理器是唯一写入器，因为 CLI 拒绝应用自有 profile；否则回退到家族 `pluginManager` 服务（`@linxin666/dsh-client-ui-plugin-manager`）。两者都没有时降级为复制命令索引。
+- 已安装插件在官方容器里管理，而不是在本卡片里：卡片的「在插件页管理」动作调用官方插件页的 `pluginNavigation.openBundle(packageName)`，在官方「插件」面板中打开该组合包页面——启停、卸载与安装诊断流本来就在那里。
 - 远程浏览器只读：隐藏安装按钮，保留创意工坊站链接与复制命令兜底。
 - 外链（工坊站、卡片名称、仓库、皮肤预览）在宿主注册该标签类型（alpha.2）时打开官方右侧边栏浏览器，否则照旧新开浏览器标签页。
 - 每张卡片除点赞数外还显示独立的工坊安装量与插件 NPM 近 30 天下载量（仅对有 npm 包名的插件显示）；工坊安装量记录成功安装事件，NPM 下载量为 registry 公开口径，两者不与点赞合并。

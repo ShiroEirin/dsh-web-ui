@@ -9,12 +9,12 @@
 ## 技术决策
 
 1. 在 `packages/dsh-task-board/src/client/board/TaskCard.tsx` 中，对非归档、非运行中且非执行等待中的卡片启用原生拖拽（`draggable={!archived && task.status !== 'running' && !pending}`），并在 `onDragStart` 中设置任务 ID；
-2. 在 `packages/dsh-task-board/src/client/board/TaskBoard.tsx` 中，为手动目标状态列（`backlog` 与 `todo`）添加 `onDragOver` 与 `onDrop` 事件处理，复用 `canMoveManually` 安全校验，并在放置时触发 `controller.moveTask`；
+2. 在 `packages/dsh-task-board/src/client/board/TaskBoard.tsx` 中，为手动目标状态列（本特性落地时为 `backlog` 与 `todo`；自 [手工列切换](2026-09-29-task-board-manual-column-switching.zh.md) 起为全部五列）添加 `onDragOver` 与 `onDrop` 事件处理，复用 `canMoveManually` 安全校验，并在放置时触发 `controller.moveTask`；
 3. 在 `packages/dsh-task-board/tests/board-view.spec.tsx` 中补充了针对卡片可拖拽属性、跨列拖拽触发 `moveTask` 以及非法拖拽拦截的完备单元测试。
 
 ## 影响与收益
 
-用户可以在看板页面直接拖拽卡片在「待规划」与「待办」列之间快速切换状态；运行中、执行等待及归档任务继续受安全规则保护，不可非法拖拽。
+用户可以在看板页面直接拖拽卡片在手动目标列之间快速切换状态；运行中、执行等待及归档任务继续受安全规则保护，不可非法拖拽。自 [手工列切换](2026-09-29-task-board-manual-column-switching.zh.md) 起全部五列都是合法落点（含「已完成」与「已失败」），这部分取代了本文记录的手动列集合。
 
 ## 验证结论
 

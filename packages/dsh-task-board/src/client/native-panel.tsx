@@ -16,12 +16,15 @@
  *
  * @module @linxin666/dsh-client-ui-task-board/client
  */
+import { useMemo } from 'react'
+import type { ReactNode } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { TASK_BOARD_PANEL_ID, type BoardController } from '../core/controller.ts'
 import { TaskBoard } from './board/TaskBoard.tsx'
+import { seatsFromRenderSlot, TaskBoardSeatsProvider, type SlotRenderBinding } from './seats.tsx'
 import { t } from './locales.ts'
 import css from './board.module.css'
 
@@ -72,10 +75,17 @@ export function TaskBoardPanelIcon({ size }: { size: number; active: boolean }):
  * @param props - the framework main-slot share plus this entry's injected face.
  * @returns the board page.
  */
-export function TaskBoardPanel({ controller }: { controller: BoardController }): React.ReactElement {
+export function TaskBoardPanel({ controller, renderSlot }: {
+  controller: BoardController
+  /** Child-slot renderer the registration declares (detail + card decoration). */
+  renderSlot?: SlotRenderBinding
+}): ReactNode {
+  const seats = useMemo(() => seatsFromRenderSlot(renderSlot), [renderSlot])
   return (
     <div className={css.panel} data-dsh-taskboard-view="" data-dsh-plugin="task-board">
-      <TaskBoard controller={controller} />
+      <TaskBoardSeatsProvider value={seats}>
+        <TaskBoard controller={controller} />
+      </TaskBoardSeatsProvider>
     </div>
   )
 }
@@ -115,6 +125,12 @@ export function registerTaskBoardPanel(ctx: ClientContext, controller: BoardCont
   disposers.push(slots.inject('main', () => slots.register({
     name: 'main',
     key: TASK_BOARD_PANEL_ID,
+    // The board declares the provider child seats here; a provider registers
+    // into them and this entry renders them through the injected renderSlot.
+    children: {
+      'task-board.detail.section': { kind: 'list', scope: 'root' },
+      'task-board.card.decoration': { kind: 'list', scope: 'root' },
+    },
     inject: (): PanelFace => ({ controller }),
   }, TaskBoardPanel as never)))
 

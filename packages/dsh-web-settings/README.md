@@ -1,8 +1,21 @@
-# @linxin666/dsh-client-ui-web-ui-settings
+# dsh-web-settings · Web GUI Settings Enhancement & Appearance Preferences for DeepSeek Harness (DSH)
 
 English | [中文](README.zh.md)
 
-The dsh web UI plugin group for the DSH settings page: it adds a first-level settings section (a sibling nav item of General / Models / Plugins / Agent presets) that hosts the enable switches and configuration forms of the family plugins.
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@linxin666/dsh-client-ui-web-ui-settings?style=flat-square" alt="Version">
+  &nbsp;
+  <img src="https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <strong>Unified Settings Enhancement & Plugin Preferences for DeepSeek Harness (DSH)</strong><br>
+  <em>Unified Settings Section · Native ConfigForm Bridge · Legacy Settings Migration · UI Appearance & Preferences</em>
+</p>
+
+A settings enhancement plugin for DeepSeek Harness (DSH) Web GUI and official desktop client: registers a first-level section in Settings alongside general preferences, modes, and agent presets to group enable toggles and configuration forms across the plugin family.
 
 ## What it is
 

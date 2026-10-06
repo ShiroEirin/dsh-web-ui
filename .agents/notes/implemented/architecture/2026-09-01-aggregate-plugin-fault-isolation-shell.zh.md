@@ -21,7 +21,7 @@ dsh-web 家族以一个聚合 bundle 发布，patch 行经 DSH loader 挂载约 
 
 被包装插件自己的 `Config` 仍然决定取值是否成立：shell 把家族字段交给 `ctx.plugin()`，由那份 schema 校验，因此一次非法写入只会让这一行降级（台账与日志可见），家族其余部分照常运行。
 
-作为 boot 期 shell 的补充，`shared/host/run-guarded.ts`（同步到四个带进程内 HTTP/轮询面的包）把 fire-and-forget 的 Promise 拒绝转为日志错误：宿主的 `installFailLoud` 会把任何 unhandled rejection 变成整个进程退出，家族代码必须从结构上杜绝逃逸。
+作为 boot 期 shell 的补充，`shared/host/run-guarded.ts` 把 fire-and-forget 的 Promise 拒绝转为日志错误：宿主的 `installFailLoud` 会把任何 unhandled rejection 变成整个进程退出，家族代码必须从结构上杜绝逃逸。
 
 ## Alternatives considered
 
@@ -31,7 +31,7 @@ dsh-web 家族以一个聚合 bundle 发布，patch 行经 DSH loader 挂载约 
 
 ## Consequences
 
-家族插件在 boot 期不再可能拖垮 Web：坏插件的影响半径是一个降级 entry 加一条日志。代价：插件故障只经日志/degraded 路由呈现而非 boot 失败、未来每个新家族包都要经 `scripts/aggregate.mjs` 生成聚合行（这本来就是唯一合规路径）。原先"插件列表每行显示同一个 shell 包名"的显示代价已由按家族的子路径行名移除（见[聚合家族行显示名](2026-09-02-aggregate-family-row-display-names.zh.md)）。runGuarded 纪律按包 opt-in，由 `scripts/sync-shared.mjs` 同步。
+家族插件在 boot 期不再可能拖垮 Web：坏插件的影响半径是一个降级 entry 加一条日志。代价：插件故障只经日志/degraded 路由呈现而非 boot 失败、未来每个新家族包都要经 `scripts/aggregate.mjs` 生成聚合行（这本来就是唯一合规路径）。原先"插件列表每行显示同一个 shell 包名"的显示代价已由按家族的子路径行名移除（见[聚合家族行显示名](2026-09-02-aggregate-family-row-display-names.zh.md)）。runGuarded 纪律按包 opt-in；本仓当前没有包采用它，因此 `shared/host/run-guarded.ts` 只作为共享源与该模块的测试保留，本仓不再生成副本。
 
 设置面带来三项代价。宿主在写入时无法校验家族字段（它没有这些字段的 schema），因此被家族 schema 拒绝的值只会让这一行降级，而不是带着原因被拒。行配置编辑会重新挂载家族插件而非就地提交，因为 shell 交给 `ctx.plugin()` 的是一份普通配置。设置写入会持久化整份生效行配置——包含 shell 自己的 `plugin` 键，正是它让该行继续挂载正确的模块——所以手写覆盖也必须带 `plugin`；缺失它的配置会让该行什么都不挂载，除 loader 整对象替换产生的裸覆盖形态（静默）之外都会在台账里留痕。
 

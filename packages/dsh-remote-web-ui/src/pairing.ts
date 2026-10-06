@@ -24,7 +24,7 @@
 import { randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { PostureSnapshot } from './posture.ts'
+import type { PostureHost, PostureSnapshot } from './posture.ts'
 
 /** The observable pairing phases the panel renders. */
 export type PairingPhase =
@@ -663,6 +663,7 @@ function snapshotsEqual(a: PairingSnapshot, b: PairingSnapshot): boolean {
     && a.publicUrl === b.publicUrl
     && tunnelEqual(a.tunnel, b.tunnel)
     && relayEqual(a.relay, b.relay)
+    && postureEqual(a.posture, b.posture)
     && a.tokenId === b.tokenId
     && a.tokenExpiresAt === b.tokenExpiresAt
     && a.deviceCount === b.deviceCount
@@ -693,6 +694,48 @@ function tunnelEqual(a: TunnelStatus | undefined, b: TunnelStatus | undefined): 
 function relayEqual(a: RelayStatus | undefined, b: RelayStatus | undefined): boolean {
   return a === b || (a !== undefined && b !== undefined
     && a.state === b.state && a.url === b.url && a.error === b.error)
+}
+
+/**
+ * Posture equality. A probe round can change this frame while every other field
+ * stays put — the common case, since the probe re-runs on a settings change and
+ * on a tunnel reaching running, and a quick-tunnel restart churns the probed
+ * host set. Leaving the frame out of the comparison suppressed those emits, so
+ * the loopback SSE stream and the desktop panel could sit on a stale "exposed"
+ * (or stale "clean") verdict for as long as the phase and roster stayed put.
+ */
+function postureEqual(a: PostureSnapshot | undefined, b: PostureSnapshot | undefined): boolean {
+  if (a === b) return true
+  // A frame that is not an object at all (a hand-built context can pass
+  // anything) counts as changed instead of throwing out of the setter.
+  if (!isPostureFrame(a) || !isPostureFrame(b)) return false
+  return a.checkedAt === b.checkedAt && hostsEqual(a.hosts, b.hosts)
+}
+
+/** Whether a value has the shape a posture frame is compared on. */
+function isPostureFrame(value: unknown): value is PostureSnapshot {
+  return typeof value === 'object' && value !== null
+}
+
+/**
+ * Per-host posture equality (a round's verdicts, in probe order). Tolerates a
+ * frame that is not the expected shape: this runs inside the emit path, outside
+ * the listener error containment, so a malformed snapshot handed in by another
+ * host-fiber caller must degrade to "changed" instead of throwing out of the
+ * setter that produced it.
+ */
+function hostsEqual(a: readonly PostureHost[] | undefined, b: readonly PostureHost[] | undefined): boolean {
+  if (a === b) return true
+  if (!Array.isArray(a) || !Array.isArray(b)) return false
+  return a.length === b.length && a.every((host, index) => {
+    const other = b[index]
+    return isPostureHost(host) && isPostureHost(other) && host.host === other.host && host.exposed === other.exposed
+  })
+}
+
+/** Whether a value has the shape one probed host is compared on. */
+function isPostureHost(value: unknown): value is PostureHost {
+  return typeof value === 'object' && value !== null
 }
 
 /** Element-wise string list equality (interface order is meaningful). */

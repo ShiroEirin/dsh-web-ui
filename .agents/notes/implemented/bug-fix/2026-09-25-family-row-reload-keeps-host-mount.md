@@ -5,7 +5,7 @@ Status: implemented
 ## Problem
 
 One aggregate row per family plugin mounts a real plugin package behind the
-[aggregate shell](2026-09-01-aggregate-plugin-fault-isolation-shell.md), and
+[aggregate shell](../architecture/2026-09-01-aggregate-plugin-fault-isolation-shell.md), and
 the shared `mountOnce` guard (`shared/host/mount-once.ts`) exists so the
 aggregate row and a standalone install of the same package can coexist in one
 process: the first mount runs, a later mount of the same package name is a

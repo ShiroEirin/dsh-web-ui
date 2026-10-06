@@ -16,7 +16,7 @@ import type { TaskHandoverInput } from '../handover.ts'
  * Editable fields on a task (the update patch surface). `freeze` replaces the
  * continuation-card snapshot (restamping frozenAt); an explicit null clears it.
  */
-export type TaskUpdatePatch = Partial<Pick<TaskRecord, 'title' | 'description' | 'prompt' | 'workspaceId' | 'mode' | 'permission' | 'model' | 'reuseSession' | 'teamRun'>> & {
+export type TaskUpdatePatch = Partial<Pick<TaskRecord, 'title' | 'description' | 'prompt' | 'workspaceId' | 'mode' | 'permission' | 'model' | 'reuseSession' | 'teamRun' | 'goalRun' | 'skipVerification'>> & {
   freeze?: FreezeSnapshot & { redacted?: boolean } | null
   /** Replaces the handover bundle (restamping bundledAt); an explicit null clears it. */
   handover?: TaskHandoverInput | null
@@ -43,11 +43,13 @@ export function hasContentPatch(patch: TaskUpdatePatch): boolean {
 
 /**
  * Whether a task's content may still be edited: the task must be on-board
- * (not archived) and must never have started executing. Fail-closed: a
- * running, settled, or cancelled-before-launch task keeps its content fixed.
+ * (not archived) and must never have started executing. Fail-closed: a task
+ * with any execution record — running, settled, or cancelled before launch —
+ * keeps its content fixed. The run, not the column, is the trigger: a card
+ * parked in 'running' by hand has nothing recorded yet and stays editable.
  */
 export function canEditTaskContent(task: TaskRecord): boolean {
-  return task.archivedAt === undefined && task.status !== 'running' && task.executions.length === 0
+  return task.archivedAt === undefined && task.executions.length === 0
 }
 
 /** Keep an unknown permission string from entering the ledger. */
@@ -108,6 +110,13 @@ export function applyUpdateTask(
     if ('reuseSession' in patch) next.reuseSession = patch.reuseSession === true ? true : undefined
     // Team execution is a boolean opt-in with the same clear-by-false rule.
     if ('teamRun' in patch) next.teamRun = patch.teamRun === true ? true : undefined
+    // The /goal opt-in is default-ON: true (or an explicit null) returns the
+    // card to the default and stores nothing, only false pins a plain turn.
+    if ('goalRun' in patch) next.goalRun = patch.goalRun === false ? false : undefined
+    // The acceptance opt-out is the mirror image: default OFF, so only true
+    // pins a card out of the gate; false (or an explicit null) returns it to
+    // inheriting the board-wide switch and stores nothing.
+    if ('skipVerification' in patch) next.skipVerification = patch.skipVerification === true ? true : undefined
     if (workspaceId !== undefined || 'workspaceId' in patch) next.workspaceId = workspaceId
     if (mode !== undefined || 'mode' in patch) next.mode = mode
     if (permission !== undefined || 'permission' in patch) next.permission = permission

@@ -413,8 +413,8 @@ body:not([data-ds-dark-theme]) button[class*="_primary"]:not([data-dsh-plugin] *
    [class*="centerCol"] fallback. Uses body[...] —a selector here may not
    START with html, because the pipeline already wraps every patch under
    html[data-dsh-skin=...] and a second html element never matches. */
-body[data-dsh-wallpaper-active] [data-dsh-frame] [data-pane="conversation"],
-body[data-dsh-wallpaper-active] [class*="centerCol"] {
+body[data-we-wallpaper] [data-dsh-frame] [data-pane="conversation"],
+body[data-we-wallpaper] [class*="centerCol"] {
   background-color: transparent !important;
   background-image: none !important;
 }

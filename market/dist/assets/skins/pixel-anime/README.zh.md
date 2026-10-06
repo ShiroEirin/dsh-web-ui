@@ -60,7 +60,7 @@ ramp。所有圆角归零（像素画只有直角和 45 度），每张卡片一
 
 ## 你自己挂的背景
 
-画布会让路：`body[data-dsh-wallpaper-active]::after` 与
+画布会让路：`body[data-we-wallpaper]::after` 与
 `body[data-dsh-backdrop-active]::after` 会把这一层整片清空，所以你的壁纸或背景板
 永远不会被盖住。
 

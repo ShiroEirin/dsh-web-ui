@@ -1,6 +1,6 @@
 /**
- * The skill center panel shell: a header with the back-to-conversation
- * control, a tab bar, and the active tab's content.
+ * The skill center panel shell: a title header, a tab bar, and the active
+ * tab's content.
  *
  * The tab and the editor target live in the controller, not in component
  * state: the layout mounts this page only while the panel is selected, so
@@ -43,18 +43,10 @@ export function SkillPanel({ controller, api }: SkillPanelProps) {
 
   return (
     <div className={css.panel} data-dsh-plugin="skill-explorer">
+      {/* No back control: the sidebar row toggles this panel, and opening any
+          session (or new chat) returns the center column to the conversation,
+          exactly like the shell's own Plugins and Schedule pages. */}
       <div className={css.panelHeader}>
-        {/* Shared hook: dsh-web-all offsets center-view back controls beside the collapsed mobile sidebar. */}
-        <button
-          type="button"
-          className={`${css.ghostButton} ${css.backButton}`}
-          aria-label={tt('panel.backToConversation')}
-          data-dsh-center-view-back=""
-          onClick={() => { controller.close() }}
-        >
-          <span aria-hidden="true">‹</span>
-          <span>{tt('panel.backToConversation')}</span>
-        </button>
         <h2 className={css.panelTitle}>{tt('panel.title')}</h2>
       </div>
       <div className={css.tabBar} role="tablist" data-dsh-part="tab-bar">

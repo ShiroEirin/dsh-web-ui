@@ -61,7 +61,7 @@ body::after {
 
 /* 壁纸 / 皮肤背景挂载时地面让位（loader 自有标记；写 body[...]::after 形式，
    否则 scope 转换后 html 不是自身后代，规则永远匹配不上）。 */
-body[data-dsh-wallpaper-active]::after,
+body[data-we-wallpaper]::after,
 body[data-dsh-backdrop-active]::after {
   background-color: transparent;
   background-image: none;

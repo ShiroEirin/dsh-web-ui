@@ -182,7 +182,19 @@ export function makeRemoteApiRoutes(deps: RemoteApiDeps): WebRoute[] {
 }
 
 /**
- * Map one outer upgrade URL onto the loopback path (query string included).
+ * Map one outer upgrade URL onto the loopback path, dropping the cookieless
+ * device credential on the way in.
+ *
+ * The outer handshake carries the device id as `?device=<id>` because WebSocket
+ * handshakes cannot carry headers from the Web API. That id is a live session
+ * credential — it opens the full host API through this same channel — and the
+ * inner leg is a request the rest of the loopback origin sees (on a WebSocket
+ * leg, a raw handshake request line written to a loopback socket), so forwarding
+ * it handed a working credential to every other observer of the local port for
+ * no benefit: the gate above has already authenticated the caller, and no
+ * upstream route reads the parameter (the gateway mux matches on path alone).
+ * The rest of the query rides through unchanged, so a caller's own parameters
+ * still reach the upstream.
  */
 export function upgradeInnerPath(reqUrl: string | undefined, fallbackPath: string): string {
   if (reqUrl === undefined || reqUrl === '') return fallbackPath
@@ -194,6 +206,7 @@ export function upgradeInnerPath(reqUrl: string | undefined, fallbackPath: strin
   }
   const inner = innerPathOf(url.pathname)
   if (inner === undefined) return fallbackPath
+  url.searchParams.delete(REMOTE_DEVICE_QUERY)
   return `${inner}${url.search}`
 }
 

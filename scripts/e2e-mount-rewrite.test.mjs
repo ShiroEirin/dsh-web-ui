@@ -16,13 +16,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { rewriteDependencies, findWorkspacePackage, packWorkspace, resolvesFromPublished } from './e2e-mount-rewrite'
+import { TAR_LOCAL } from './tar-args.cjs'
 
 function makeTmp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-rewrite-test-'))
 }
-
-/** GNU tar reads a `C:\...` argument as a remote host spec; --force-local keeps it a local path. */
-const TAR_LOCAL = process.platform === 'win32' ? ['--force-local'] : []
 
 function writePkg(dir, body) {
   fs.mkdirSync(dir, { recursive: true })

@@ -226,19 +226,42 @@ interface LegacyTarget {
 }
 
 /**
- * The top-level Config fields one served descriptor declares. Read from the
- * descriptor's serialized schema envelope `dict` — the declaration itself,
- * which is what both rules match on; the envelope needs no rehydration for a
- * key walk, and a descriptor whose schema carries no object `dict` declares no
- * matchable field.
+ * The top-level Config fields one served descriptor declares.
+ *
+ * Read from the descriptor's live `value` — the entry's actual configuration
+ * object — rather than from the serialized schema envelope. The 0.2.0 cohort
+ * serializes a schemastery schema as a `{ uid, refs }` reference graph whose
+ * `dict` sits inside `refs` rather than at the top level, so reading
+ * `schema.dict` returned undefined and every folded-in namespace was judged
+ * unplaced, leaving `skin-wallpaper` and `skin-custom-theme` to retry and
+ * fail on every boot (#1770). The live value is both the shape the field rule
+ * actually wants (the keys a plugin really exposes) and immune to how the
+ * schema serializer happens to spell its output.
+ *
+ * A descriptor whose value is not an object declares no matchable field.
  * @param descriptor - one served entry's descriptor.
  * @returns the declared top-level field names.
  */
 function declaredFields(descriptor: SettingsDescriptor): string[] {
-  const schema = descriptor.schema
-  if (!isRecord(schema)) return []
-  const dict = schema.dict
-  return isRecord(dict) ? Object.keys(dict) : []
+  const value = descriptor.value
+  return isRecord(value) ? Object.keys(value) : []
+}
+
+/**
+ * Whether a descriptor declares one nested section of the given name.
+ *
+ * A folded-in namespace is a NESTED object inside the entry's Config; the
+ * Skin Center carries 'skin-background', 'skin-custom-theme' and
+ * 'skin-wallpaper' that way. An entry that merely has a scalar field named like
+ * some other family's namespace has not folded that namespace in, so it must
+ * not claim the section.
+ * @param descriptor - the descriptor of the entry the section resolved to.
+ * @param section - the section name to test.
+ * @returns true when the entry nests a section of that name.
+ */
+function declaresSection(descriptor: SettingsDescriptor, section: string): boolean {
+  const value = descriptor.value
+  return isRecord(value) && isRecord(value[section])
 }
 
 /**
@@ -253,7 +276,7 @@ function declaredFields(descriptor: SettingsDescriptor): string[] {
  * @returns the field path ([] = the entry root).
  */
 function sectionPath(descriptor: SettingsDescriptor, section: string): string[] {
-  return declaredFields(descriptor).includes(section) ? [section] : []
+  return declaresSection(descriptor, section) ? [section] : []
 }
 
 /**
@@ -307,7 +330,7 @@ function resolveFieldTarget(section: string, served: Map<string, ServedNamespace
     // Keyed by entry id: an entry declaring the field counts once, however
     // many served namespaces its descriptor is reached under.
     const entryId = target.entryId ?? String(target.descriptor.ns)
-    if (declaredFields(target.descriptor).includes(section) && !declaring.has(entryId)) declaring.set(entryId, target)
+    if (declaresSection(target.descriptor, section) && !declaring.has(entryId)) declaring.set(entryId, target)
   }
   if (declaring.size === 0) return { kind: 'none' }
   if (declaring.size > 1) return { kind: 'ambiguous' }

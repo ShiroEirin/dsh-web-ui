@@ -9,6 +9,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NewTaskModal } from '../src/client/board/NewTaskModal.tsx'
+import { openFormSection } from './form-sections.ts'
 import { t } from '../src/client/locales.ts'
 import type { BoardController, ControllerSnapshot } from '../src/core/controller.ts'
 
@@ -54,6 +55,8 @@ function renderModal(options: { canParseTask?: boolean; parseTaskDraft?: unknown
   const root = createRoot(container)
   roots.push(root)
   act(() => { root.render(<NewTaskModal controller={controller} onClose={() => undefined} />) })
+  // The parse region starts collapsed; every test below drives its fields.
+  if (options.canParseTask !== false) openFormSection(container, t('new.section.parse'))
   return { container, parseTaskDraft }
 }
 

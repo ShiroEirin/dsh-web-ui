@@ -1,0 +1,278 @@
+/**
+ * Lucy · Night City Signal — DSH skin stylesheet (manifest v2).
+ *
+ * L1 only: remap the official --dsw-* semantic tokens. Light values live on
+ * :root, dark values under body[data-ds-dark-theme]; the skin loader force-
+ * scopes every selector under html[data-dsh-skin="lucy-nightsignal"].
+ *
+ * Palette: night-city indigo + glass white + neon cyan (#22d3ee) + magenta
+ * (#e879f9) accent, with Lucy's boot red (#ef4444) used for danger states.
+ */
+
+:root {
+  /* surfaces */
+  --dsw-alias-bg-base: transparent;
+  --dsw-alias-bg-layer-1: #ffffffa3;
+  --dsw-alias-bg-layer-2: #e9f2f9ba;
+  --dsw-alias-bg-layer-3: #dae7f1c0;
+  --dsw-alias-bg-layer-4: #cbdcecca;
+  --dsw-alias-bg-overlay: #08192bcc;
+  --dsw-alias-bg-skeleton: #123a5c17;
+  --dsw-alias-bg-multi-select: #0891b21f;
+  --dsw-alias-bg-document-preview: #f4f9fdea;
+  --dsw-alias-bg-mask-1: #0b1a2e1a;
+  --dsw-alias-bg-mask-2: #0b1a2e2e;
+  --dsw-alias-bg-mask-3: #0b1a2e45;
+  --dsw-alias-bg-mask-drop: #0b1a2e24;
+  --dsw-alias-bg-mask-photo: #0b1a2e14;
+
+  /* borders */
+  --dsw-alias-border-l1: #14405f1f;
+  --dsw-alias-border-l2: #14405f33;
+  --dsw-alias-border-l3: #14405f4d;
+  --dsw-alias-border-l4: #14405f66;
+  --dsw-alias-border-inverted: #ffffff2e;
+
+  /* labels */
+  --dsw-alias-label-primary: #0b1b2a;
+  --dsw-alias-label-primary-bluish: #123a5c;
+  --dsw-alias-label-primary-dimmed: #35526a;
+  --dsw-alias-label-primary-foreground: #ffffff;
+  --dsw-alias-label-primary-inverted: #f2f8fc;
+  --dsw-alias-label-secondary: #3d5a70;
+  --dsw-alias-label-tertiary: #6d8798;
+  --dsw-alias-label-caption: #8298a8;
+  --dsw-alias-label-dimmed: #a9bcc9;
+  --dsw-alias-label-error: #c2410c;
+  --dsw-alias-label-document-preview: #35526a;
+  --dsw-alias-link: #0e7490;
+
+  /* brand + interactive */
+  --dsw-alias-brand-primary: #0891b2;
+  --dsw-alias-brand-primary-invert: #e6fbff;
+  --dsw-alias-brand-text: #ffffff;
+  --dsw-alias-interactive-bg-hover: #0891b218;
+  --dsw-alias-interactive-bg-active: #0891b22b;
+  --dsw-alias-interactive-bg-hover-solid: #d3e9f2;
+  --dsw-alias-interactive-bg-hover-accent: #22d3ee2e;
+  --dsw-alias-interactive-bg-hover-danger: #ef444422;
+
+  /* buttons */
+  --dsw-alias-button-primary-fill: #0891b2;
+  --dsw-alias-button-primary-hover: #0e7490;
+  --dsw-alias-button-primary-dimmed: #0891b266;
+  --dsw-alias-button-ghost-active-fill: #0891b224;
+  --dsw-alias-button-ghost-active-hover: #0891b233;
+  --dsw-alias-button-ghost-active-border: #0891b24d;
+  --dsw-alias-button-floating-fill: #ffffffef;
+  --dsw-alias-button-floating-hover: #e6f4fa;
+  --dsw-alias-button-elevated-fill: #ffffffe6;
+  --dsw-alias-button-contrast-fill: #0b1b2a;
+  --dsw-alias-button-tool-bar-fill: #ffffffb8;
+  --dsw-alias-button-tool-bar-fill-invisible: #ffffff00;
+  --dsw-alias-button-tool-bar-hover: #0891b21f;
+  --dsw-alias-button-info-fill: #0891b2;
+  --dsw-alias-button-info-hover: #0e7490;
+
+  /* states */
+  --dsw-alias-state-success-primary: #0f9d6e;
+  --dsw-alias-state-success-secondary: #0f9d6e1f;
+  --dsw-alias-state-success-tertiary: #0f9d6e33;
+  --dsw-alias-state-warn-primary: #c2740a;
+  --dsw-alias-state-warn-secondary: #c2740a1f;
+  --dsw-alias-state-warn-tertiary: #c2740a33;
+  --dsw-alias-state-warn-label: #a35f08;
+  --dsw-alias-state-error-primary: #dc2626;
+  --dsw-alias-state-error-secondary: #dc26261f;
+  --dsw-alias-state-idle-primary: #8298a8;
+  --dsw-alias-state-business-primary: #0891b2;
+  --dsw-alias-state-business-tertiary: #0891b233;
+
+  /* markdown */
+  --dsw-alias-markdown-inline-code: #dceaf4d1;
+  --dsw-alias-markdown-code-block: #08192bf5;
+  --dsw-alias-markdown-code-block-banner: #122c44;
+  --dsw-alias-markdown-placeholder: #7f97a8;
+  --dsw-alias-markdown-tag: #0891b21f;
+  --dsw-alias-markdown-citation: #0891b2;
+  --dsw-alias-markdown-code-segment-selected: #ffffff29;
+  --dsw-alias-markdown-code-segment-unselected: #ffffff12;
+  --dsw-alias-code-diff-added: #0f9d6e26;
+  --dsw-alias-code-diff-deleted: #dc262626;
+  --dsw-alias-file-diff-added-bg: #0f9d6e1a;
+  --dsw-alias-file-diff-added-gutter: #0f9d6e33;
+  --dsw-alias-file-diff-added-marker: #0f9d6e;
+  --dsw-alias-file-diff-deleted-bg: #dc26261a;
+  --dsw-alias-file-diff-deleted-gutter: #dc262633;
+  --dsw-alias-file-diff-deleted-marker: #dc2626;
+
+  /* specific surfaces */
+  --dsw-specific-sidebar-fill: #ffffff96;
+  --dsw-specific-sidebar-nav-item-hover: #0891b218;
+  --dsw-specific-sidebar-nav-item-active: #0891b22b;
+  --dsw-specific-sidebar-nav-item-active-accent: #0891b2;
+  --dsw-specific-bubble: #ffffffb0;
+  --dsw-specific-bubble-highlight: #e4f6fb;
+  --dsw-specific-input-major: #ffffff96;
+  --dsw-specific-login-input: #ffffffcc;
+  --dsw-specific-menu: #ffffffef;
+  --dsw-specific-selector: #ffffffef;
+  --dsw-specific-tip: #0b1b2af2;
+  --dsw-alias-tooltip-bg: #0b1b2af2;
+  --dsw-alias-toast-bg: #ffffffef;
+  --dsw-hovercard-bg: #ffffffef;
+  --dsw-menu-backdrop-filter: blur(14px) saturate(1.4);
+
+  /* scrollbars */
+  --dsw-alias-scrollbar-bg-l1: #14405f1f;
+  --dsw-alias-scrollbar-bg-l2: #14405f29;
+  --dsw-alias-scrollbar-hover-l1: #0891b233;
+  --dsw-alias-scrollbar-hover-l2: #0891b247;
+
+  /* elevation + motion */
+  --dsw-elevation-panel: 0 12px 32px #0b1b2a1f;
+  --dsw-elevation-prominent: 0 20px 48px #0b1b2a2e;
+  --dsw-elevation-soft: 0 4px 14px #0b1b2a14;
+  --dsw-elevation-stroke: 0 0 0 1px #22d3ee33;
+  --dsw-elevation-stroke-color: #22d3ee33;
+  --dsw-shadow-lv1: 0 2px 8px #0b1b2a14;
+  --dsw-shadow-lv2: 0 8px 20px #0b1b2a1f;
+  --dsw-shadow-lv3: 0 18px 40px #0b1b2a2b;
+  --dsw-mask-blur: blur(10px);
+  --dsw-linear-gradient-think: linear-gradient(90deg, #22d3ee00 0%, #22d3ee59 45%, #e879f959 100%);
+  --dsw-linear-think-select: linear-gradient(90deg, #22d3ee24, #e879f924);
+}
+
+body[data-ds-dark-theme] {
+  /* surfaces */
+  --dsw-alias-bg-base: transparent;
+  --dsw-alias-bg-layer-1: #0a1120c8;
+  --dsw-alias-bg-layer-2: #101a2cd0;
+  --dsw-alias-bg-layer-3: #16233cdb;
+  --dsw-alias-bg-layer-4: #1d2d4ee2;
+  --dsw-alias-bg-overlay: #03060df2;
+  --dsw-alias-bg-skeleton: #7fe9ff14;
+  --dsw-alias-bg-multi-select: #22d3ee24;
+  --dsw-alias-bg-document-preview: #0a1120f2;
+  --dsw-alias-bg-mask-1: #02060e2e;
+  --dsw-alias-bg-mask-2: #02060e45;
+  --dsw-alias-bg-mask-3: #02060e5c;
+  --dsw-alias-bg-mask-drop: #02060e3d;
+  --dsw-alias-bg-mask-photo: #02060e29;
+
+  /* borders */
+  --dsw-alias-border-l1: #7fe9ff1f;
+  --dsw-alias-border-l2: #7fe9ff33;
+  --dsw-alias-border-l3: #7fe9ff4d;
+  --dsw-alias-border-l4: #7fe9ff66;
+  --dsw-alias-border-inverted: #05080f29;
+
+  /* labels */
+  --dsw-alias-label-primary: #e9f7ff;
+  --dsw-alias-label-primary-bluish: #b6e9f7;
+  --dsw-alias-label-primary-dimmed: #a9c6d8;
+  --dsw-alias-label-primary-foreground: #04121c;
+  --dsw-alias-label-primary-inverted: #05080f;
+  --dsw-alias-label-secondary: #a2bccf;
+  --dsw-alias-label-tertiary: #7b95aa;
+  --dsw-alias-label-caption: #6a8399;
+  --dsw-alias-label-dimmed: #55708a;
+  --dsw-alias-label-error: #fca5a5;
+  --dsw-alias-label-document-preview: #a2bccf;
+  --dsw-alias-link: #67e8f9;
+
+  /* brand + interactive */
+  --dsw-alias-brand-primary: #22d3ee;
+  --dsw-alias-brand-primary-invert: #04222b;
+  --dsw-alias-brand-text: #04121c;
+  --dsw-alias-interactive-bg-hover: #22d3ee1f;
+  --dsw-alias-interactive-bg-active: #22d3ee33;
+  --dsw-alias-interactive-bg-hover-solid: #16324a;
+  --dsw-alias-interactive-bg-hover-accent: #e879f92e;
+  --dsw-alias-interactive-bg-hover-danger: #f8717129;
+
+  /* buttons */
+  --dsw-alias-button-primary-fill: #22d3ee;
+  --dsw-alias-button-primary-hover: #67e8f9;
+  --dsw-alias-button-primary-dimmed: #22d3ee59;
+  --dsw-alias-button-ghost-active-fill: #22d3ee24;
+  --dsw-alias-button-ghost-active-hover: #22d3ee33;
+  --dsw-alias-button-ghost-active-border: #22d3ee59;
+  --dsw-alias-button-floating-fill: #101a2cf0;
+  --dsw-alias-button-floating-hover: #17233ceb;
+  --dsw-alias-button-elevated-fill: #16233cf0;
+  --dsw-alias-button-contrast-fill: #e9f7ff;
+  --dsw-alias-button-tool-bar-fill: #101a2ccc;
+  --dsw-alias-button-tool-bar-fill-invisible: #101a2c00;
+  --dsw-alias-button-tool-bar-hover: #22d3ee24;
+  --dsw-alias-button-info-fill: #22d3ee;
+  --dsw-alias-button-info-hover: #67e8f9;
+
+  /* states */
+  --dsw-alias-state-success-primary: #34d399;
+  --dsw-alias-state-success-secondary: #34d3991f;
+  --dsw-alias-state-success-tertiary: #34d39933;
+  --dsw-alias-state-warn-primary: #fbbf24;
+  --dsw-alias-state-warn-secondary: #fbbf241f;
+  --dsw-alias-state-warn-tertiary: #fbbf2433;
+  --dsw-alias-state-warn-label: #fcd34d;
+  --dsw-alias-state-error-primary: #f87171;
+  --dsw-alias-state-error-secondary: #f871711f;
+  --dsw-alias-state-idle-primary: #6a8399;
+  --dsw-alias-state-business-primary: #22d3ee;
+  --dsw-alias-state-business-tertiary: #22d3ee33;
+
+  /* markdown */
+  --dsw-alias-markdown-inline-code: #16233cd1;
+  --dsw-alias-markdown-code-block: #03060df5;
+  --dsw-alias-markdown-code-block-banner: #0d1728;
+  --dsw-alias-markdown-placeholder: #6a8399;
+  --dsw-alias-markdown-tag: #22d3ee1f;
+  --dsw-alias-markdown-citation: #67e8f9;
+  --dsw-alias-markdown-code-segment-selected: #ffffff29;
+  --dsw-alias-markdown-code-segment-unselected: #ffffff12;
+  --dsw-alias-code-diff-added: #34d39924;
+  --dsw-alias-code-diff-deleted: #f8717124;
+  --dsw-alias-file-diff-added-bg: #34d3991a;
+  --dsw-alias-file-diff-added-gutter: #34d39933;
+  --dsw-alias-file-diff-added-marker: #34d399;
+  --dsw-alias-file-diff-deleted-bg: #f871711a;
+  --dsw-alias-file-diff-deleted-gutter: #f8717133;
+  --dsw-alias-file-diff-deleted-marker: #f87171;
+
+  /* specific surfaces */
+  --dsw-specific-sidebar-fill: #070d1ac0;
+  --dsw-specific-sidebar-nav-item-hover: #22d3ee1f;
+  --dsw-specific-sidebar-nav-item-active: #22d3ee33;
+  --dsw-specific-sidebar-nav-item-active-accent: #22d3ee;
+  --dsw-specific-bubble: #101a2cb8;
+  --dsw-specific-bubble-highlight: #16233c;
+  --dsw-specific-input-major: #0a1120a8;
+  --dsw-specific-login-input: #0a1120d9;
+  --dsw-specific-menu: #0d1424f2;
+  --dsw-specific-selector: #0d1424f2;
+  --dsw-specific-tip: #03060df2;
+  --dsw-alias-tooltip-bg: #0d1424f2;
+  --dsw-alias-toast-bg: #101a2cf2;
+  --dsw-hovercard-bg: #0d1424f2;
+  --dsw-menu-backdrop-filter: blur(16px) saturate(1.5);
+
+  /* scrollbars */
+  --dsw-alias-scrollbar-bg-l1: #7fe9ff1a;
+  --dsw-alias-scrollbar-bg-l2: #7fe9ff24;
+  --dsw-alias-scrollbar-hover-l1: #22d3ee3d;
+  --dsw-alias-scrollbar-hover-l2: #22d3ee52;
+
+  /* elevation + motion */
+  --dsw-elevation-panel: 0 14px 38px #00000073;
+  --dsw-elevation-prominent: 0 24px 60px #00000094;
+  --dsw-elevation-soft: 0 6px 18px #00000059;
+  --dsw-elevation-stroke: 0 0 0 1px #22d3ee3d;
+  --dsw-elevation-stroke-color: #22d3ee3d;
+  --dsw-shadow-lv1: 0 2px 10px #00000059;
+  --dsw-shadow-lv2: 0 10px 26px #00000073;
+  --dsw-shadow-lv3: 0 22px 52px #00000094;
+  --dsw-mask-blur: blur(12px);
+  --dsw-linear-gradient-think: linear-gradient(90deg, #22d3ee00 0%, #22d3ee6b 45%, #e879f96b 100%);
+  --dsw-linear-think-select: linear-gradient(90deg, #22d3ee2e, #e879f92e);
+}

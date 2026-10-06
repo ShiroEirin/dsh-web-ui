@@ -13,6 +13,8 @@ interface ClusterOptions {
   tags?: string[]
   timeoutMs?: number
   maxWorkers?: number
+  /** Caller cancellation, forwarded to every host's command. */
+  signal?: AbortSignal
 }
 
 /** Run one command against many hosts concurrently. */
@@ -46,7 +48,7 @@ export async function cluster(engine: PoolEngine, options: ClusterOptions): Prom
     while (queue.length > 0) {
       const entry = queue.shift()!
       try {
-        const result = await execCommand(engine, entry.alias, options.command, options.timeoutMs)
+        const result = await execCommand(engine, entry.alias, options.command, options.timeoutMs, options.signal)
         results.push({ alias: entry.alias, ok: result.success, exitCode: result.exitCode, timedOut: result.timedOut, stdout: result.stdout, stderr: result.stderr, durationMs: result.durationMs })
       } catch (error) {
         results.push({ alias: entry.alias, ok: false, error: error instanceof Error ? error.message : String(error) })

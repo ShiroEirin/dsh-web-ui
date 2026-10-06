@@ -8,6 +8,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NewTaskModal } from '../src/client/board/NewTaskModal.tsx'
+import { openFormSection } from './form-sections.ts'
 import { t } from '../src/client/locales.ts'
 import type { BoardController, ControllerSnapshot } from '../src/core/controller.ts'
 import type { TaskRecord } from '../src/core/tasks.ts'
@@ -57,6 +58,15 @@ function renderModal(options: { started?: boolean } = {}): {
   roots.push(root)
   act(() => { root.render(<NewTaskModal controller={controller} onClose={onClose} />) })
   return { container, createTaskConfirmed, runTask, openTask, onClose }
+}
+
+/** The new-task dialog's /goal opt-out checkbox (checked by default). */
+function goalCheckbox(container: HTMLElement): HTMLInputElement {
+  // The /goal opt-out lives in the collapsed "run mode" region.
+  openFormSection(container, t('new.section.run'))
+  const label = [...container.querySelectorAll('label')].find(node => node.textContent?.includes(t('exec.goalRun')))
+  if (label === undefined) throw new Error('no /goal option in the new-task dialog')
+  return label.querySelector('input') as HTMLInputElement
 }
 
 function actionButton(container: HTMLElement, label: string): HTMLButtonElement {
@@ -115,5 +125,28 @@ describe('new-task "create and run" (#1621)', () => {
     expect(payload.schedule).toBeUndefined()
     expect(createTaskConfirmed).toHaveBeenCalledOnce()
     expect(runTask).not.toHaveBeenCalled()
+  })
+
+  it('user creating a task sends the default goal run and the opt-out they uncheck', async () => {
+    // Given an open new-task modal
+    const { container, createTaskConfirmed } = renderModal()
+
+    // Then the /goal option starts checked, and the default payload stores
+    // nothing for it (absent = on)
+    const checkbox = goalCheckbox(container)
+    expect(checkbox.checked).toBe(true)
+    const form = container.querySelector('form')!
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    })
+    expect((createTaskConfirmed.mock.calls[0]![0] as { goalRun?: boolean }).goalRun).toBeUndefined()
+
+    // When the user unchecks it before creating, the opt-out rides the create
+    createTaskConfirmed.mockClear()
+    await act(async () => { checkbox.click() })
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    })
+    expect((createTaskConfirmed.mock.calls[0]![0] as { goalRun?: boolean }).goalRun).toBe(false)
   })
 })

@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { DEFAULT_REGISTRY, assertPublished, missingVersions, sweepOnce, versionDocUrl } from './verify-registry.mjs'
+import { DEFAULT_ATTEMPTS, DEFAULT_DELAY_MS, DEFAULT_REGISTRY, assertPublished, missingVersions, sweepOnce, versionDocUrl } from './verify-registry.mjs'
+
+test('the default retry budget covers a staged publish promotion', () => {
+  // v0.4.4: the aggregate answered 404 for about sixteen minutes after the
+  // publish step reported it published, because the registry had accepted it
+  // into staging and not promoted it. The window has to clear that with
+  // headroom, or a queued promotion is read as a lost publish.
+  const windowMs = (DEFAULT_ATTEMPTS - 1) * DEFAULT_DELAY_MS
+  assert.ok(windowMs >= 25 * 60 * 1000,
+    'default window ' + Math.round(windowMs / 60000) + 'min is shorter than the 25min staging headroom')
+})
 
 test('versionDocUrl encodes the scope and normalizes the registry base', () => {
   assert.equal(versionDocUrl('@linxin666/dsh-web-all', '0.3.18'),

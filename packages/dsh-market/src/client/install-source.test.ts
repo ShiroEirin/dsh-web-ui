@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { entryInstalled, installSpec, isInstallSpecValid } from './install-source.ts'
+import { entryInstalled, installSpec, isInstallSpecValid, managePackageName } from './install-source.ts'
 import type { InstalledPluginItem } from './plugin-manager-bridge.ts'
 
 describe('installSpec', () => {
@@ -139,5 +139,32 @@ describe('entryInstalled', () => {
   it('returns null for uninstalled plugins', () => {
     expect(entryInstalled({ id: 'dsh-uninstalled-plugin', repo: 'https://github.com/foo/bar' }, installedList)).toBeNull()
     expect(entryInstalled({ id: 'dsh-other', npm: '@other/pkg' }, installedList)).toBeNull()
+  })
+
+  describe('managePackageName', () => {
+    it('user gets the installed row id the official Plugins page addresses', () => {
+      // Given an entry whose installed row carries the scoped package name
+      const entry = { id: 'dsh-auto-memory', npm: '@a9i5k4/dsh-auto-memory' }
+      // When the manage target is resolved against the installed snapshot
+      const target = managePackageName(entry, installedList)
+      // Then the official page is addressed with the installed dependency name
+      expect(target).toBe('@a9i5k4/dsh-auto-memory')
+    })
+
+    it('user gets the declared npm name without its version or tag suffix', () => {
+      // Given entries whose npm spec carries a version and a dist-tag
+      // When the manage target is resolved without an installed row
+      // Then the bare package name is what the official page receives
+      expect(managePackageName({ id: 'dsh-tui', npm: 'dsh-tui@1.2.3' }, installedList)).toBe('dsh-tui')
+      expect(managePackageName({ id: 'dsh-tui', npm: '@scope/dsh-tui@next' }, installedList)).toBe('@scope/dsh-tui')
+    })
+
+    it('user gets the entry id when the entry declares no npm package', () => {
+      // Given a git-only entry with no npm name
+      const entry = { id: 'dsh-plain', repo: 'https://github.com/u/r' }
+      // When the manage target is resolved
+      // Then the entry id is the address the official page receives
+      expect(managePackageName(entry, installedList)).toBe('dsh-plain')
+    })
   })
 })

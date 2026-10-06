@@ -9,7 +9,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { copyFile, readFile, rename, writeFile } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, normalize, sep } from 'node:path'
 import { resolveDshHome } from './dsh-home.ts'
 
 /**
@@ -28,6 +28,14 @@ export interface LaunchedProfile {
   name?: unknown
   dir?: unknown
   patchPath?: unknown
+  /**
+   * Absolute path of the running installation's own `@deepseek-ai/dsh`
+   * package.json — the launcher's install anchor. Its `version` IS the version
+   * of the DSH this process booted, so it answers the compatibility question
+   * without spawning anything; on a packaged Desktop install it is the only
+   * source that does, because no `dsh` reaches that host's PATH (issue #1819).
+   */
+  installAnchor?: unknown
 }
 
 /** Resolved locations of one profile's writable surface. */
@@ -71,6 +79,42 @@ export function desktopSelectedProfile(env: NodeJS.ProcessEnv = process.env): st
     }
   }
   return undefined
+}
+
+/**
+ * The running installation's own `@deepseek-ai/dsh` package.json, as the
+ * launcher published it on `profileContext`, or undefined when the host
+ * publishes none (or publishes something unusable). This is a READ-ONLY
+ * fact — unlike the profile directory and the patch path it is never a write
+ * target — but it still arrives from outside this package, so it must be an
+ * absolute, traversal-free path before anything reads a version out of it.
+ * @param launched - the profile facts the Host published, when available.
+ * @returns the validated anchor path, or undefined.
+ */
+export function launchedInstallAnchor(launched: LaunchedProfile | undefined): string | undefined {
+  const anchor = launched === undefined || typeof launched.installAnchor !== 'string'
+    ? ''
+    : launched.installAnchor.trim()
+  if (anchor === '') return undefined
+  if (!isAbsolute(anchor) || anchor.split(/[\/\\]/).includes('..')) return undefined
+  return anchor
+}
+
+/**
+ * Read the `version` field of one package manifest, tolerating every failure:
+ * a missing file, an unreadable one (a stripped asar entry), malformed JSON, or
+ * a non-string version all read as "no version". Callers fall back to their next
+ * source rather than reporting a version nobody declared.
+ * @param manifestPath - absolute path of a package.json.
+ * @returns the declared version, or undefined.
+ */
+export function readManifestVersion(manifestPath: string): string | undefined {
+  try {
+    const parsed = JSON.parse(stripBom(readFileSync(manifestPath, 'utf8'))) as { version?: unknown }
+    return typeof parsed.version === 'string' && parsed.version.trim() !== '' ? parsed.version.trim() : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /**
@@ -206,7 +250,7 @@ function launchedFacts(
   // land, so its SHAPE is validated here. The RAW segments are inspected
   // because `normalize` would silently collapse a `..` away, hiding an escape
   // instead of rejecting it.
-  if (!isAbsolute(profileDir) || profileDir.split(sep).includes('..')) {
+  if (!isAbsolute(profileDir) || profileDir.split(/[\/\\]/).includes('..')) {
     throw new Error(`plugin-manager: published profile directory is not a safe absolute path ${JSON.stringify(launched.dir ?? '')}`)
   }
   // The published name and directory must describe the SAME profile: the name
@@ -214,22 +258,24 @@ function launchedFacts(
   // files this gateway reads and writes, so a mismatch would split the two
   // write paths across different profiles. The official runtime publishes
   // exactly `basename(dir)` as the name, so this holds for every real host.
-  if (name !== '' && name !== basename(profileDir)) {
+  const dirBase = profileDir.split(/[\/\\]/).filter(Boolean).pop() ?? basename(profileDir)
+  if (name !== '' && name !== dirBase) {
     throw new Error(`plugin-manager: published profile name and directory disagree ${JSON.stringify(name)} vs ${JSON.stringify(profileDir)}`)
   }
-  const ownPatchPath = join(profileDir, 'cordis.patch.yml')
+  const isPosixLiteral = profileDir.includes('/') && !profileDir.includes('\\')
+  const ownPatchPath = isPosixLiteral ? `${profileDir}/cordis.patch.yml` : join(profileDir, 'cordis.patch.yml')
   const publishedPatchPath = typeof launched.patchPath === 'string' ? launched.patchPath.trim() : ''
   // The patch path is a WRITE target (row enablement). Accept only the
   // profile's own patch file; anything else would let the published value
   // redirect a write outside the profile this gateway mounts.
-  if (publishedPatchPath !== '' && publishedPatchPath !== ownPatchPath) {
+  if (publishedPatchPath !== '' && publishedPatchPath !== ownPatchPath && normalize(publishedPatchPath) !== normalize(ownPatchPath)) {
     throw new Error(`plugin-manager: published patch path is not the launched profile's own patch file ${JSON.stringify(launched.patchPath)}`)
   }
   return {
-    profileName: name !== '' ? name : basename(profileDir),
+    profileName: name !== '' ? name : dirBase,
     profileDir,
     patchPath: ownPatchPath,
-    packageJsonPath: join(profileDir, 'package.json'),
+    packageJsonPath: isPosixLiteral ? `${profileDir}/package.json` : join(profileDir, 'package.json'),
     // Strictly a launcher fact: only argv naming the packaged Desktop host (or
     // the persisted desktop selection, in the fallback branch below) marks the
     // run as desktop. A profile that merely happens to be *named* "desktop" is

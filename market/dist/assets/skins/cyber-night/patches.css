@@ -2,6 +2,36 @@
    focus/links, aionui panel, git-graph lanes, composer seat frost, and
    transition polish. Loaded together with skin.css by the skin-center. */
 
+/* The host's `contributes.backgroundMedia` illustration is appended to <body>
+   at z-index: -2, and this skin's own skin.css paints an opaque
+   `body[data-ds-dark-theme] { background-color: #04060d }`. Without a stacking
+   context on body that -2 layer propagates to the root, so it paints at the
+   root's negative-z step, BEFORE body's own background, and the opaque fill
+   hides the whole illustration (issues #1745 A and #1746).
+
+   `isolation: isolate` makes body its own stacking-context root: the body
+   background returns to the canvas step and the -2 layer paints again, while
+   the conversation panels (z-index auto) still sit above it. z-index is left
+   alone on purpose - raising the layer to 0 would put it over the conversation
+   itself. This must stay on `body`, never on `html`/`:root`: the skin-center
+   patch pipeline prefixes every selector with `html[data-dsh-skin="<id>"] `, so
+   a `:root` rule would compile to a selector that can never match. */
+body {
+  isolation: isolate;
+}
+
+/* The Windows desktop shell paints --dsw-specific-sidebar-fill, a 90% opaque
+   fill, on its whole-window frame element. That frame is a stacking context, so
+   it paints after every negative-z descendant and crushes the -2 illustration
+   whatever body does (issue #1763). Suffix matching on _frame covers the shell's
+   CSS-module hash (e.g. ZTP-Xa_frame) without being neutralized by the skin
+   patch prefix pipeline. It matches only an element carrying that class, and
+   maid-atelier already ships the identical rule, so the web host sees the same
+   declaration under cyber-night and renders unchanged. */
+[class*="_frame"] {
+  background: transparent !important;
+}
+
 #root {
 background: transparent !important;
 }

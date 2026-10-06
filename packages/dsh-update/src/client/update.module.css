@@ -202,6 +202,12 @@
   font-size: 13px;
 }
 
+.updateRequiresDsh {
+  margin: 0 0 8px;
+  color: var(--dsw-alias-text-danger, var(--dsw-alias-label-primary));
+  font-weight: 600;
+  font-size: 13px;
+}
 .updateError {
   margin: 0;
   color: var(--dsw-alias-text-danger, var(--dsw-alias-label-primary));

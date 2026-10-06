@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schemas.linxin666.org/dsh-skin/v2.json",
+  "skinManifestVersion": 2,
+  "id": "lucy-nightsignal",
+  "name": "露西·夜城信号",
+  "nameEn": "Lucy · Night City Signal",
+  "version": "0.1.0",
+  "author": "lemonhall",
+  "tagline": "银发彩虹渐变的夜之城网络黑客 · 双立绘天台背景 · 青洋红霓虹玻璃面板",
+  "description": "一套面向 DeepSeek Harness Web GUI 的赛博朋克同人皮肤：亮色是白天云海之上的未来都市天台，暗色是霓虹雨雾里的夜之城天际线，两侧各立一位银白短发、发尾彩虹渐变、白色短夹克配黑色紧身战衣与漆皮长靴的角色立绘。界面覆盖层由深靛蓝、玻璃白与霓虹青/洋红构成，面板半透明磨砂，输入框与侧栏带霓虹描边，并在加载与思考状态给出青色流光。",
+  "tags": [
+    "cyberpunk",
+    "night-city",
+    "neon",
+    "anime",
+    "glass",
+    "lucy"
+  ],
+  "accent": "#22d3ee",
+  "order": 60,
+  "license": "CC BY-NC-SA 4.0",
+  "licenseUrl": "https://github.com/lemonhall/dsh-skin-lucy/blob/main/LICENSE",
+  "noticeUrl": "https://github.com/lemonhall/dsh-skin-lucy/blob/main/NOTICE",
+  "sourceUrl": "https://github.com/lemonhall/dsh-skin-lucy",
+  "attribution": "AI 生成素材：OFOX 图像 API（volcengine/doubao-seedream-5.0-pro）生成，立绘在本地做色度键抠图；角色与作品权利归原权利人；非官方同人作品，仅供个人非商业使用。",
+  "preview": {
+    "light": "preview/light.jpg",
+    "dark": "preview/dark.jpg"
+  },
+  "contributes": {
+    "stylesheet": "skin.css",
+    "patches": "patches.css",
+    "backgroundMedia": {
+      "light": {
+        "type": "image",
+        "src": "assets/scene-light.webp",
+        "scrim": "linear-gradient(rgba(238, 246, 252, 0.08) 0%, rgba(232, 242, 250, 0.14) 55%, rgba(224, 238, 248, 0.22) 100%)"
+      },
+      "dark": {
+        "type": "image",
+        "src": "assets/scene-dark.webp",
+        "scrim": "linear-gradient(rgba(4, 8, 18, 0.34) 0%, rgba(7, 12, 26, 0.48) 55%, rgba(5, 9, 20, 0.60) 100%)"
+      }
+    }
+  }
+}

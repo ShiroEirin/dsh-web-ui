@@ -18,7 +18,7 @@ dsh-market.com 创意工坊首页此前把作品目录当作内部索引来呈�
 - 收藏：我的收藏把 `kind:id` 列表按设备存进 `localStorage`（`dsh-market-saved`），在详情弹层里切换；收藏数据绝不发送到服务端。
 - 卡片：皮肤显示亮色预览；宠物显示首帧预览并完整居中于固定比例的媒体区；插件与预设显示文字卡（图标、分类、描述）。皮肤、插件与预设名称仍然链接到 `item.repo`。
 - 详情弹层：按类别区分的媒体与安装说明保持不变（皮肤亮/暗预览与实时试穿、宠物预览与精灵表、可复制的插件 npm 命令、预设安装步骤），末尾新增点赞按钮与「收藏作品」操作。
-- 动效：页脚的「背景动效」开关同时切换 `window.marketWave.setEnabled(...)` 与 `.ocean.paused` 类；在 `prefers-reduced-motion: reduce` 下强制关闭。
+- 动效：页脚的「背景动效」开关同时切换 `window.marketWave.setEnabled(...)` 与 `.ocean.paused` 类；在 `prefers-reduced-motion: reduce` 下强制关闭。背景动效**缺省关闭**，选择持久化在 localStorage 的 `dsh-market-motion`（`'1'` / `'0'`）；关闭是真正的关闭（停 RAF、丢弃排队的点击涟漪、canvas 摘掉 `.ready` 回到 `opacity: 0`，不留最后一帧）。取舍见[动效开关卡片](2026-10-02-market-background-motion-default-off.md)。
 - 深链：`#kind:id` 在加载时打开对应详情弹层，关闭时清除。
 - 移除按分区切换的颁奖台。
 

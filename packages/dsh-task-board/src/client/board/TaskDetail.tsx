@@ -4,22 +4,30 @@
  * delete (with confirmation), manual status moves, and a jump to the
  * execution's session transcript.
  */
-import { useEffect, useState } from 'react'
-import type { BoardController } from '../../core/controller.ts'
+import { useCallback, useEffect, useState } from 'react'
+import type { BoardController, ControllerSnapshot } from '../../core/controller.ts'
+import type { TaskBoardExtensionActionRequest, TaskBoardExtensionDispatch } from '../../core/extension.ts'
+import { useTaskBoardSeats } from '../seats.tsx'
 import { isValidCron } from '../../core/schedule.ts'
-import { MANUAL_STATUSES, TASK_PERMISSIONS, tagTone, type ExecutionRecord, type TaskPermission, type TaskRecord } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, TASK_PERMISSIONS, canMoveTask, hasOpenExecution, tagTone, type ExecutionRecord, type TaskPermission, type TaskRecord } from '../../core/tasks.ts'
 import { canEditTaskContent } from '../../core/use-cases/task-update.ts'
 import { requiresPermissionConfirmation } from '../../core/handover.ts'
 import { DEFAULT_SUBTASK_DEPTH, directSubtasks, taskDepth } from '../../core/subtask.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import { SCHEDULE_PRESETS } from '../schedule-presets.ts'
+import { nextRunLabel, zoneChoices } from '../schedule-zone.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { EditTaskModal, EditTagsModal } from './EditTaskModal.tsx'
+import { IconClose, IconPlus, IconSession } from './icons.tsx'
 import { LinkSubtaskModal } from './LinkSubtaskModal.tsx'
 import { NewTaskModal } from './NewTaskModal.tsx'
+import { useDialog, usePresence, type OverlayPhase } from './overlay.tsx'
+import { inheritPresetLabel, presetLabel } from './preset-label.ts'
 import { formatHostTimestamp, formatTime } from './TaskCard.tsx'
 import { STATUS_KEY } from './status-key.ts'
+import { VerificationReport } from './VerificationReport.tsx'
+import { ClampedMarkdown } from './ClampedMarkdown.tsx'
 
 /** Execution outcome → locale key. */
 const RESULT_KEY: Record<NonNullable<ExecutionRecord['result']>, TaskBoardKey> = {
@@ -45,6 +53,7 @@ function ExecutionRow({ execution, timeZone, onOpen }: { execution: ExecutionRec
           {t('detail.execution.initiator', { session: execution.initiatedBy })}
         </span>
       )}
+      {execution.verification !== undefined && <VerificationReport verification={execution.verification} />}
       {execution.sessionId !== undefined && (
         <button
           type="button"
@@ -52,7 +61,8 @@ function ExecutionRow({ execution, timeZone, onOpen }: { execution: ExecutionRec
           onClick={() => { onOpen(execution.sessionId as string) }}
           title={execution.sessionId}
         >
-          {t('detail.viewSession')} ⌁
+          {t('detail.viewSession')}
+          <IconSession size={13} />
         </button>
       )}
       {execution.error !== undefined && execution.error !== '' && (
@@ -63,20 +73,16 @@ function ExecutionRow({ execution, timeZone, onOpen }: { execution: ExecutionRec
 }
 
 /** The execution-target editor: workspace / mode / permission pickers. */
-function ExecutionSettingsSection({ controller, task, pending }: { controller: BoardController; task: TaskRecord; pending: boolean }) {
-  const [options, setOptions] = useState(controller.getSnapshot().executionOptions)
-  // Whether this deployment serves the Agent Teams service: without it a team
-  // run is refused, so the opt-in is offered read-only with the reason.
-  const teamRunOffered = (): boolean => controller.getSnapshot().host?.teamRunAvailable === true
-  const [teamRunAvailable, setTeamRunAvailable] = useState(teamRunOffered())
-  useEffect(
-    () => controller.subscribe(() => {
-      const snapshot = controller.getSnapshot()
-      setOptions(snapshot.executionOptions)
-      setTeamRunAvailable(snapshot.host?.teamRunAvailable === true)
-    }),
-    [controller],
-  )
+function ExecutionSettingsSection({ controller, task, pending, executionOptions, teamRunAvailable }: {
+  controller: BoardController
+  task: TaskRecord
+  pending: boolean
+  /** Picker option sets, owned by the detail overlay's snapshot. */
+  executionOptions: ControllerSnapshot['executionOptions']
+  /** Whether this deployment serves the Agent Teams service. */
+  teamRunAvailable: boolean
+}) {
+  const options = executionOptions
   const workspaceId = task.workspaceId ?? ''
   const mode = task.mode ?? ''
   const permission = task.permission ?? ''
@@ -107,18 +113,18 @@ function ExecutionSettingsSection({ controller, task, pending }: { controller: B
         </select>
       </label>
       <label className={css.field}>
-        <span className={css.fieldLabel}>{t('new.mode')}</span>
+        <span className={css.fieldLabel}>{t('new.agentPreset')}</span>
         <select
           className={css.select}
           value={mode}
           disabled={pending}
           onChange={event => { controller.updateTask(task.id, { mode: event.target.value }) }}
         >
-          <option value="">{t('exec.mode.default')}</option>
+          <option value="">{inheritPresetLabel(options.presets)}</option>
           {!modeKnown && <option value={mode}>{mode}{t('exec.mode.removed')}</option>}
           {options.presets.map(preset => (
             <option key={preset.id} value={preset.id} disabled={preset.broken !== undefined}>
-              {preset.name ?? preset.id}
+              {presetLabel(preset)}
               {preset.isDefault ? t('exec.mode.defaultSuffix') : ''}
               {preset.broken !== undefined ? t('exec.mode.brokenSuffix') : ''}
             </option>
@@ -167,6 +173,26 @@ function ExecutionSettingsSection({ controller, task, pending }: { controller: B
       <label className={css.scheduleToggle}>
         <input
           type="checkbox"
+          checked={task.goalRun !== false}
+          disabled={pending}
+          onChange={event => { controller.updateTask(task.id, { goalRun: event.target.checked }) }}
+        />
+        <span>{t('exec.goalRun')}</span>
+      </label>
+      <p className={css.detailText}>{t('exec.goalRunHint')}</p>
+      <label className={css.scheduleToggle}>
+        <input
+          type="checkbox"
+          checked={task.skipVerification === true}
+          disabled={pending}
+          onChange={event => { controller.updateTask(task.id, { skipVerification: event.target.checked }) }}
+        />
+        <span>{t('exec.skipVerification')}</span>
+      </label>
+      <p className={css.detailText}>{t('exec.skipVerificationHint')}</p>
+      <label className={css.scheduleToggle}>
+        <input
+          type="checkbox"
           checked={task.teamRun === true}
           disabled={pending || !teamRunAvailable}
           onChange={event => { controller.updateTask(task.id, { teamRun: event.target.checked }) }}
@@ -178,7 +204,7 @@ function ExecutionSettingsSection({ controller, task, pending }: { controller: B
   )
 }
 
-/** The scheduled-runs editor: enable toggle, cron input + presets, next-run info. */
+/** The scheduled-runs editor: enable toggle, cron input + presets, zone, next-run info. */
 function ScheduleSection({ controller, task, pending }: { controller: BoardController; task: TaskRecord; pending: boolean }) {
   const schedule = task.schedule
   const [cron, setCron] = useState(schedule?.cron ?? '0 9 * * *')
@@ -186,7 +212,12 @@ function ScheduleSection({ controller, task, pending }: { controller: BoardContr
   const [nextRunAt, setNextRunAt] = useState<number | undefined>(schedule?.nextRunAt)
   const [lastTriggeredAt, setLastTriggeredAt] = useState<number | undefined>(schedule?.lastTriggeredAt)
   const [error, setError] = useState<string | undefined>(undefined)
-  const timeZone = controller.getSnapshot().host?.scheduler.timeZone
+  const hostTimeZone = controller.getSnapshot().host?.scheduler.timeZone
+  // The rule's own zone; '' means "follow the Host zone" (no stored zone).
+  const [zone, setZone] = useState<string>(schedule?.timeZone ?? '')
+  // One clock reading per render pass, so the absolute and relative halves of
+  // the label always describe the same instant.
+  const now = Date.now()
 
   // Keep the editor in sync when the task record changes underneath (the
   // schedule rolls forward as runs trigger).
@@ -195,8 +226,9 @@ function ScheduleSection({ controller, task, pending }: { controller: BoardContr
     setEnabled(schedule?.enabled ?? false)
     setNextRunAt(schedule?.nextRunAt)
     setLastTriggeredAt(schedule?.lastTriggeredAt)
+    setZone(schedule?.timeZone ?? '')
     setError(undefined)
-  }, [task.id, schedule?.enabled, schedule?.cron, schedule?.nextRunAt, schedule?.lastTriggeredAt])
+  }, [task.id, schedule?.enabled, schedule?.cron, schedule?.timeZone, schedule?.nextRunAt, schedule?.lastTriggeredAt])
 
   /** Validate + persist the current cron text (Enter or blur). */
   const saveCron = (value: string): void => {
@@ -208,6 +240,16 @@ function ScheduleSection({ controller, task, pending }: { controller: BoardContr
     }
     setError(undefined)
     controller.setSchedule(task.id, { cron: trimmed })
+  }
+
+  /**
+   * Change the rule's zone. `''` clears the stored zone, which is how a user
+   * returns a rule to following the Host zone.
+   */
+  const changeZone = (value: string): void => {
+    setZone(value)
+    setError(undefined)
+    controller.setSchedule(task.id, { timeZone: value === '' ? null : value })
   }
 
   /** Arm/disarm the schedule (arming first persists the edited cron). */
@@ -232,12 +274,18 @@ function ScheduleSection({ controller, task, pending }: { controller: BoardContr
     controller.setSchedule(task.id, { cron: preset })
   }
 
+  // The zone the rule's wall clock is actually read in: its own when set,
+  // otherwise the Host zone. The preview must use the same one the Host will.
+  const effectiveZone = zone === '' ? hostTimeZone : zone
   const nextLabel = !enabled || nextRunAt === undefined
     ? t('detail.schedule.notScheduled')
-    : nextRunAt <= Date.now()
+    : nextRunAt <= now
       ? t('detail.schedule.dueSoon')
-      : formatHostTimestamp(nextRunAt, timeZone)
-  const lastLabel = lastTriggeredAt === undefined ? '—' : formatHostTimestamp(lastTriggeredAt, timeZone)
+      : nextRunLabel(nextRunAt, effectiveZone, formatHostTimestamp, now)
+  const lastLabel = lastTriggeredAt === undefined ? '—' : formatHostTimestamp(lastTriggeredAt, effectiveZone)
+  // The rule's own stored zone rides the list even when this runtime's
+  // inventory does not carry it, so opening the editor cannot rewrite it.
+  const zones = zoneChoices(hostTimeZone, schedule?.timeZone)
 
   return (
     <section className={css.detailSection}>
@@ -276,6 +324,23 @@ function ScheduleSection({ controller, task, pending }: { controller: BoardContr
           ))}
         </select>
       </div>
+      {/* A list is used instead of a free-text field so only zones the Host can
+          also resolve are offered; the Host zone entry clears the stored value. */}
+      <label className={css.scheduleZone}>
+        <span>{t('detail.schedule.timeZone')}</span>
+        <select
+          className={css.schedulePreset}
+          value={zone}
+          disabled={pending}
+          aria-label={t('detail.schedule.timeZone')}
+          title={t('detail.schedule.timeZoneHint')}
+          onChange={event => { changeZone(event.target.value) }}
+        >
+          {zones.map(choice => (
+            <option key={choice.id === '' ? '__host' : choice.id} value={choice.id}>{choice.label}</option>
+          ))}
+        </select>
+      </label>
       {error !== undefined && <p className={css.formError}>{error}</p>}
       <p className={css.scheduleMeta}>
         {t('detail.schedule.nextRun')} {nextLabel}
@@ -290,19 +355,18 @@ function ScheduleSection({ controller, task, pending }: { controller: BoardContr
  * and the actions that grow or prune the tree. Every gate here mirrors the
  * Host lineage gate for affordance only; the Host re-checks the action.
  */
-function SubtaskSection({ controller, task, pending, archived }: {
+function SubtaskSection({ controller, task, pending, archived, snapshot }: {
   controller: BoardController
   task: TaskRecord
   pending: boolean
   archived: boolean
+  /** Detail-overlay snapshot; the overlay already re-renders on every notify. */
+  snapshot: ControllerSnapshot
 }) {
-  const [snapshot, setSnapshot] = useState(controller.getSnapshot())
-  useEffect(
-    () => controller.subscribe(() => setSnapshot(controller.getSnapshot())),
-    [controller],
-  )
   const [showAdd, setShowAdd] = useState(false)
   const [showLink, setShowLink] = useState(false)
+  const addPresence = usePresence(showAdd)
+  const linkPresence = usePresence(showLink)
   const tasks = snapshot.tasks
   const parent = task.parentId === undefined ? undefined : tasks.find(candidate => candidate.id === task.parentId)
   const children = directSubtasks(tasks, task.id)
@@ -344,8 +408,8 @@ function SubtaskSection({ controller, task, pending, archived }: {
                   <button
                     type="button"
                     className={css.linkButton}
-                    disabled={pending || child.status === 'running'}
-                    title={child.status === 'running' ? t('detail.subtasks.runningLock') : undefined}
+                    disabled={pending || hasOpenExecution(child)}
+                    title={hasOpenExecution(child) ? t('detail.subtasks.runningLock') : undefined}
                     onClick={() => { void controller.setParent(child.id, null) }}
                   >
                     {t('detail.subtasks.detach')}
@@ -363,7 +427,8 @@ function SubtaskSection({ controller, task, pending, archived }: {
           ? (
             <div className={css.subtaskAddRow}>
               <button type="button" className={css.ghostButton} disabled={!editable} onClick={() => { setShowAdd(true) }}>
-                + {t('detail.subtasks.add')}
+                <IconPlus size={14} />
+                {t('detail.subtasks.add')}
               </button>
               <button type="button" className={css.ghostButton} disabled={!editable} onClick={() => { setShowLink(true) }}>
                 {t('detail.subtasks.link')}
@@ -372,18 +437,19 @@ function SubtaskSection({ controller, task, pending, archived }: {
             )
           : <p className={css.detailMeta}>{t('detail.subtasks.hostOnly')}</p>)
         : <p className={css.detailMeta}>{t('detail.subtasks.depthLimit', { depth: String(limit) })}</p>)}
-      {showAdd && (
-        <NewTaskModal controller={controller} parentTask={task} onClose={() => { setShowAdd(false) }} />
+      {addPresence.mounted && (
+        <NewTaskModal controller={controller} parentTask={task} phase={addPresence.phase} onClose={() => { setShowAdd(false) }} />
       )}
-      {showLink && (
-        <LinkSubtaskModal controller={controller} parent={task} onClose={() => { setShowLink(false) }} />
+      {linkPresence.mounted && (
+        <LinkSubtaskModal controller={controller} parent={task} phase={linkPresence.phase} onClose={() => { setShowLink(false) }} />
       )}
     </section>
   )
 }
 
+
 /** Task detail overlay. */
-export function TaskDetail({ controller, task }: { controller: BoardController; task: TaskRecord }) {
+export function TaskDetail({ controller, task, phase = 'open' }: { controller: BoardController; task: TaskRecord; phase?: OverlayPhase }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
   const [showEditTags, setShowEditTags] = useState(false)
@@ -399,18 +465,36 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
     setShowDuplicate(false)
   }, [task.id])
   const current = latest
+  const seats = useTaskBoardSeats()
+  const dispatch = useCallback(
+    (request: TaskBoardExtensionActionRequest): Promise<boolean> => controller.dispatchExtension(request),
+    [controller],
+  ) as TaskBoardExtensionDispatch
   const snapshot = controller.getSnapshot()
-  const running = current.status === 'running'
+  // Busy means the runner is executing this card, which is an execution the
+  // detail view can see; the column alone never locks a card.
+  const busy = hasOpenExecution(current)
   const archived = current.archivedAt !== undefined
   const pending = snapshot.pendingTaskIds.includes(current.id)
   const transportError = snapshot.transportError
   const timeZone = snapshot.host?.scheduler.timeZone
   const permissionPending = requiresPermissionConfirmation(current, snapshot.host?.sessionDefaultPermission)
   const subtaskChildren = directSubtasks(snapshot.tasks, current.id)
+  const dialog = useDialog<HTMLDivElement>(() => { controller.closeTask() }, phase)
+  // One presence per nested overlay: the detail view sits under up to four of
+  // them, and each has to run its own exit leg instead of the surface being
+  // pulled out of the DOM the moment its flag flips.
+  const editOpen = showEdit && !archived && canEditTaskContent(current)
+  const tagsOpen = showEditTags && !archived && !busy
+  const duplicateOpen = showDuplicate && !archived
+  const confirmPresence = usePresence(confirmDelete)
+  const editPresence = usePresence(editOpen)
+  const tagsPresence = usePresence(tagsOpen)
+  const duplicatePresence = usePresence(duplicateOpen)
 
   return (
-    <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) controller.closeTask() }}>
-      <div className={css.detail} role="dialog" aria-label={t('detail.title')}>
+    <div className={css.modalBackdrop} data-state={phase} onMouseDown={dialog.onMouseDown}>
+      <div ref={dialog.attach} className={css.detail} role="dialog" aria-modal="true" aria-label={t('detail.title')} tabIndex={-1}>
         <header className={css.detailHeader}>
           <h2 className={css.detailTitle}>{current.title}</h2>
           <span className={css.statusBadge} data-status={archived ? 'archived' : current.status}>
@@ -420,9 +504,10 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
             type="button"
             className={css.iconButton}
             aria-label={t('detail.close')}
+            title={t('detail.close')}
             onClick={() => { controller.closeTask() }}
           >
-            ×
+            <IconClose size={16} />
           </button>
         </header>
 
@@ -437,10 +522,10 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
           )}
           <section className={css.detailSection}>
             <h4>{t('detail.description')}</h4>
-            <p className={css.detailText}>{current.description !== '' ? current.description : '—'}</p>
+            <ClampedMarkdown source={current.description !== '' ? current.description : '—'} />
           </section>
 
-          <SubtaskSection controller={controller} task={current} pending={pending} archived={archived} />
+          <SubtaskSection controller={controller} task={current} pending={pending} archived={archived} snapshot={snapshot} />
 
           {current.tags !== undefined && current.tags.length > 0 && (
             <section className={css.detailSection} data-dsh-part="tags">
@@ -484,7 +569,7 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
               <h4>{t('detail.handover')}</h4>
               <p className={css.detailText}>
                 {t('new.workspace')}: {current.handover.workspaceId ?? t('exec.workspace.recent')}
-                {' · '}{t('new.mode')}: {current.handover.mode ?? t('exec.mode.default')}
+                {' · '}{t('new.agentPreset')}: {current.handover.mode ?? t('exec.mode.inherit')}
                 {' · '}{t('new.permission')}: {current.handover.permission === undefined ? t('exec.permission.default') : t(`exec.permission.${current.handover.permission}` as TaskBoardKey)}
               </p>
               <p className={css.detailText}><strong>{t('detail.handover.references')}</strong></p>
@@ -511,14 +596,22 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
             <p className={css.detailMeta}>{t('detail.permissionConfirmed', { time: formatHostTimestamp(current.permissionConfirmedAt, timeZone) })}</p>
           )}
 
+          {seats.detailSection({ task: current, dispatch })}
+
           <section className={css.detailSection}>
             <h4>{t('detail.prompt')}</h4>
-            <pre className={css.promptBlock}>{current.prompt !== '' ? current.prompt : current.title}</pre>
+            <ClampedMarkdown source={current.prompt !== '' ? current.prompt : current.title} />
           </section>
 
           {!archived && (
             <>
-              <ExecutionSettingsSection controller={controller} task={current} pending={pending} />
+              <ExecutionSettingsSection
+                controller={controller}
+                task={current}
+                pending={pending}
+                executionOptions={snapshot.executionOptions}
+                teamRunAvailable={snapshot.host?.teamRunAvailable === true}
+              />
               <ScheduleSection controller={controller} task={current} pending={pending} />
             </>
           )}
@@ -550,7 +643,7 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
                     key={status}
                     type="button"
                     className={css.ghostButton}
-                    disabled={current.status === status || running || pending}
+                    disabled={pending || !canMoveTask(current, status)}
                     onClick={() => { controller.moveTask(current.id, status) }}
                   >
                     {t(`status.move.${status}` as TaskBoardKey)}
@@ -573,7 +666,7 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
               {t('detail.edit')}
             </button>
           )}
-          {!archived && !canEditTaskContent(current) && current.status !== 'running' && (
+          {!archived && !canEditTaskContent(current) && !busy && (
             <button
               type="button"
               className={css.ghostButton}
@@ -598,7 +691,7 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
             <button
               type="button"
               className={css.primaryButton}
-              disabled={running || pending}
+              disabled={busy || pending}
               title={subtaskChildren.length > 0
                 ? t('detail.subtasks.runHint', { count: String(subtaskChildren.length) })
                 : undefined}
@@ -651,12 +744,13 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
         </footer>
       </div>
 
-      {confirmDelete && (
+      {confirmPresence.mounted && (
         <ConfirmDialog
           title={t('delete.title')}
           message={t('delete.confirm', { name: current.title })}
           confirmLabel={t('delete.ok')}
           danger
+          phase={confirmPresence.phase}
           onCancel={() => { setConfirmDelete(false) }}
           onConfirm={() => {
             setConfirmDelete(false)
@@ -665,18 +759,19 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
         />
       )}
 
-      {showEdit && !archived && canEditTaskContent(current) && (
-        <EditTaskModal controller={controller} task={current} onClose={() => { setShowEdit(false) }} />
+      {editPresence.mounted && (
+        <EditTaskModal controller={controller} task={current} phase={editPresence.phase} onClose={() => { setShowEdit(false) }} />
       )}
 
-      {showEditTags && !archived && current.status !== 'running' && (
-        <EditTagsModal controller={controller} task={current} onClose={() => { setShowEditTags(false) }} />
+      {tagsPresence.mounted && (
+        <EditTagsModal controller={controller} task={current} phase={tagsPresence.phase} onClose={() => { setShowEditTags(false) }} />
       )}
 
-      {showDuplicate && !archived && (
+      {duplicatePresence.mounted && (
         <NewTaskModal
           controller={controller}
           initialTask={current}
+          phase={duplicatePresence.phase}
           onClose={() => { setShowDuplicate(false) }}
           onDuplicateSuccess={async (sourceId) => {
             await controller.archiveTask(sourceId)

@@ -38,7 +38,7 @@ State is read as the pair of the library directory and the live declaration this
 
 - Source of truth: `presets/<id>/` in [dsh-presets](https://github.com/zhu1090093659/dsh-presets) (the preset directory itself) plus `presets/catalog.json` (author, version, tags, English display text, ranking). Preset ids must match the official rule `^[a-z0-9][a-z0-9-]*$`.
 - `scripts/market-build` emits `market/dist/manifest/presets.json` and `market/dist/assets/presets/<id>/`, and validates every catalog entry (id rule, reserved shipped ids, composition and metadata files present, `preset.yml` name readable) so a broken preset never publishes. The Chinese display text comes from `preset.yml` so the roster and the store cannot disagree; the catalog carries the English text and market metadata.
-- `market/worker`'s asset allowlist maps `preset` to `/manifest/presets.json`; the worker's accepted-kind set and stats buckets needed the same registration, which the first published batch exposed ([Preset likes and installs were rejected by the worker](../../bug-fix/2026-09-10-preset-write-endpoints.md)).
+- `market/worker`'s asset allowlist maps `preset` to `/manifest/presets.json`; the worker's accepted-kind set and stats buckets needed the same registration, which the first published batch exposed ([Preset likes and installs were rejected by the worker](../bug-fix/2026-09-10-preset-write-endpoints.md)).
 
 ### Ownership and UI
 

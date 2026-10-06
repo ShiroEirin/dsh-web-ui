@@ -16,7 +16,7 @@
  *                 [data-composer-placeholder]
  *   · hero        [data-phase="hero"]
  *
- * Deliberately NOT touched: html[data-dsh-wallpaper-active] and
+ * Deliberately NOT touched: html[data-we-wallpaper] and
  * html[data-dsh-backdrop-active]. The loader owns those — it neutralises scene
  * backgrounds behind a wallpaper and re-blurs the composer card itself — so the
  * canvas rule below steps aside instead of fighting it.
@@ -73,7 +73,7 @@ body::after {
    wallpaper. The crystal engine was fixed first (see the note further down); the
    material and anime engines still carried the dead form, which is also why
    verify() rejected all eleven of them and no theme could be rebuilt. */
-body[data-dsh-wallpaper-active]::after,
+body[data-we-wallpaper]::after,
 body[data-dsh-backdrop-active]::after {
   background-color: transparent;
   background-image: none;
@@ -648,13 +648,13 @@ button:has([data-slot='sidebar.brand.name']) {
 
 /* ── 12. 背景图激活时：星图留左边，人物在右边 ──
    共用外壳里有一条默认规则，壁纸一开就把整块画布底板关掉：
-     body[data-dsh-wallpaper-active]::after,
+     body[data-we-wallpaper]::after,
      body[data-dsh-backdrop-active]::after { background-image: none }
    那样画面上就只剩立绘、天文台的底子全没了。这里用**同一个选择器、后写**把它覆盖回来：
    底板继续画，但用水平遮罩把右侧让给人物——宽度的 38% 之前全强度，48% 过渡，55% 之后
    完全透明。人物在合成图里 centreX=0.76 / scale=0.77，人物内容横向占 56.0%–97.6%，
    所以底板在 55% 收干净，正好贴在人物左缘之外。 */
-body[data-dsh-wallpaper-active]::after,
+body[data-we-wallpaper]::after,
 body[data-dsh-backdrop-active]::after {
   background-color: transparent;
   background-image: var(--sk-pane);
@@ -709,3 +709,19 @@ body[data-dsh-backdrop-active]::after {
   }
 }
 
+/* ── Windows 桌面端：让出外壳画框的底 ──────────────────────────────────────
+   浏览器里 [data-dsh-frame] 的底是半透明的 --dsw-alias-bg-base，本皮的画布
+   （body 下 z-index ≤ -1 的固定层，或 contributes.backgroundMedia 的 -2 层）
+   还能透出来。Windows 桌面端（DeepSeek Harness.exe）会命中
+   [data-windows-titlebar] .BynINW_frame，把整个画框刷成不透明的
+   --dsw-specific-sidebar-fill；画框是流内元素，天然压在负 z-index 的画布
+   之上，于是整屏只剩那块实色，背景一张都看不到。macOS 有
+   [data-platform=darwin] .BynINW_frame{background:0 0} 的对应处理，Windows
+   没有 —— 所以这一条由皮肤自己补：只把底色置透明，不动任何几何。
+   顶部标题栏那条 ::before 横带保留（它是窗口拖拽区的底，也压着原生菜单栏）。
+   pixel-anime / whale-fantasy 早有同一条；maid-atelier 用的是
+   [class*="_frame"] 的哈希兜底写法（issue #1763）。 */
+body [data-phase],
+body [data-dsh-frame] {
+  background-color: transparent !important;
+}

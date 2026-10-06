@@ -19,6 +19,7 @@ import { ru as sessionArchive } from './session-archive.ts'
 import { ru as skillExplorer } from './skill-explorer.ts'
 import { ru as ssh } from './ssh.ts'
 import { ru as taskBoard } from './task-board.ts'
+import { ru as taskBoardGithub } from './task-board-github.ts'
 import { ru as update } from './update.ts'
 import { ru as usage } from './usage.ts'
 import { ru as webSettings } from './web-settings.ts'
@@ -38,6 +39,7 @@ export const ruDictionaries: Record<string, Record<string, string>> = {
   'dsh-skill-explorer': skillExplorer,
   'dsh-ssh': ssh,
   'task-board': taskBoard,
+  'task-board-github': taskBoardGithub,
   'update': update,
   'dsh-web-ui-usage': usage,
   'web-ui-plugins': webSettings,

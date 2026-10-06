@@ -40,6 +40,11 @@
  * Health surface: a loopback-only GET /api/dsh-web-all/degraded answers with
  * the current degradation ledger so doctor/monitoring can surface "these
  * plugins are degraded, the rest of the Web is healthy" without log scraping.
+ * Every record carries a one-line `reason` beside the full `message` (stack):
+ * a degraded plugin registered no route of its own, so this ledger is the only
+ * surface that can tell its panel WHY. The task board reads it for exactly
+ * that (issue #1730): its row degrades when another DSH process holds the
+ * ledger lock, and a bare 404 from /api/task-board/* cannot say so.
  *
  * Row-state surface: GET /api/dsh-web-all/rows answers the active family rows
  * (real plugin package names, see src/rows.ts) so the browser half can gate
@@ -118,7 +123,12 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** Loopback-fenced degraded-state route (installed once per shell context). */
+/**
+ * Loopback-fenced degraded-state route (installed once per shell context).
+ * Payload is additive: `{ ok, degraded: [{ plugin, stage, message, reason, at }] }`
+ * — the reason field is what a degraded plugin's own panel renders (#1730),
+ * and a reader that predates it keeps using stage/message.
+ */
 function makeDegradedRoute(): WebRoute {
   return {
     kind: 'exact',
